@@ -13,11 +13,15 @@ class LLMClient:
     """OpenAI-compatible chat client for local LLM services."""
 
     def __init__(self) -> None:
+        self.refresh()
+
+    def refresh(self) -> None:
         self.api_base = settings.openai_api_base.rstrip("/")
         self.api_key = settings.openai_api_key
         self.model = settings.openai_model
 
     async def chat(self, messages: List[Dict[str, str]], temperature: Optional[float] = None, max_tokens: Optional[int] = None) -> str:
+        self.refresh()
         payload = {
             "model": self.model,
             "messages": messages,
