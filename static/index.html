@@ -1,0 +1,790 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Literature Research Assistant V2</title>
+  <link rel="stylesheet" href="/styles.css?v=advisor-workflow-20260530" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>文献精读与研究辅助系统 V2</h1>
+      <p>论文管理 · 科研对象抽取 · 人机审查 · 素材管理与分析</p>
+    </div>
+    <div class="topbar-actions">
+      <button id="refreshBtn">刷新数据</button>
+      <button id="objectConfigBtn">对象建模工作台</button>
+      <button id="configBtn">系统配置</button>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="papers">1 论文管理</button>
+    <button class="tab" data-tab="extract">2 科研对象抽取</button>
+    <button class="tab" data-tab="review">3 人机审查</button>
+    <button class="tab" data-tab="materials">4 素材管理与分析</button>
+  </nav>
+
+  <main>
+    <section id="papers" class="panel active">
+      <div class="paper-home-layout">
+        <aside class="paper-import-pane">
+          <div class="card import-card">
+            <h2>导入论文</h2>
+            <label>导入方式</label>
+            <select id="importMode">
+              <option value="upload">上传 PDF</option>
+              <option value="arxiv">arXiv ID / URL</option>
+              <option value="doi">DOI / Crossref</option>
+              <option value="bibtex">BibTeX 元数据</option>
+            </select>
+
+            <div class="import-panel active" data-import-mode="upload">
+              <label>上传 PDF / TXT / MD</label>
+              <input type="file" id="paperFile" />
+              <button id="uploadBtn">上传并解析</button>
+            </div>
+
+            <div class="import-panel" data-import-mode="arxiv">
+              <label>arXiv ID 或 URL</label>
+              <div id="arxivInputs" class="multi-input-list">
+                <div class="multi-input-row">
+                  <input class="arxivInput" placeholder="例如 2401.12345 或 https://arxiv.org/abs/..." />
+                  <button type="button" id="addArxivInput" aria-label="增加 arXiv 输入">+</button>
+                </div>
+              </div>
+              <button id="arxivBtn">从 arXiv 导入</button>
+            </div>
+
+            <div class="import-panel" data-import-mode="doi">
+              <label>DOI</label>
+              <input id="doiInput" placeholder="例如 10.xxxx/xxxxx" />
+              <label class="inline"><input type="checkbox" id="doiPdf" checked /> 尝试下载 PDF</label>
+              <button id="doiBtn">从 DOI / Crossref 导入</button>
+            </div>
+
+            <div class="import-panel" data-import-mode="bibtex">
+              <label>BibTeX</label>
+              <textarea id="bibtexInput" rows="8" placeholder="粘贴 BibTeX 条目"></textarea>
+              <button id="bibtexBtn">导入 BibTeX 元数据</button>
+            </div>
+
+            <div id="importProgress" class="import-progress" hidden>
+              <div class="import-progress-row">
+                <span id="importProgressLabel">准备导入...</span>
+                <span id="importProgressPercent">0%</span>
+              </div>
+              <div class="progress-track">
+                <div id="importProgressBar" class="progress-bar"></div>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <section class="card paper-library-card">
+          <div class="card-heading">
+            <h2>论文列表</h2>
+            <span id="paperCount" class="meta"></span>
+          </div>
+          <div id="paperList" class="paper-table"></div>
+          <div id="paperPagination" class="pagination"></div>
+        </section>
+      </div>
+    </section>
+
+    <div id="objectConfigModal" class="modal" hidden>
+      <div class="modal-backdrop" data-close-modal="objectConfigModal"></div>
+      <div class="object-config-modal">
+      <div id="object-config" class="object-config-page">
+        <div class="object-config-hero">
+          <div class="object-config-heading">
+            <h2>对象建模工作台</h2>
+            <div class="object-library-inline">
+              <b>研究对象库</b>
+              <select id="objectTemplateSelect"></select>
+            </div>
+          </div>
+          <div class="object-overview-metrics">
+            <div class="object-overview-card">
+              <span>当前对象</span>
+              <b id="objectSummaryName">-</b>
+            </div>
+            <div class="object-overview-card">
+              <span>抽取维度</span>
+              <b id="objectSummaryDimensions">0/0</b>
+            </div>
+            <div class="object-overview-card">
+              <span>正反例</span>
+              <b id="objectSummaryExamples">0</b>
+            </div>
+            <div class="object-overview-card">
+              <span>Prompt</span>
+              <b id="objectSummaryPrompts">0</b>
+            </div>
+          </div>
+          <div class="object-actions">
+            <button id="importObjectConfigBtn">导入配置</button>
+            <button id="saveObjectConfigBtn">保存</button>
+            <button id="publishObjectTemplateBtn">发布模板</button>
+            <button id="objectConfigClose" aria-label="关闭">关闭</button>
+          </div>
+        </div>
+
+        <div class="object-workbench-layout">
+          <aside class="object-side-panel">
+            <section class="object-flow-nav">
+              <div class="object-side-heading">
+                <b><span class="object-flow-heading-icon" aria-hidden="true">◎</span>建模流程</b>
+                <span>不同研究对象共用同一套建模流程。</span>
+              </div>
+              <button class="object-tab active" data-object-tab="research-intent">
+                <span class="object-tab-copy">
+                  <span class="object-tab-title"><span class="object-tab-icon" aria-hidden="true">◎</span>1.研究意图</span>
+                  <span class="object-tab-desc">定义对象名称、领域、类型、研究目标和预期用途。</span>
+                </span>
+                <span class="object-tab-arrow" aria-hidden="true">›</span>
+              </button>
+              <button class="object-tab" data-object-tab="examples">
+                <span class="object-tab-copy">
+                  <span class="object-tab-title"><span class="object-tab-icon" aria-hidden="true">✓</span>2.正反例</span>
+                  <span class="object-tab-desc">通过算 / 不算 / 不确定样例帮助对象定界。</span>
+                </span>
+                <span class="object-tab-arrow" aria-hidden="true">›</span>
+              </button>
+              <button class="object-tab" data-object-tab="object-definition">
+                <span class="object-tab-copy">
+                  <span class="object-tab-title"><span class="object-tab-icon" aria-hidden="true">◆</span>3.对象定义卡片</span>
+                  <span class="object-tab-desc">沉淀工作定义、纳入标准、排除标准、相关术语和观察信号。</span>
+                </span>
+                <span class="object-tab-arrow" aria-hidden="true">›</span>
+              </button>
+              <button class="object-tab" data-object-tab="dimensions">
+                <span class="object-tab-copy">
+                  <span class="object-tab-title"><span class="object-tab-icon" aria-hidden="true">✣</span>4.抽取维度</span>
+                  <span class="object-tab-desc">配置围绕该对象需要抽取的维度。</span>
+                </span>
+                <span class="object-tab-arrow" aria-hidden="true">›</span>
+              </button>
+              <button class="object-tab" data-object-tab="config-preview">
+                <span class="object-tab-copy">
+                  <span class="object-tab-title"><span class="object-tab-icon" aria-hidden="true">◌</span>5.Prompt 管理</span>
+                  <span class="object-tab-desc">一个对象可以绑定多个 Prompt，并支持加载、编辑、另存。</span>
+                </span>
+                <span class="object-tab-arrow" aria-hidden="true">›</span>
+              </button>
+              <button class="object-tab" data-object-tab="simulation">
+                <span class="object-tab-copy">
+                  <span class="object-tab-title"><span class="object-tab-icon" aria-hidden="true">▱</span>6.试抽诊断</span>
+                  <span class="object-tab-desc">模拟试抽结果并根据问题生成模板修改建议。</span>
+                </span>
+                <span class="object-tab-arrow" aria-hidden="true">›</span>
+              </button>
+              <button class="object-tab" data-object-tab="publish-version">
+                <span class="object-tab-copy">
+                  <span class="object-tab-title"><span class="object-tab-icon" aria-hidden="true">▲</span>7.发布版本</span>
+                  <span class="object-tab-desc">发布为可批量抽取的稳定模板版本。</span>
+                </span>
+                <span class="object-tab-arrow" aria-hidden="true">›</span>
+              </button>
+            </section>
+          </aside>
+
+          <section class="object-main-workspace">
+            <section class="object-tab-panel active" id="research-intent">
+              <div class="object-card research-intent-card">
+                <div class="object-card-heading">
+                  <h3>研究意图定义</h3>
+                  <p>先用自然语言说明为什么要研究这个对象，以及希望通过抽取回答什么问题。</p>
+                </div>
+                <div class="grid two compact-grid">
+                  <div>
+                    <label>研究对象名称</label>
+                    <input id="intentObjectName" placeholder="策略经验" />
+                  </div>
+                  <div>
+                    <label>研究领域</label>
+                    <input id="intentResearchArea" placeholder="LLM Agent / 智能体" />
+                  </div>
+                  <div>
+                    <label>关注对象类型</label>
+                    <select id="intentObjectType">
+                      <option value="mechanism_or_concept">机制 / 概念</option>
+                      <option value="concept">概念</option>
+                      <option value="mechanism">机制</option>
+                      <option value="method">方法</option>
+                      <option value="component">组件</option>
+                      <option value="evaluation_object">评价对象</option>
+                      <option value="other">其他</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label>预期用途</label>
+                    <div class="usage-checks">
+                      <label class="inline"><input type="checkbox" class="intentUsage" value="literature_review" /> 综述</label>
+                      <label class="inline"><input type="checkbox" class="intentUsage" value="method_design" /> 方案设计</label>
+                      <label class="inline"><input type="checkbox" class="intentUsage" value="citation_lookup" /> 引用查找</label>
+                      <label class="inline"><input type="checkbox" class="intentUsage" value="comparative_analysis" /> 对比分析</label>
+                    </div>
+                  </div>
+                </div>
+                <label>研究意图</label>
+                <textarea id="intentResearchIntent" rows="7" placeholder="研究智能体如何从历史任务、交互轨迹、反馈、失败案例或反思中总结可复用的策略经验，并将其用于后续规划、行动选择和错误规避。"></textarea>
+                <div class="intent-actions">
+                  <button id="applyIntentToDefinitionBtn" type="button">同步到对象定义</button>
+                  <button id="loadStrategyExperienceIntentBtn" type="button">载入策略经验示例</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="object-tab-panel" id="examples">
+              <div class="object-card boundary-examples-card">
+                <div class="object-card-heading">
+                  <h3>正反例标注</h3>
+                  <p>从论文片段中标注“算 / 不算 / 不确定”，再归纳对象边界规则。</p>
+                </div>
+                <div class="example-toolbar">
+                  <div>
+                    <label>上传 / 选择论文</label>
+                    <select id="examplePaperSelect"></select>
+                  </div>
+                  <button id="goPaperUploadFromExamplesBtn" type="button">去论文管理上传</button>
+                  <button id="loadCandidateExamplesBtn" type="button">召回候选段落</button>
+                  <button id="loadStrategyExperienceExamplesBtn" type="button">载入策略经验示例</button>
+                </div>
+                <div id="candidateExampleList" class="candidate-example-list"></div>
+                <div class="boundary-rule-grid">
+                  <div>
+                    <h4>建议纳入规则</h4>
+                    <textarea id="includeBoundaryRules" rows="5" placeholder="从失败案例、成功案例或交互轨迹中生成 lesson、reflection、rule、policy guidance，并用于后续任务的内容，应视为策略经验。"></textarea>
+                  </div>
+                  <div>
+                    <h4>建议排除规则</h4>
+                    <textarea id="excludeBoundaryRules" rows="5" placeholder="仅保存历史轨迹但未说明其被总结、检索、复用或用于后续规划/决策的内容，不应视为策略经验。"></textarea>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="object-tab-panel" id="object-definition">
+            <div class="object-card">
+              <div class="object-card-heading">
+                <h3>基础信息</h3>
+                <p>定义科研对象的基本身份。配置会作为后续抽取任务、审查和跨论文分析的入口。</p>
+              </div>
+              <label>对象模板 ID</label>
+              <input id="objId" placeholder="strategy_experience_v1" />
+              <label>显示名称</label>
+              <input id="objName" placeholder="策略经验" />
+              <div class="grid two compact-grid">
+                <div>
+                  <label>对象类型</label>
+                  <select id="objType">
+                    <option value="research_object">研究对象 / Research Object</option>
+                    <option value="mechanism">机制 / Mechanism</option>
+                    <option value="method">方法 / Method</option>
+                    <option value="dataset">数据集 / Dataset</option>
+                    <option value="benchmark">基准 / Benchmark</option>
+                    <option value="metric">指标 / Metric</option>
+                    <option value="application">应用 / Application</option>
+                    <option value="other">其他</option>
+                  </select>
+                </div>
+                <div>
+                  <label>版本号</label>
+                  <input id="objVersion" placeholder="1.0.0" />
+                </div>
+              </div>
+              <label>用途说明</label>
+              <textarea id="objPurpose" rows="5" placeholder="用于从论文中抽取与策略经验相关的信息，包括策略经验的定义、来源、抽取方式、表示方式、使用方式、效果验证和局限性。"></textarea>
+            </div>
+            <div class="object-card soft-card">
+              <div class="object-card-heading">
+                <h3>术语规则</h3>
+                <p>让模型明确哪些表达属于该研究对象，哪些只是相关概念。</p>
+              </div>
+              <label>工作定义</label>
+              <textarea id="termDefinition" rows="5"></textarea>
+              <label>包含术语</label>
+              <div class="tag-input-row">
+                <input id="termIncludeInput" placeholder="如 episodic memory" />
+                <button id="addTermIncludeBtn" type="button">添加</button>
+              </div>
+              <div id="termIncludeTags" class="tag-list"></div>
+              <label>排除规则，每行一个</label>
+              <textarea id="termExcludes" rows="6" placeholder="只作为 related work 出现，不作为本文方法组成部分&#10;仅为 baseline 名称"></textarea>
+              <label>对象判定准则</label>
+              <textarea id="termCriteria" rows="6" placeholder="必须能回答：该对象是什么、由什么组成、如何被使用或验证。"></textarea>
+            </div>
+          </section>
+
+            <section class="object-tab-panel" id="dimensions">
+            <div class="dimension-editor-layout">
+              <aside class="object-card dimension-list-pane">
+                <div class="object-card-heading inline-heading">
+                  <h3>维度列表</h3>
+                  <button id="addDimensionBtn">增加维度</button>
+                </div>
+                <div id="objectDimensionList" class="dimension-list"></div>
+              </aside>
+              <section class="object-card dimension-detail-pane">
+                <div class="object-card-heading inline-heading">
+                  <h3>维度配置</h3>
+                  <button id="removeDimensionBtn">删除当前维度</button>
+                </div>
+                <label>维度 ID</label>
+                <input id="dimId" />
+                <label>名称</label>
+                <input id="dimName" />
+                <label>描述</label>
+                <textarea id="dimDescription" rows="4"></textarea>
+                <label>抽取问题</label>
+                <textarea id="dimQuestion" rows="3"></textarea>
+                <div class="grid two compact-grid">
+                  <div>
+                    <label>输出类型</label>
+                    <select id="dimOutputType">
+                      <option value="list">列表</option>
+                      <option value="object">对象</option>
+                      <option value="text">文本</option>
+                      <option value="number">数值</option>
+                      <option value="boolean">布尔</option>
+                      <option value="structured_object">结构化对象</option>
+                      <option value="claim_with_evidence">带证据 Claim</option>
+                      <option value="method_step_list">方法步骤列表</option>
+                      <option value="comparison_result">对比结果</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label>检索关键词，每行一个</label>
+                    <textarea id="dimKeywords" rows="4"></textarea>
+                  </div>
+                </div>
+                <div class="checkbox-group">
+                  <label class="inline"><input type="checkbox" id="dimRequired" /> 必填维度</label>
+                  <label class="inline"><input type="checkbox" id="dimRequiredEvidence" /> 必须返回原文</label>
+                  <label class="inline"><input type="checkbox" id="dimAllowInference" /> 允许推断</label>
+                </div>
+              </section>
+            </div>
+          </section>
+
+            <section class="object-tab-panel" id="config-preview">
+            <div class="preview-layout">
+              <section class="object-card">
+                <div class="object-card-heading">
+                  <h3>配置 JSON 预览</h3>
+                  <p>这是科研对象定义的结构化配置，也是生成抽取 Prompt 的基础。</p>
+                </div>
+                <pre id="objectConfigJson" class="json-preview"></pre>
+              </section>
+              <section class="object-card">
+                <div class="object-card-heading inline-heading">
+                  <div>
+                    <h3>Prompt 管理</h3>
+                    <p>一个配置可维护多个 Prompt，并选择其中一个作为激活 Prompt。</p>
+                  </div>
+                  <div class="compact-actions prompt-manager-actions">
+                    <div id="promptProfilePicker" class="prompt-picker">
+                      <button id="promptPickerToggle" class="prompt-picker-toggle" type="button" aria-haspopup="listbox" aria-expanded="false">
+                        <span id="promptPickerLabel">选择 Prompt</span>
+                      </button>
+                      <div id="promptPickerMenu" class="prompt-picker-menu" role="listbox" hidden></div>
+                    </div>
+                    <button id="saveCurrentPromptBtn" type="button">保存当前 Prompt</button>
+                    <button id="saveNewPromptBtn" type="button">保存新 Prompt</button>
+                  </div>
+                </div>
+                <label>当前 Prompt</label>
+                <textarea id="objectPromptPreview" class="prompt-editor" rows="18"></textarea>
+              </section>
+            </div>
+          </section>
+
+            <section class="object-tab-panel" id="simulation">
+            <div class="simulation-layout">
+              <section class="object-card simulation-input-card">
+                <div class="object-card-heading inline-heading">
+                  <h3>输入内容</h3>
+                  <button id="randomSimulationSampleBtn" type="button">随机样例</button>
+                </div>
+                <textarea id="simulationInput" rows="20" placeholder="粘贴一段论文摘要、方法描述或实验片段。"></textarea>
+              </section>
+              <div class="simulation-control">
+                <button id="runSimulationBtn" type="button">测试</button>
+                <div id="simulationStatus" class="meta">尚未测试。</div>
+              </div>
+              <section class="object-card simulation-result-card">
+                <label>选择 Prompt</label>
+                <select id="simulationPromptSelect"></select>
+                <div class="object-card-heading inline-heading">
+                  <h3>抽取结果</h3>
+                  <button id="simulationRawJsonBtn" type="button" hidden>原始 JSON</button>
+                </div>
+                <div id="simulationResult" class="simulation-structured-result">等待测试结果。</div>
+              </section>
+            </div>
+          </section>
+
+            <section class="object-tab-panel" id="publish-version">
+              <div class="object-card workbench-placeholder-card">
+                <div class="object-card-heading">
+                  <h3>发布版本</h3>
+                  <p>后续这里会用于检查对象定义、维度、Prompt 与试抽结果，并生成可发布的抽取模板版本。</p>
+                </div>
+                <div class="publish-checklist">
+                  <div><b id="publishCheckName">-</b><span>对象名称</span></div>
+                  <div><b id="publishCheckDimensions">0</b><span>抽取维度</span></div>
+                  <div><b id="publishCheckPrompt">-</b><span>激活 Prompt</span></div>
+                </div>
+                <button id="publishObjectTemplateInlineBtn" type="button">发布模板</button>
+              </div>
+            </section>
+          </section>
+
+          <aside class="object-ai-advisor">
+            <div class="object-ai-card">
+              <div class="kicker">智能建议</div>
+              <div class="object-ai-heading">
+                <h3>建议中心</h3>
+                <button id="generateObjectAdviceBtn" type="button">生成建议</button>
+              </div>
+              <p>将难以手写的科研对象模板转化为“系统建议、用户确认、一键应用”的迭代流程。</p>
+              <div id="objectAdvisorStatus" class="advisor-status">点击生成建议后，将根据当前配置给出可应用的修改项。</div>
+              <div id="objectAdvisorList" class="advisor-list"></div>
+            </div>
+          </aside>
+        </div>
+      </div>
+      </div>
+    </div>
+
+    <section id="extract" class="panel">
+      <div class="extract-layout">
+        <section class="card extract-config-card">
+          <div class="card-heading">
+            <h2>抽取配置</h2>
+            <span id="verifiedPaperCount" class="meta"></span>
+          </div>
+          <label>选择已校验论文</label>
+          <div class="row compact-actions extraction-selection-actions">
+            <button id="selectAllVerifiedPapersBtn" type="button">全选</button>
+            <button id="clearSelectedPapersBtn" type="button">清空</button>
+          </div>
+          <div id="extractPaperChecks" class="checks extraction-paper-checks"></div>
+          <label>选择抽取模板</label>
+          <select id="templateSelect"></select>
+          <div id="templateSummary" class="template-summary muted"></div>
+          <label>选择抽取维度</label>
+          <div id="dimensionChecks" class="checks"></div>
+          <button id="runExtractionBtn">运行科研对象抽取</button>
+        </section>
+        <section class="card extraction-workspace-card">
+          <div class="card-heading">
+            <h2>论文抽取任务</h2>
+            <span id="selectedExtractionCount" class="meta"></span>
+          </div>
+          <div id="extractionPaperRuns" class="extraction-paper-runs"></div>
+        </section>
+      </div>
+      <div class="card">
+        <h2>抽取运行记录</h2>
+        <div id="runList" class="list"></div>
+      </div>
+    </section>
+
+    <section id="review" class="panel">
+      <div class="card">
+        <h2>人机协同审查</h2>
+        <label>选择抽取结果</label>
+        <select id="reviewRunSelect"></select>
+        <div id="reviewItems" class="review-list"></div>
+      </div>
+    </section>
+
+    <section id="materials" class="panel">
+      <div class="grid two">
+        <div class="card">
+          <h2>素材检索</h2>
+          <input id="materialQuery" placeholder="搜索 claim / 经验定义 / 使用方式 / 证据..." />
+          <div class="row">
+            <select id="materialDimension"></select>
+            <select id="materialStatus">
+              <option value="">全部状态</option>
+              <option value="pending">待审查</option>
+              <option value="confirmed">已确认</option>
+              <option value="needs_revision">需修改</option>
+              <option value="rejected">已驳回</option>
+            </select>
+          </div>
+          <button id="searchMaterialsBtn">检索素材</button>
+          <div id="materialResults" class="list"></div>
+        </div>
+        <div class="card">
+          <h2>跨论文对比与空白分析</h2>
+          <p class="muted">勾选论文后生成维度对比矩阵。</p>
+          <div id="comparePaperChecks" class="checks"></div>
+          <button id="compareBtn">生成对比矩阵</button>
+          <button id="gapBtn">生成空白分析</button>
+          <button id="graphBtn">生成证据图数据</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>分析结果</h2>
+        <div id="analysisOutput" class="detail muted">暂无分析结果。</div>
+      </div>
+    </section>
+
+    <div id="configModal" class="modal" hidden>
+      <div class="modal-backdrop" data-close-modal="configModal"></div>
+      <div class="config-modal">
+      <div class="config-page">
+        <div class="config-header">
+          <div>
+            <h2>系统配置</h2>
+            <p class="meta">配置会写入本地 .env，并立即更新当前运行进程。</p>
+          </div>
+          <div class="row compact-actions">
+            <button id="reloadConfigBtn">重新加载</button>
+            <button id="saveConfigBtn">保存配置</button>
+            <button id="configClose" aria-label="关闭">关闭</button>
+          </div>
+        </div>
+
+        <div class="config-grid">
+          <section class="card config-section">
+            <h2>论文解析配置</h2>
+            <label>解析方式</label>
+            <select id="cfgParserProvider">
+              <option value="auto">自动：在线 MinerU → 本地 MinerU → pypdf</option>
+              <option value="online_mineru">在线 MinerU</option>
+              <option value="local_mineru">本地 MinerU</option>
+              <option value="pypdf">pypdf</option>
+            </select>
+            <label class="inline"><input type="checkbox" id="cfgMineruEnabled" /> 启用 MinerU</label>
+            <div class="grid two compact-grid">
+              <div>
+                <label>本地 MinerU 命令</label>
+                <input id="cfgMineruCommand" />
+              </div>
+              <div>
+                <label>本地 Backend</label>
+                <input id="cfgMineruBackend" />
+              </div>
+            </div>
+            <label>本地超时（秒）</label>
+            <input id="cfgMineruTimeout" type="number" min="30" step="30" />
+            <hr />
+            <label class="inline"><input type="checkbox" id="cfgMineruOnlineEnabled" /> 启用在线 MinerU</label>
+            <label>在线 MinerU URL</label>
+            <input id="cfgMineruOnlineBase" placeholder="https://mineru.net" />
+            <label>在线 MinerU Token</label>
+            <input id="cfgMineruOnlineToken" type="password" placeholder="已配置则留空不修改" autocomplete="off" />
+            <div class="grid two compact-grid">
+              <div>
+                <label>模型版本</label>
+                <input id="cfgMineruOnlineModel" placeholder="vlm" />
+              </div>
+              <div>
+                <label>语言</label>
+                <input id="cfgMineruOnlineLang" placeholder="en" />
+              </div>
+              <div>
+                <label>在线超时（秒）</label>
+                <input id="cfgMineruOnlineTimeout" type="number" min="60" step="60" />
+              </div>
+              <div>
+                <label>轮询间隔（秒）</label>
+                <input id="cfgMineruOnlinePoll" type="number" min="1" step="1" />
+              </div>
+            </div>
+          </section>
+
+          <section class="card config-section llm-config-section">
+            <h2>大模型配置</h2>
+            <div class="llm-profile-layout">
+              <aside class="llm-profile-list-pane">
+                <div class="inline-heading">
+                  <h3>配置组</h3>
+                  <button id="addLlmProfileBtn" type="button">增加</button>
+                </div>
+                <div id="llmProfileList" class="llm-profile-list"></div>
+              </aside>
+              <section class="llm-profile-editor">
+                <div class="inline-heading">
+                  <h3 id="llmProfileEditorTitle">当前配置</h3>
+                  <div class="row compact-actions">
+                    <button id="activateLlmProfileBtn" type="button">设为当前使用</button>
+                    <button id="removeLlmProfileBtn" type="button">删除</button>
+                  </div>
+                </div>
+                <div class="grid two compact-grid">
+                  <div>
+                    <label>配置 ID</label>
+                    <input id="cfgLlmProfileId" />
+                  </div>
+                  <div>
+                    <label>配置名称</label>
+                    <input id="cfgLlmProfileName" />
+                  </div>
+                </div>
+                <label>API Key</label>
+                <input id="cfgOpenaiKey" />
+                <label>API Base</label>
+                <input id="cfgOpenaiBase" />
+                <label>模型名称</label>
+                <input id="cfgOpenaiModel" />
+                <div class="grid two compact-grid">
+                  <div>
+                    <label>Max Tokens</label>
+                    <input id="cfgLlmMaxTokens" type="number" min="256" step="256" />
+                  </div>
+                  <div>
+                    <label>Timeout（秒）</label>
+                    <input id="cfgLlmTimeout" type="number" min="10" step="10" />
+                  </div>
+                  <div>
+                    <label>Temperature</label>
+                    <input id="cfgLlmTemperature" type="number" min="0" max="2" step="0.1" />
+                  </div>
+                  <div>
+                    <label>Top P</label>
+                    <input id="cfgLlmTopP" type="number" min="0" max="1" step="0.05" />
+                  </div>
+                  <div>
+                    <label>Presence Penalty</label>
+                    <input id="cfgLlmPresencePenalty" type="number" min="-2" max="2" step="0.1" />
+                  </div>
+                  <div>
+                    <label>Top K</label>
+                    <input id="cfgLlmTopK" type="number" min="1" step="1" />
+                  </div>
+                </div>
+                <div class="checkbox-group">
+                  <label class="inline"><input type="checkbox" id="cfgLlmStream" /> 流式调用</label>
+                  <label class="inline"><input type="checkbox" id="cfgLlmEnableThinking" /> 启用 Thinking</label>
+                </div>
+                <div class="llm-test-panel">
+                  <div class="inline-heading">
+                    <h3>接口快速测试</h3>
+                    <button id="testLlmProfileBtn" type="button">测试当前配置</button>
+                  </div>
+                  <textarea id="llmTestPrompt" rows="3">请用一句话回答：连接测试是否成功？</textarea>
+                  <div id="llmTestResult" class="test-result muted">尚未测试。</div>
+                </div>
+              </section>
+            </div>
+          </section>
+        </div>
+      </div>
+      </div>
+    </div>
+  </main>
+
+  <div id="paperDetailModal" class="modal" hidden>
+    <div class="modal-backdrop" data-close-modal="paperDetailModal"></div>
+    <div class="paper-modal">
+      <header class="modal-header">
+        <div>
+          <h2 id="paperModalTitle">论文解析详情</h2>
+          <p id="paperModalMeta" class="meta"></p>
+        </div>
+        <div class="modal-actions">
+          <button id="paperReparseBtn">重新抽取</button>
+          <button id="paperVerifyBtn">校验通过</button>
+          <button id="paperModalClose" aria-label="关闭">关闭</button>
+        </div>
+      </header>
+      <div class="paper-modal-split">
+        <section class="pdf-pane">
+          <div class="pane-heading">
+            <h3>原始 PDF</h3>
+            <a id="paperPdfOpen" class="paper-link" href="#" target="_blank" rel="noreferrer">新窗口打开</a>
+          </div>
+          <iframe id="paperPdfFrame" title="原始 PDF"></iframe>
+          <div id="paperPdfEmpty" class="empty-pane" hidden>这篇论文没有可预览的原始 PDF。</div>
+        </section>
+        <section class="parsed-pane">
+          <div class="pane-heading">
+            <h3>解析结果</h3>
+          </div>
+          <div id="paperDetail" class="detail"></div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div id="promptPreviewModal" class="modal" hidden>
+    <div class="modal-backdrop" data-close-modal="promptPreviewModal"></div>
+    <div class="prompt-modal">
+      <header class="modal-header">
+        <div>
+          <h2>抽取 Prompt 预览</h2>
+          <p class="meta">基于对象建模工作台中的科研对象定义生成。</p>
+        </div>
+        <div class="modal-actions">
+          <button id="promptPreviewClose" aria-label="关闭">关闭</button>
+        </div>
+      </header>
+      <pre id="promptPreviewModalText" class="prompt-preview"></pre>
+    </div>
+  </div>
+
+  <div id="objectImportModal" class="modal" hidden>
+    <div class="modal-backdrop" data-close-modal="objectImportModal"></div>
+    <div class="import-config-modal">
+      <header class="modal-header">
+        <div>
+          <h2>导入科研对象配置</h2>
+          <p class="meta">粘贴 JSON 后会生成配置项和抽取 Prompt，并保存为模板。</p>
+        </div>
+        <div class="modal-actions">
+          <button id="objectImportClose" aria-label="关闭">关闭</button>
+        </div>
+      </header>
+      <textarea id="objectImportJson" rows="22" placeholder='粘贴配置 JSON，例如“配置 JSON 预览”中的内容，或包含 id/name/dimensions/system_prompt 的模板 JSON。'></textarea>
+      <div id="objectImportStatus" class="test-result muted">等待导入。</div>
+      <div class="modal-actions import-config-actions">
+        <button id="objectImportApplyBtn" type="button">导入并保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="simulationRawModal" class="modal" hidden>
+    <div class="modal-backdrop" data-close-modal="simulationRawModal"></div>
+    <div class="prompt-modal">
+      <header class="modal-header">
+        <div>
+          <h2>原始 JSON 结果</h2>
+          <p class="meta">模型返回的原始内容。</p>
+        </div>
+        <div class="modal-actions">
+          <button id="simulationRawClose" aria-label="关闭">关闭</button>
+        </div>
+      </header>
+      <pre id="simulationRawModalText" class="prompt-preview"></pre>
+    </div>
+  </div>
+
+  <div id="extractionResultModal" class="modal" hidden>
+    <div class="modal-backdrop" data-close-modal="extractionResultModal"></div>
+    <div class="paper-modal extraction-result-modal">
+      <header class="modal-header">
+        <div>
+          <h2 id="extractionResultTitle">抽取结果</h2>
+          <p id="extractionResultMeta" class="meta"></p>
+        </div>
+        <div class="modal-actions">
+          <button id="extractionResultReviewBtn" type="button">进入审查</button>
+          <button id="extractionResultExportBtn" type="button">导出 JSON</button>
+          <button id="extractionResultClose" aria-label="关闭">关闭</button>
+        </div>
+      </header>
+      <div id="extractionResultBody" class="extraction-result-body"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <script src="/app.js?v=advisor-workflow-20260530"></script>
+</body>
+</html>
