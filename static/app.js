@@ -15,6 +15,9 @@ const state = {
   selectedPromptProfileId: null,
   selectedSimulationPromptId: null,
   simulationRawResult: '',
+  extractDraftPaperIds: [],
+  confirmedExtractPaperIds: [],
+  extractSelectionMode: 'selecting',
   extractionJobs: {},
   selectedExtractionRunId: null,
   candidateExampleIndex: 0,
@@ -2923,6 +2926,10 @@ window.deletePaper = async function(id) {
 function renderExtractionPanel() {
   const verified = verifiedPapers();
   const selectedTemplateId = $('templateSelect')?.value;
+  const verifiedIds = new Set(verified.map(p => p.id));
+  state.confirmedExtractPaperIds = state.confirmedExtractPaperIds.filter(id => verifiedIds.has(id));
+  state.extractDraftPaperIds = state.extractDraftPaperIds.filter(id => verifiedIds.has(id));
+  if (!state.confirmedExtractPaperIds.length) state.extractSelectionMode = 'selecting';
   $('verifiedPaperCount').textContent = verified.length ? `${verified.length} 篇已校验` : '暂无已校验论文';
   $('templateSelect').innerHTML = state.templates.map(t => `<option value="${t.id}">${escapeHtml(t.name)} (${t.version})</option>`).join('');
   if (selectedTemplateId && state.templates.some(t => t.id === selectedTemplateId)) {
@@ -2939,23 +2946,69 @@ function verifiedPapers() {
   return state.papers.filter(p => p.metadata?.extra?.review_status === 'verified');
 }
 
-function selectedExtractPaperIds() {
+function draftExtractPaperIds() {
   return [...document.querySelectorAll('.extractPaperCheck:checked')].map(input => input.value);
 }
 
+function selectedExtractPaperIds() {
+  return state.confirmedExtractPaperIds;
+}
+
+function setExtractionSelectionMode(mode) {
+  state.extractSelectionMode = mode;
+  renderExtractPaperChecks();
+  renderExtractionPaperRuns();
+}
+
+function removeConfirmedExtractPaper(id) {
+  state.confirmedExtractPaperIds = state.confirmedExtractPaperIds.filter(item => item !== id);
+  state.extractDraftPaperIds = state.extractDraftPaperIds.filter(item => item !== id);
+  if (!state.confirmedExtractPaperIds.length) state.extractSelectionMode = 'selecting';
+  renderExtractPaperChecks();
+  renderExtractionPaperRuns();
+}
+window.removeConfirmedExtractPaper = removeConfirmedExtractPaper;
+
 function renderExtractPaperChecks() {
-  const selected = new Set(selectedExtractPaperIds());
+  const confirmed = new Set(state.confirmedExtractPaperIds);
+  const draft = new Set(state.extractDraftPaperIds.length ? state.extractDraftPaperIds : state.confirmedExtractPaperIds);
   const verified = verifiedPapers();
+  const isSelecting = state.extractSelectionMode !== 'confirmed';
+  $('extractPaperSelectionLabel').textContent = isSelecting ? '选择已校验论文' : '已选论文';
+  $('confirmExtractPapersBtn').disabled = !isSelecting || !verified.length;
+  $('addExtractPapersBtn').disabled = isSelecting || !verified.length;
+  $('selectAllVerifiedPapersBtn').hidden = !isSelecting;
+  $('clearSelectedPapersBtn').hidden = !isSelecting;
+  if (!verified.length) {
+    $('extractPaperChecks').innerHTML = '<p class="muted">暂无已校验论文。请先在“论文管理”中打开论文详情并点击“校验通过”。</p>';
+    return;
+  }
+  if (!isSelecting) {
+    const selectedPapers = state.confirmedExtractPaperIds.map(id => state.papers.find(p => p.id === id)).filter(Boolean);
+    $('extractPaperChecks').innerHTML = selectedPapers.map(p => {
+      const latest = latestRunForPaper(p.id, $('templateSelect').value);
+      return `<div class="selected-extract-paper">
+        <div>
+          <b>${escapeHtml(fmt(p.metadata?.title || p.id, 92))}</b>
+          <span class="muted">${latest ? `最近抽取 ${fmtTime(latest.created_at)}` : '未抽取'}</span>
+        </div>
+        <button type="button" class="selected-extract-remove" aria-label="删除已选论文" onclick="removeConfirmedExtractPaper('${escapeHtml(p.id)}')">×</button>
+      </div>`;
+    }).join('') || '<p class="muted">暂无已确认论文。点击“新增”选择论文后再确定。</p>';
+    return;
+  }
   $('extractPaperChecks').innerHTML = verified.map(p => {
     const latest = latestRunForPaper(p.id, $('templateSelect').value);
     return `<label>
-      <input type="checkbox" class="extractPaperCheck" value="${escapeHtml(p.id)}" ${selected.has(p.id) ? 'checked' : ''} />
+      <input type="checkbox" class="extractPaperCheck" value="${escapeHtml(p.id)}" ${draft.has(p.id) || confirmed.has(p.id) ? 'checked' : ''} />
       <span>${escapeHtml(fmt(p.metadata?.title || p.id, 92))}</span>
       <span class="muted">${latest ? `最近抽取 ${fmtTime(latest.created_at)}` : '未抽取'}</span>
     </label>`;
-  }).join('') || '<p class="muted">暂无已校验论文。请先在“论文管理”中打开论文详情并点击“校验通过”。</p>';
+  }).join('');
   document.querySelectorAll('.extractPaperCheck').forEach(input => {
-    input.onchange = renderExtractionPaperRuns;
+    input.onchange = () => {
+      state.extractDraftPaperIds = draftExtractPaperIds();
+    };
   });
 }
 
@@ -2990,7 +3043,8 @@ function jobKey(paperId, templateId) {
 function renderExtractionPaperRuns() {
   const ids = selectedExtractPaperIds();
   const templateId = $('templateSelect')?.value || '';
-  $('selectedExtractionCount').textContent = ids.length ? `${ids.length} 篇待处理` : '请选择论文';
+  const isSelecting = state.extractSelectionMode !== 'confirmed';
+  $('selectedExtractionCount').textContent = ids.length ? `${ids.length} 篇待处理` : (isSelecting ? '待确认论文' : '请选择论文');
   const papers = ids.map(id => state.papers.find(p => p.id === id)).filter(Boolean);
   $('extractionPaperRuns').innerHTML = papers.map(p => {
     const job = state.extractionJobs[jobKey(p.id, templateId)];
@@ -3020,7 +3074,7 @@ function renderExtractionPaperRuns() {
         <button type="button" ${run ? '' : 'disabled'} onclick="window.open('/api/export/run/${escapeHtml(run?.id || '')}', '_blank')">导出</button>
       </div>
     </article>`;
-  }).join('') || '<p class="muted">请从左侧选择一篇或多篇已校验论文。</p>';
+  }).join('') || `<p class="muted">${isSelecting ? '请在左侧勾选论文并点击“确定”。' : '请从左侧选择一篇或多篇已校验论文。'}</p>`;
 }
 
 function renderRunList() {
@@ -3084,7 +3138,7 @@ async function runSelectedExtractions() {
   const paperIds = selectedExtractPaperIds();
   const templateId = $('templateSelect').value;
   const dims = [...document.querySelectorAll('.dimCheck:checked')].map(x => x.value);
-  if (!paperIds.length) return toast('请至少选择一篇已校验论文');
+  if (!paperIds.length) return toast('请先选择论文并点击“确定”');
   if (!templateId) return toast('请选择抽取模板');
   if (!dims.length) return toast('请至少选择一个抽取维度');
   $('runExtractionBtn').disabled = true;
@@ -3417,13 +3471,24 @@ async function bindEvents() {
     renderExtractPaperChecks();
     renderExtractionPaperRuns();
   };
+  $('confirmExtractPapersBtn').onclick = () => {
+    const ids = draftExtractPaperIds();
+    if (!ids.length) return toast('请至少选择一篇已校验论文');
+    state.confirmedExtractPaperIds = ids;
+    state.extractDraftPaperIds = ids;
+    setExtractionSelectionMode('confirmed');
+  };
+  $('addExtractPapersBtn').onclick = () => {
+    state.extractDraftPaperIds = [...state.confirmedExtractPaperIds];
+    setExtractionSelectionMode('selecting');
+  };
   $('selectAllVerifiedPapersBtn').onclick = () => {
     document.querySelectorAll('.extractPaperCheck').forEach(input => input.checked = true);
-    renderExtractionPaperRuns();
+    state.extractDraftPaperIds = draftExtractPaperIds();
   };
   $('clearSelectedPapersBtn').onclick = () => {
     document.querySelectorAll('.extractPaperCheck').forEach(input => input.checked = false);
-    renderExtractionPaperRuns();
+    state.extractDraftPaperIds = [];
   };
   $('reviewRunSelect').onchange = () => {
     state.reviewRunId = null;

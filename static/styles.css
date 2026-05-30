@@ -1516,6 +1516,25 @@ button:disabled:hover {
 .extraction-workspace-card {
   min-width: 0;
 }
+.extraction-config-heading {
+  align-items: center;
+  gap: 12px;
+}
+.extraction-config-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+.extraction-config-actions button {
+  width: auto;
+  min-height: 32px;
+  padding: 7px 12px;
+}
+.extraction-config-actions .meta {
+  white-space: nowrap;
+}
 .extraction-selection-actions {
   margin: 4px 0 8px;
 }
@@ -1540,6 +1559,47 @@ button:disabled:hover {
 .extraction-paper-checks label .muted {
   grid-column: 2;
   font-size: 12px;
+}
+.selected-extract-paper {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 8px;
+  border-radius: 8px;
+  background: white;
+}
+.selected-extract-paper b {
+  display: block;
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.selected-extract-paper .muted {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+}
+.selected-extract-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border-color: #fecaca;
+  background: #fff;
+  color: #b91c1c;
+  font-size: 18px;
+  line-height: 1;
+}
+.selected-extract-remove:hover {
+  background: #fef2f2;
 }
 .template-summary {
   display: grid;
