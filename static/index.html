@@ -462,11 +462,15 @@
     <section id="extract" class="panel">
       <div class="extract-layout">
         <section class="card extract-config-card">
-          <div class="card-heading">
+          <div class="card-heading extraction-config-heading">
             <h2>抽取配置</h2>
-            <span id="verifiedPaperCount" class="meta"></span>
+            <div class="extraction-config-actions">
+              <span id="verifiedPaperCount" class="meta"></span>
+              <button id="confirmExtractPapersBtn" type="button">确定</button>
+              <button id="addExtractPapersBtn" type="button">新增</button>
+            </div>
           </div>
-          <label>选择已校验论文</label>
+          <label id="extractPaperSelectionLabel">选择已校验论文</label>
           <div class="row compact-actions extraction-selection-actions">
             <button id="selectAllVerifiedPapersBtn" type="button">全选</button>
             <button id="clearSelectedPapersBtn" type="button">清空</button>
