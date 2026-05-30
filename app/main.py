@@ -308,7 +308,11 @@ def save_env_values(updates: Dict[str, Any]) -> None:
 def env_value(value: Any) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
-    return str(value)
+    if isinstance(value, (int, float)):
+        return str(value)
+    text = str(value)
+    escaped = text.replace("\\", "\\\\").replace("'", "\\'")
+    return f"'{escaped}'"
 
 
 @app.post("/api/config/llm-test")
