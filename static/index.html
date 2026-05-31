@@ -498,21 +498,74 @@
     </section>
 
     <section id="review" class="panel">
-      <div class="card">
-        <h2>人机协同审查</h2>
-        <label>选择抽取结果</label>
-        <select id="reviewRunSelect"></select>
-        <div class="review-feedback-overview">
-          <div class="review-feedback-overview-heading">
-            <div>
-              <b>维度反馈池</b>
-              <span id="reviewFeedbackMeta" class="meta">暂无反馈聚合</span>
-            </div>
-            <button id="refreshReviewFeedbackBtn" type="button">刷新聚合</button>
+      <div class="review-workbench">
+        <header class="review-topbar">
+          <div class="review-task-title">
+            <h2 id="reviewTemplateName">人机协同审查</h2>
+            <p id="reviewTemplateMeta" class="meta">选择抽取结果后开始审查</p>
           </div>
-          <div id="reviewFeedbackPools" class="review-feedback-pools"></div>
+          <div class="review-top-actions">
+            <div class="review-progress" aria-label="审查进度">
+              <span id="reviewProgressText">0 / 0</span>
+              <div class="review-progress-track"><div id="reviewProgressBar" class="review-progress-bar"></div></div>
+            </div>
+            <button id="reviewPrevBtn" type="button">上一条</button>
+            <button id="reviewNextBtn" type="button">下一条</button>
+            <button id="exportReviewRecordsBtn" type="button">导出审查记录</button>
+          </div>
+        </header>
+
+        <div class="review-layout">
+          <aside class="review-sidebar">
+            <div>
+              <h3>审查队列</h3>
+              <span id="reviewQueueCount" class="meta">0 条</span>
+            </div>
+            <label>抽取结果</label>
+            <select id="reviewRunSelect"></select>
+            <div class="review-sidebar-heading">筛选策略</div>
+            <div class="review-filter-grid">
+              <label>
+                <span>维度</span>
+                <select id="reviewDimensionFilter"></select>
+              </label>
+              <label>
+                <span>状态</span>
+                <select id="reviewStatusFilter">
+                  <option value="all">全部</option>
+                  <option value="pending">待审查</option>
+                  <option value="accepted">已接受</option>
+                  <option value="issues">有问题</option>
+                  <option value="reject">驳回</option>
+                  <option value="mark_not_reported">应为未报告</option>
+                  <option value="mark_evidence_insufficient">证据不足</option>
+                  <option value="mark_over_inferred">过度推断</option>
+                  <option value="mark_wrong_dimension">维度错误</option>
+                  <option value="mark_wrong_object">对象错误</option>
+                </select>
+              </label>
+              <label>
+                <span>风险</span>
+                <select id="reviewRiskFilter">
+                  <option value="all">全部</option>
+                  <option value="high">高风险</option>
+                  <option value="medium">中风险</option>
+                  <option value="low">低风险</option>
+                </select>
+              </label>
+              <label>
+                <span>检索</span>
+                <input id="reviewSearchInput" placeholder="论文 / 维度 / 结果内容" />
+              </label>
+            </div>
+            <div class="review-sidebar-heading">过滤结果</div>
+            <div id="reviewQueueList" class="review-queue-list"></div>
+          </aside>
+
+          <main id="reviewMainPane" class="review-main-pane"></main>
+
+          <aside id="reviewEvidencePane" class="review-evidence-pane"></aside>
         </div>
-        <div id="reviewItems" class="review-list"></div>
       </div>
     </section>
 
