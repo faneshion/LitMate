@@ -18,6 +18,15 @@ def new_id(prefix: str) -> str:
 
 class ReviewStatus(str, Enum):
     pending = "pending"
+    confirm = "confirm"
+    revise = "revise"
+    reject = "reject"
+    mark_not_reported = "mark_not_reported"
+    mark_evidence_insufficient = "mark_evidence_insufficient"
+    mark_over_inferred = "mark_over_inferred"
+    mark_wrong_dimension = "mark_wrong_dimension"
+    mark_wrong_object = "mark_wrong_object"
+    # Backward-compatible values used by earlier local data.
     confirmed = "confirmed"
     rejected = "rejected"
     needs_revision = "needs_revision"
@@ -155,6 +164,7 @@ class ExtractedItem(BaseModel):
     model_notes: Optional[str] = None
     review_status: ReviewStatus = ReviewStatus.pending
     user_note: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
     edited_title: Optional[str] = None
     edited_content: Optional[str] = None
     created_at: str = Field(default_factory=now_iso)
