@@ -1709,6 +1709,99 @@ button:disabled:hover {
   gap: 12px;
   margin-top: 14px;
 }
+.review-feedback-overview {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f8fafc;
+}
+.review-feedback-overview-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.review-feedback-overview-heading b,
+.feedback-pool-card header b {
+  display: block;
+  color: #0f172a;
+}
+.review-feedback-overview-heading button {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+.review-feedback-pools {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.feedback-pool-card {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+.feedback-pool-card header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.feedback-pool-card header span {
+  display: block;
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 12px;
+}
+.feedback-pool-card header strong {
+  color: #047857;
+  font-size: 18px;
+}
+.feedback-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.feedback-metric-grid span {
+  padding: 5px 6px;
+  border-radius: 7px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 12px;
+  text-align: center;
+}
+.feedback-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.feedback-tag-row span {
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 11px;
+  font-weight: 700;
+}
+.feedback-upgrade-list {
+  display: grid;
+  gap: 5px;
+  padding-top: 7px;
+  border-top: 1px solid var(--line);
+}
+.feedback-upgrade-list p {
+  margin: 0;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.45;
+}
 .review-carousel-shell {
   position: relative;
   min-width: 0;
@@ -1932,6 +2025,11 @@ button:disabled:hover {
   border-color: #a5b4fc;
   background: #eef2ff;
   color: #3730a3;
+}
+.review-attribution-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 .review-evidence-list {
   max-height: 170px;
@@ -2422,6 +2520,10 @@ body.modal-open { overflow: hidden; }
     justify-content: flex-start;
   }
   .review-field-grid {
+    grid-template-columns: 1fr;
+  }
+  .review-feedback-pools,
+  .review-attribution-grid {
     grid-template-columns: 1fr;
   }
   .review-action-grid {

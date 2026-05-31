@@ -18,6 +18,7 @@ from .bootstrap import default_experience_template
 from .config import settings
 from .document_parser import parse_document
 from .extractor import ExperienceExtractor
+from .feedback_service import build_feedback_summary, review_label_for_action
 from .jsonl_store import JSONLStore
 from .mineru_parser import mineru_runtime_status
 from .models import (
@@ -31,6 +32,7 @@ from .models import (
     ManualPaperRequest,
     MaterialItem,
     Paper,
+    ReviewRecord,
     ReviewStatus,
     ReviewUpdateRequest,
     RunExtractionRequest,
@@ -54,6 +56,7 @@ template_store = JSONLStore(settings.data_dir / "templates.jsonl", ExtractionTem
 run_store = JSONLStore(settings.data_dir / "extraction_runs.jsonl", ExtractionRun)
 material_store = JSONLStore(settings.data_dir / "materials.jsonl", MaterialItem)
 note_store = JSONLStore(settings.data_dir / "notes.jsonl", UserNote)
+review_store = JSONLStore(settings.data_dir / "review_records.jsonl", ReviewRecord)
 
 
 class PaperParsingConfig(BaseModel):
@@ -622,15 +625,49 @@ def review_item(run_id: str, item_id: str, req: ReviewUpdateRequest) -> Extracti
     run = run_store.get(run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Extraction run not found")
+    template = template_store.get(run.template_id)
+    prompt = None
+    if template:
+        prompt = next((p for p in template.prompt_profiles if p.id == template.active_prompt_id), None)
+        if not prompt and template.prompt_profiles:
+            prompt = template.prompt_profiles[0]
     found = False
     for item in run.items:
         if item.id == item_id:
+            old_title = item.edited_title or item.title
+            old_answer = item.edited_content or item.content
             item.review_status = req.status
             item.edited_title = req.edited_title
             item.edited_content = req.edited_content
             item.user_note = req.user_note
             item.tags = req.tags
+            item.review_root_cause = req.root_cause
+            item.review_suggested_target = req.suggested_target
             item.updated_at = now_iso()
+            review_store.append(ReviewRecord(
+                paper_id=run.paper_id,
+                profile_id=template.id if template else run.template_id,
+                profile_version=template.version if template else "",
+                dimension_id=item.dimension_name,
+                dimension_name=item.dimension_label,
+                extraction_id=run.id,
+                result_id=item.id,
+                prompt_id=prompt.id if prompt else (template.active_prompt_id if template else ""),
+                prompt_version=prompt.version if prompt else "",
+                model_name=run.model,
+                review_action=req.status,
+                review_label=review_label_for_action(req.status),
+                review_comment=req.user_note,
+                reviewer_edit={
+                    "old_title": old_title,
+                    "new_title": req.edited_title or old_title,
+                    "old_answer": old_answer,
+                    "new_answer": req.edited_content or old_answer,
+                },
+                error_tags=req.tags,
+                root_cause=req.root_cause,
+                suggested_target=req.suggested_target,
+            ))
             found = True
             break
     if not found:
@@ -639,6 +676,42 @@ def review_item(run_id: str, item_id: str, req: ReviewUpdateRequest) -> Extracti
     run_store.upsert(run)
     sync_materials_for_run(run, reviewed_item_id=item_id)
     return run
+
+
+@app.get("/api/reviews", response_model=List[ReviewRecord])
+def list_review_records(
+    paper_id: Optional[str] = None,
+    profile_id: Optional[str] = None,
+    dimension_id: Optional[str] = None,
+    result_id: Optional[str] = None,
+    prompt_id: Optional[str] = None,
+) -> List[ReviewRecord]:
+    records = review_store.list()
+    if paper_id:
+        records = [r for r in records if r.paper_id == paper_id]
+    if profile_id:
+        records = [r for r in records if r.profile_id == profile_id]
+    if dimension_id:
+        records = [r for r in records if r.dimension_id == dimension_id]
+    if result_id:
+        records = [r for r in records if r.result_id == result_id]
+    if prompt_id:
+        records = [r for r in records if r.prompt_id == prompt_id]
+    return sorted(records, key=lambda item: item.created_at, reverse=True)
+
+
+@app.get("/api/feedback/dimensions")
+def dimension_feedback(profile_id: Optional[str] = None, dimension_id: Optional[str] = None) -> Dict[str, Any]:
+    return build_feedback_summary(review_store.list(), template_store.list(), profile_id=profile_id, dimension_id=dimension_id)
+
+
+@app.get("/api/feedback/template-upgrades")
+def template_upgrade_candidates(profile_id: Optional[str] = None) -> Dict[str, Any]:
+    summary = build_feedback_summary(review_store.list(), template_store.list(), profile_id=profile_id)
+    return {
+        "total_reviews": summary["total_reviews"],
+        "upgrade_candidates": summary["upgrade_candidates"],
+    }
 
 
 @app.post("/api/notes", response_model=UserNote)
@@ -724,6 +797,7 @@ def export_all() -> dict:
         "extraction_runs": [r.model_dump(mode="json") for r in run_store.list()],
         "materials": [m.model_dump(mode="json") for m in material_store.list()],
         "notes": [n.model_dump(mode="json") for n in note_store.list()],
+        "review_records": [r.model_dump(mode="json") for r in review_store.list()],
     }
 
 
