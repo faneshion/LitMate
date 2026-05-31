@@ -3187,6 +3187,18 @@ function renderReviewPanel() {
   renderReviewItems();
 }
 
+function confidenceClass(value) {
+  const score = Number(value || 0);
+  if (score >= 0.75) return 'high';
+  if (score >= 0.45) return 'medium';
+  return 'low';
+}
+
+function confidenceText(value) {
+  const score = Number(value || 0);
+  return Number.isFinite(score) ? score.toFixed(2) : '-';
+}
+
 function renderReviewItems() {
   const run = state.runs.find(r => r.id === $('reviewRunSelect').value) || state.runs[0];
   const box = $('reviewItems');
@@ -3207,21 +3219,37 @@ function renderReviewItems() {
         ${run.items.map((item, index) => `
           <article class="review-card" data-review-index="${index}">
             <header class="review-card-header">
-              <div>
+              <div class="review-title-block">
                 <div class="kicker">维度结果 ${index + 1}</div>
-                <h3>${escapeHtml(item.dimension_label || item.dimension_name)} · ${escapeHtml(item.title || '未命名结果')}</h3>
-                <div class="meta">confidence ${Number(item.confidence || 0).toFixed(2)} · item ${escapeHtml(item.id)}</div>
+                <h3>
+                  <span>${escapeHtml(item.dimension_label || item.dimension_name)}</span>
+                  <small>${escapeHtml(item.title || '未命名结果')}</small>
+                </h3>
+                <div class="meta">item ${escapeHtml(item.id)}</div>
               </div>
-              <span class="badge ${escapeHtml(item.review_status)}">${escapeHtml(item.review_status)}</span>
+              <div class="review-header-signals">
+                <span class="review-confidence ${confidenceClass(item.confidence)}"><span>confidence</span><b>${confidenceText(item.confidence)}</b></span>
+                <span class="badge ${escapeHtml(item.review_status)}">${escapeHtml(item.review_status)}</span>
+              </div>
             </header>
-            <label>标题</label>
-            <input id="title_${item.id}" value="${escapeHtml(item.edited_title || item.title)}" />
-            <label>内容</label>
-            <textarea id="content_${item.id}" rows="6">${escapeHtml(item.edited_content || item.content)}</textarea>
-            <label>研究笔记</label>
-            <textarea id="note_${item.id}" rows="3">${escapeHtml(item.user_note || '')}</textarea>
-            <label>标签，逗号分隔</label>
-            <input id="tags_${item.id}" placeholder="related_work, memory, baseline" />
+            <div class="review-field-grid">
+              <label class="review-field">
+                <span>标题</span>
+                <input id="title_${item.id}" class="review-input" value="${escapeHtml(item.edited_title || item.title)}" />
+              </label>
+              <label class="review-field">
+                <span>标签，逗号分隔</span>
+                <input id="tags_${item.id}" class="review-input" placeholder="related_work, memory, baseline" />
+              </label>
+              <label class="review-field review-field-full">
+                <span>内容</span>
+                <textarea id="content_${item.id}" class="review-textarea review-content-editor" rows="3">${escapeHtml(item.edited_content || item.content)}</textarea>
+              </label>
+              <label class="review-field review-field-full">
+                <span>研究笔记</span>
+                <textarea id="note_${item.id}" class="review-textarea review-note-editor" rows="1" placeholder="可选：记录需要复核的判断依据">${escapeHtml(item.user_note || '')}</textarea>
+              </label>
+            </div>
             <h4>证据</h4>
             <div class="review-evidence-list">
               ${(item.evidence || []).map(ev => `<div class="evidence"><b>${escapeHtml(ev.section_title || 'Unknown')}</b> · page ${ev.page_start || '?'}-${ev.page_end || '?'}<br/>${escapeHtml(ev.quote)}</div>`).join('') || '<p class="muted">无证据绑定。</p>'}
