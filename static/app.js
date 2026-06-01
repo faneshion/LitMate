@@ -3113,7 +3113,7 @@ window.openExtractionResult = function(id) {
       ${run.items.map(item => `
         <article class="extraction-result-item">
           <header>
-            <h3>${escapeHtml(item.dimension_label || item.dimension_name)} <span class="badge ${item.review_status}">${item.review_status}</span></h3>
+            <h3>${escapeHtml(item.dimension_label || item.dimension_name)} <span class="badge ${item.review_status}">${escapeHtml(reviewStatusLabel(item.review_status))}</span></h3>
             <div class="meta">${escapeHtml(item.dimension_name)} · 置信度 ${Number(item.confidence || 0).toFixed(2)}</div>
           </header>
           <h4>${escapeHtml(item.edited_title || item.title || '未命名结果')}</h4>
@@ -3179,6 +3179,50 @@ async function runSelectedExtractions() {
   renderExtractionPaperRuns();
 }
 
+const REVIEW_ACTIONS = [
+  {value: 'confirm', label: '确认正确', hint: '抽取结果正确，可入库', tone: 'accept'},
+  {value: 'revise', label: '修改后接受', hint: '结果部分正确，人工修改后入库', tone: 'accept'},
+  {value: 'reject', label: '驳回', hint: '结果错误，不入库', tone: 'reject'},
+  {value: 'mark_not_reported', label: '应为未报告', hint: '论文没有报告该信息，模型不应生成', tone: 'warn'},
+  {value: 'mark_evidence_insufficient', label: '证据不足', hint: '答案可能对，但证据不够', tone: 'warn'},
+  {value: 'mark_over_inferred', label: '过度推断', hint: '模型推断过多', tone: 'warn'},
+  {value: 'mark_wrong_dimension', label: '维度归类错误', hint: '抽到了信息，但放错维度', tone: 'warn'},
+  {value: 'mark_wrong_object', label: '对象判断错误', hint: '根本不属于当前研究对象', tone: 'reject'},
+];
+
+const REVIEW_ERROR_TAGS = [
+  {value: 'answer_too_generic', label: '答案过泛'},
+  {value: 'answer_too_verbose', label: '答案太长'},
+  {value: 'missing_key_information', label: '遗漏关键信息'},
+  {value: 'wrong_object_boundary', label: '对象边界错误'},
+  {value: 'wrong_dimension', label: '维度错误'},
+  {value: 'wrong_section_evidence', label: '证据章节不合适'},
+  {value: 'evidence_missing', label: '缺少证据'},
+  {value: 'evidence_not_support_answer', label: '证据不支撑答案'},
+  {value: 'over_inference', label: '过度推断'},
+  {value: 'not_reported_should_be_used', label: '应该标记未报告'},
+  {value: 'related_work_misused', label: '误用 related work'},
+  {value: 'experiment_result_misused', label: '误把实验结果当机制或经验'},
+  {value: 'definition_confused', label: '定义混淆'},
+  {value: 'method_step_confused', label: '方法步骤混淆'},
+  {value: 'effect_claim_overstated', label: '效果 claim 夸大'},
+];
+
+const REVIEW_STATUS_LABELS = {
+  pending: '待审查',
+  confirm: '确认正确',
+  revise: '修改后接受',
+  reject: '驳回',
+  mark_not_reported: '应为未报告',
+  mark_evidence_insufficient: '证据不足',
+  mark_over_inferred: '过度推断',
+  mark_wrong_dimension: '维度归类错误',
+  mark_wrong_object: '对象判断错误',
+  confirmed: '已确认',
+  needs_revision: '需修改',
+  rejected: '已驳回',
+};
+
 function renderReviewPanel() {
   $('reviewRunSelect').innerHTML = state.runs.map(r => {
     const p = state.papers.find(x => x.id === r.paper_id);
@@ -3197,6 +3241,34 @@ function confidenceClass(value) {
 function confidenceText(value) {
   const score = Number(value || 0);
   return Number.isFinite(score) ? score.toFixed(2) : '-';
+}
+
+function reviewStatusLabel(status) {
+  return REVIEW_STATUS_LABELS[status] || status || '待审查';
+}
+
+function renderReviewActionButtons(runId, item) {
+  return REVIEW_ACTIONS.map(action => `
+    <button
+      type="button"
+      class="review-action-btn ${escapeHtml(action.tone)} ${item.review_status === action.value ? 'active' : ''}"
+      title="${escapeHtml(action.hint)}"
+      onclick="reviewItem('${escapeHtml(runId)}', '${escapeHtml(item.id)}', '${escapeHtml(action.value)}')"
+    >
+      <span>${escapeHtml(action.label)}</span>
+      <small>${escapeHtml(action.hint)}</small>
+    </button>
+  `).join('');
+}
+
+function renderReviewErrorTags(item) {
+  const selected = new Set(item.tags || []);
+  return REVIEW_ERROR_TAGS.map(tag => `
+    <label class="review-error-tag ${selected.has(tag.value) ? 'checked' : ''}">
+      <input type="checkbox" class="reviewErrorTag" data-item-id="${escapeHtml(item.id)}" value="${escapeHtml(tag.value)}" ${selected.has(tag.value) ? 'checked' : ''} />
+      <span>${escapeHtml(tag.label)}</span>
+    </label>
+  `).join('');
 }
 
 function renderReviewItems() {
@@ -3229,17 +3301,13 @@ function renderReviewItems() {
               </div>
               <div class="review-header-signals">
                 <span class="review-confidence ${confidenceClass(item.confidence)}"><span>confidence</span><b>${confidenceText(item.confidence)}</b></span>
-                <span class="badge ${escapeHtml(item.review_status)}">${escapeHtml(item.review_status)}</span>
+                <span class="badge ${escapeHtml(item.review_status)}">${escapeHtml(reviewStatusLabel(item.review_status))}</span>
               </div>
             </header>
             <div class="review-field-grid">
               <label class="review-field">
                 <span>标题</span>
                 <input id="title_${item.id}" class="review-input" value="${escapeHtml(item.edited_title || item.title)}" />
-              </label>
-              <label class="review-field">
-                <span>标签，逗号分隔</span>
-                <input id="tags_${item.id}" class="review-input" placeholder="related_work, memory, baseline" />
               </label>
               <label class="review-field review-field-full">
                 <span>内容</span>
@@ -3250,14 +3318,23 @@ function renderReviewItems() {
                 <textarea id="note_${item.id}" class="review-textarea review-note-editor" rows="1" placeholder="可选：记录需要复核的判断依据">${escapeHtml(item.user_note || '')}</textarea>
               </label>
             </div>
+            <section class="review-feedback-panel">
+              <div>
+                <h4>审查动作</h4>
+                <div class="review-action-grid">
+                  ${renderReviewActionButtons(run.id, item)}
+                </div>
+              </div>
+              <div>
+                <h4>错误标签</h4>
+                <div class="review-error-tags">
+                  ${renderReviewErrorTags(item)}
+                </div>
+              </div>
+            </section>
             <h4>证据</h4>
             <div class="review-evidence-list">
               ${(item.evidence || []).map(ev => `<div class="evidence"><b>${escapeHtml(ev.section_title || 'Unknown')}</b> · page ${ev.page_start || '?'}-${ev.page_end || '?'}<br/>${escapeHtml(ev.quote)}</div>`).join('') || '<p class="muted">无证据绑定。</p>'}
-            </div>
-            <div class="row review-actions">
-              <button onclick="reviewItem('${run.id}', '${item.id}', 'confirmed')">确认</button>
-              <button onclick="reviewItem('${run.id}', '${item.id}', 'needs_revision')">标记需修改</button>
-              <button onclick="reviewItem('${run.id}', '${item.id}', 'rejected')">驳回</button>
             </div>
           </article>
         `).join('')}
@@ -3278,6 +3355,9 @@ function renderReviewItems() {
     clearTimeout(state.reviewScrollTimer);
     state.reviewScrollTimer = setTimeout(syncReviewIndexFromScroll, 80);
   };
+  document.querySelectorAll('.reviewErrorTag').forEach(input => {
+    input.onchange = () => input.closest('.review-error-tag')?.classList.toggle('checked', input.checked);
+  });
   requestAnimationFrame(() => setReviewItemIndex(state.reviewItemIndex));
 }
 
@@ -3340,7 +3420,7 @@ window.reviewItem = async function(runId, itemId, status) {
     edited_title: $(`title_${itemId}`).value,
     edited_content: $(`content_${itemId}`).value,
     user_note: $(`note_${itemId}`).value,
-    tags: ($(`tags_${itemId}`).value || '').split(',').map(x => x.trim()).filter(Boolean)
+    tags: [...document.querySelectorAll(`.reviewErrorTag[data-item-id="${CSS.escape(itemId)}"]:checked`)].map(x => x.value)
   };
   await api(`/api/extractions/${runId}/items/${itemId}/review`, {
     method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
@@ -3365,7 +3445,7 @@ async function searchMaterials() {
   const data = await api('/api/materials/search?' + params.toString());
   $('materialResults').innerHTML = data.items.map(m => `
     <div class="item">
-      <h3>${escapeHtml(m.dimension_label)} · ${escapeHtml(m.title)} <span class="badge ${m.review_status}">${m.review_status}</span></h3>
+      <h3>${escapeHtml(m.dimension_label)} · ${escapeHtml(m.title)} <span class="badge ${m.review_status}">${escapeHtml(reviewStatusLabel(m.review_status))}</span></h3>
       <p>${escapeHtml(fmt(m.content, 700))}</p>
       ${(m.evidence || []).slice(0, 2).map(e => `<div class="evidence">${escapeHtml(fmt(e.quote, 260))}</div>`).join('')}
       <div class="meta">paper ${m.paper_id} · tags ${(m.tags || []).join(', ')}</div>

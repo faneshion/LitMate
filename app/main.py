@@ -629,6 +629,7 @@ def review_item(run_id: str, item_id: str, req: ReviewUpdateRequest) -> Extracti
             item.edited_title = req.edited_title
             item.edited_content = req.edited_content
             item.user_note = req.user_note
+            item.tags = req.tags
             item.updated_at = now_iso()
             found = True
             break
@@ -636,7 +637,7 @@ def review_item(run_id: str, item_id: str, req: ReviewUpdateRequest) -> Extracti
         raise HTTPException(status_code=404, detail="Item not found")
     run.updated_at = now_iso()
     run_store.upsert(run)
-    sync_materials_for_run(run, tags=req.tags)
+    sync_materials_for_run(run, reviewed_item_id=item_id)
     return run
 
 
@@ -726,11 +727,11 @@ def export_all() -> dict:
     }
 
 
-def sync_materials_for_run(run: ExtractionRun, tags: Optional[List[str]] = None) -> None:
-    tags = tags or []
+def sync_materials_for_run(run: ExtractionRun, reviewed_item_id: Optional[str] = None) -> None:
     existing = material_store.list()
     existing_by_item_id = {m.extraction_item_id: m for m in existing}
     for item in run.items:
+        item_tags = list(dict.fromkeys(item.tags))
         mat = existing_by_item_id.get(item.id)
         if mat:
             mat.title = item.edited_title or item.title
@@ -738,7 +739,8 @@ def sync_materials_for_run(run: ExtractionRun, tags: Optional[List[str]] = None)
             mat.evidence = item.evidence
             mat.review_status = item.review_status
             mat.user_note = item.user_note
-            mat.tags = sorted(set(mat.tags + tags))
+            if reviewed_item_id is None or item.id == reviewed_item_id:
+                mat.tags = item_tags
             mat.updated_at = now_iso()
         else:
             mat = MaterialItem(
@@ -751,7 +753,7 @@ def sync_materials_for_run(run: ExtractionRun, tags: Optional[List[str]] = None)
                 content=item.edited_content or item.content,
                 evidence=item.evidence,
                 review_status=item.review_status,
-                tags=tags,
+                tags=item_tags,
                 user_note=item.user_note,
             )
         material_store.upsert(mat)

@@ -7,6 +7,18 @@ from typing import Any, Dict, Iterable, List, Optional
 from .models import CompareReport, ExtractionRun, ExtractionTemplate, MaterialItem, Paper, ReviewStatus
 
 
+ACCEPTED_REVIEW_STATUSES = {ReviewStatus.confirm, ReviewStatus.revise, ReviewStatus.confirmed}
+ERROR_REVIEW_STATUSES = {
+    ReviewStatus.reject,
+    ReviewStatus.mark_not_reported,
+    ReviewStatus.mark_evidence_insufficient,
+    ReviewStatus.mark_over_inferred,
+    ReviewStatus.mark_wrong_dimension,
+    ReviewStatus.mark_wrong_object,
+    ReviewStatus.rejected,
+}
+
+
 def text_match_score(query: str, text: str) -> float:
     if not query:
         return 1.0
@@ -30,7 +42,7 @@ def search_materials(
             continue
         if status and item.review_status != status:
             continue
-        text = " ".join([item.title, item.content, item.dimension_label, item.user_note or ""] + [e.quote for e in item.evidence])
+        text = " ".join([item.title, item.content, item.dimension_label, item.user_note or "", " ".join(item.tags)] + [e.quote for e in item.evidence])
         score = text_match_score(query, text)
         if query and score <= 0:
             continue
@@ -67,7 +79,7 @@ def build_compare_report(
         items_by_dim = defaultdict(list)
         for run in run_by_paper.get(paper_id, []):
             for item in run.items:
-                if not include_pending and item.review_status != ReviewStatus.confirmed:
+                if not include_pending and item.review_status not in ACCEPTED_REVIEW_STATUSES:
                     continue
                 items_by_dim[item.dimension_name].append(item)
         for dim in dimensions:
@@ -94,7 +106,7 @@ def build_gap_summary(papers: List[Paper], runs: List[ExtractionRun], template: 
                 low_conf.append({"paper_id": run.paper_id, "item_id": item.id, "dimension": item.dimension_name, "title": item.title})
             if not item.evidence:
                 no_evidence.append({"paper_id": run.paper_id, "item_id": item.id, "dimension": item.dimension_name, "title": item.title})
-            if item.review_status == ReviewStatus.rejected:
+            if item.review_status in ERROR_REVIEW_STATUSES:
                 rejected.append({"paper_id": run.paper_id, "item_id": item.id, "dimension": item.dimension_name, "title": item.title})
     missing = []
     for paper in papers:
