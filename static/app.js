@@ -29,6 +29,12 @@ const state = {
   reviewRunId: null,
   reviewItemIndex: 0,
   reviewFilters: {dimension: 'all', status: 'all', risk: 'all', query: ''},
+  reviewActionMode: null,
+  reviewActionTags: [],
+  reviewActionItemKey: null,
+  reviewDraftContent: '',
+  reviewDraftNote: '',
+  reviewExpandedEvidence: {},
   reviewScrollTimer: null
 };
 const PAPER_PAGE_SIZE = 6;
@@ -3098,6 +3104,7 @@ window.selectRunForReview = function(id) {
   if (!id) return;
   state.reviewRunId = id;
   state.reviewItemIndex = 0;
+  resetReviewActionMode();
   document.querySelector('[data-tab="review"]').click();
   renderReviewPanel();
 };
@@ -3276,6 +3283,11 @@ function confidenceText(value) {
   return Number.isFinite(score) ? score.toFixed(2) : '-';
 }
 
+function confidenceLevelText(value) {
+  const cls = confidenceClass(value);
+  return {high: 'high', medium: 'medium', low: 'low'}[cls] || '-';
+}
+
 function reviewStatusLabel(status) {
   return REVIEW_STATUS_LABELS[status] || status || '待审查';
 }
@@ -3284,6 +3296,59 @@ function reviewStatusGroup(status) {
   if (['confirm', 'revise', 'confirmed', 'needs_revision'].includes(status)) return 'accepted';
   if (status && status !== 'pending') return 'issues';
   return 'pending';
+}
+
+function reviewItemKey(entry) {
+  return entry ? `${entry.run.id}:${entry.item.id}` : '';
+}
+
+function resetReviewActionMode() {
+  state.reviewActionMode = null;
+  state.reviewActionTags = [];
+  state.reviewActionItemKey = null;
+  state.reviewDraftContent = '';
+  state.reviewDraftNote = '';
+}
+
+function deepBooleanFlag(value, key) {
+  if (value === null || value === undefined) return false;
+  if (Array.isArray(value)) return value.some(item => deepBooleanFlag(item, key));
+  if (typeof value !== 'object') return false;
+  if (value[key] === true) return true;
+  return Object.values(value).some(item => deepBooleanFlag(item, key));
+}
+
+function itemModelInferred(item) {
+  if (deepBooleanFlag(item.normalized_value, 'model_inferred')) return true;
+  return /模型推断|model[_ -]?inferred|inference|infer/i.test(item.model_notes || '');
+}
+
+function evidenceSourceHint(ev, dimensionLabel = '') {
+  const section = String(ev?.section_title || '').toLowerCase();
+  if (/related work|background/.test(section)) return {tone: 'warn', text: '相关工作或背景章节，容易误把他人方法当成本论文对象。'};
+  if (/conclusion|discussion/.test(section)) return {tone: 'warn', text: '总结性章节，建议核对 Method、Experiment 或 Results 是否有直接支撑。'};
+  if (/method|approach|system|framework|implementation|方法/.test(section)) return {tone: 'good', text: `方法章节，适合作为“${dimensionLabel || '当前维度'}”的直接证据。`};
+  if (/experiment|result|evaluation|ablation|实验|结果|评估|消融/.test(section)) return {tone: 'good', text: '实验或结果章节，适合验证效果类信息，也可辅助判断方法是否真实使用。'};
+  return {tone: 'neutral', text: '请结合上下文判断该证据是否直接支撑模型结果。'};
+}
+
+function reviewQualityHint(entry) {
+  const item = entry.item;
+  const evidence = item.evidence || [];
+  if (!evidence.length) {
+    return {tone: 'warn', text: '该结果没有绑定证据，建议优先选择“证据不足”或进入修改。'};
+  }
+  if (itemModelInferred(item)) {
+    return {tone: 'warn', text: '该结果包含模型推断，建议重点核验证据是否明确支撑关键机制。'};
+  }
+  const risky = evidence.find(ev => /related work|conclusion|discussion/i.test(ev.section_title || ''));
+  if (risky) return evidenceSourceHint(risky, item.dimension_label || item.dimension_name);
+  const method = evidence.find(ev => /method|approach|system|framework|implementation|方法/i.test(ev.section_title || ''));
+  if (method) return evidenceSourceHint(method, item.dimension_label || item.dimension_name);
+  if (Number(item.confidence || 0) < 0.45) {
+    return {tone: 'warn', text: '模型置信度偏低，建议优先核对答案是否过度概括或缺少直接证据。'};
+  }
+  return {tone: 'neutral', text: '请判断证据是否直接回答抽取问题，并确认答案没有越过论文原文。'};
 }
 
 function reviewRun() {
@@ -3376,6 +3441,20 @@ function reviewDimensionQuestion(entry) {
   return dim?.description || dim?.label || entry.item.dimension_label || entry.item.dimension_name;
 }
 
+function reviewDimensionDefinition(entry) {
+  const dim = (entry.template?.dimensions || []).find(d => d.name === entry.item.dimension_name);
+  if (!dim) return '当前模板未提供更详细的维度定义。';
+  const fields = (dim.fields || []).map(field => typeof field === 'string' ? field : (field.name || field.label || JSON.stringify(field)));
+  const parts = [
+    dim.description ? `说明：${dim.description}` : '',
+    dim.output_type ? `输出类型：${dim.output_type}` : '',
+    dim.required_evidence ? '需要证据：是' : '需要证据：否',
+    dim.allow_not_found ? '允许未报告：是' : '允许未报告：否',
+    fields.length ? `字段：${fields.join('、')}` : '',
+  ].filter(Boolean);
+  return parts.join('\n');
+}
+
 function renderReviewFilters() {
   const run = reviewRun();
   const dimensions = [...new Map((run?.items || []).map(item => [item.dimension_name, item.dimension_label || item.dimension_name])).entries()];
@@ -3396,6 +3475,7 @@ function updateReviewFiltersFromInputs() {
     query: $('reviewSearchInput').value,
   };
   state.reviewItemIndex = 0;
+  resetReviewActionMode();
   renderReviewWorkbench();
 }
 
@@ -3413,22 +3493,37 @@ function renderReviewWorkbench() {
     renderReviewTopbar();
     return;
   }
-  $('reviewTemplateName').textContent = template?.name || run.template_id;
-  $('reviewTemplateMeta').textContent = `模板 v${template?.version || '-'} · Prompt ${prompt?.name || prompt?.id || run.template_id} · ${run.model || '未知模型'}`;
   const entries = filteredReviewEntries();
   state.reviewItemIndex = Math.min(Math.max(state.reviewItemIndex, 0), Math.max(entries.length - 1, 0));
-  renderReviewTopbar();
-  renderReviewQueue(entries);
   const entry = entries[state.reviewItemIndex];
+  if (state.reviewActionItemKey && state.reviewActionItemKey !== reviewItemKey(entry)) resetReviewActionMode();
+  renderReviewTopbar(entry, prompt);
+  renderReviewQueue(entries);
   renderReviewMain(entry);
   renderReviewEvidence(entry);
 }
 
-function renderReviewTopbar() {
+function renderReviewTopbar(entry = null, prompt = null) {
   const items = reviewQueueItems();
   const done = items.filter(entry => (entry.item.review_status || 'pending') !== 'pending').length;
   const total = items.length;
   const pct = total ? Math.round(done / total * 100) : 0;
+  if (entry) {
+    const title = entry.paper?.metadata?.title || entry.run.paper_id;
+    $('reviewTemplateName').textContent = fmt(title, 72);
+    $('reviewTemplateMeta').textContent = [
+      `研究对象：${entry.template?.name || entry.run.template_id}`,
+      `维度：${entry.item.dimension_label || entry.item.dimension_name}`,
+      `模板 v${entry.template?.version || '-'}`,
+      `Prompt ${prompt?.name || prompt?.id || entry.template?.active_prompt_id || '-'}`,
+      entry.run.model || '未知模型',
+    ].join(' · ');
+  } else {
+    const run = reviewRun();
+    const template = reviewTemplate(run);
+    $('reviewTemplateName').textContent = template?.name || run?.template_id || '人机协同审查';
+    $('reviewTemplateMeta').textContent = run ? `当前筛选条件下没有待审查条目 · 模板 v${template?.version || '-'}` : '暂无抽取结果';
+  }
   $('reviewProgressText').textContent = `${done} / ${total}`;
   $('reviewProgressBar').style.width = `${pct}%`;
   const entries = filteredReviewEntries();
@@ -3463,73 +3558,151 @@ function renderReviewMain(entry) {
     return;
   }
   const item = entry.item;
+  const question = reviewDimensionQuestion(entry);
+  const qualityHint = reviewQualityHint(entry);
+  const modelInferred = itemModelInferred(item);
+  const evidenceCount = (item.evidence || []).length;
   $('reviewMainPane').innerHTML = `
-    <section class="review-main-header">
-      <div>
-        <span class="kicker">维度结果 ${entry.index + 1}</span>
-        <h3>${escapeHtml(item.dimension_label || item.dimension_name)}</h3>
-        <p>${escapeHtml(entry.paper?.metadata?.title || entry.run.paper_id)}</p>
+    <section class="review-focus-card review-question-card">
+      <div class="review-card-header-line">
+        <span class="review-dimension-chip">维度：${escapeHtml(item.dimension_label || item.dimension_name)}</span>
+        <span class="review-index-chip">第 ${entry.index + 1} 条</span>
       </div>
-      <div class="review-header-signals">
-        <span class="review-confidence ${confidenceClass(item.confidence)}"><span>confidence</span><b>${confidenceText(item.confidence)}</b></span>
+      <h3>抽取问题</h3>
+      <p class="review-question-text">${escapeHtml(question)}</p>
+      <details class="review-dimension-detail">
+        <summary>查看维度定义</summary>
+        <p>${escapeHtml(reviewDimensionDefinition(entry))}</p>
+      </details>
+    </section>
+
+    <section class="review-focus-card review-result-card">
+      <div class="review-card-header-line">
+        <h3>模型抽取结果</h3>
         <span class="badge ${escapeHtml(item.review_status || 'pending')}">${escapeHtml(reviewStatusLabel(item.review_status || 'pending'))}</span>
       </div>
-    </section>
-    <section class="review-mini-metrics">
-      <div><span>研究对象</span><b>${escapeHtml(entry.template?.name || entry.run.template_id)}</b></div>
-      <div><span>维度 ID</span><b>${escapeHtml(item.dimension_name)}</b></div>
-      <div><span>证据</span><b>${(item.evidence || []).length} 条</b></div>
-      <div><span>风险</span><b>${riskLabel(entry.risk)}</b></div>
-    </section>
-    <section class="review-section">
-      <h4>抽取问题</h4>
-      <p class="review-question">${escapeHtml(reviewDimensionQuestion(entry))}</p>
-    </section>
-    <section class="review-section">
-      <h4>模型抽取结果</h4>
-      <div class="review-answer">${escapeHtml(item.content || '无内容')}</div>
-    </section>
-    <section class="review-section">
-      <h4>人工修订</h4>
-      <label class="review-field">
-        <span>标题</span>
-        <input id="reviewTitleInput" class="review-input" value="${escapeHtml(item.edited_title || item.title)}" />
-      </label>
-      <label class="review-field review-field-full">
-        <span>内容</span>
-        <textarea id="reviewContentInput" class="review-textarea review-content-editor" rows="5">${escapeHtml(item.edited_content || item.content)}</textarea>
-      </label>
-      <div class="review-inline-actions">
-        <button type="button" onclick="fillReviewContent('model')">使用模型答案</button>
-        <button type="button" onclick="fillReviewContent('not_reported')">填入 not_reported</button>
-        <button type="button" onclick="fillReviewContent('clear')">清空</button>
+      <div class="review-answer lead">${escapeHtml(item.edited_content || item.content || '无内容')}</div>
+      <div class="review-result-meta">
+        <span>置信度：<b>${confidenceLevelText(item.confidence)}</b></span>
+        <span>证据：<b>${evidenceCount} 条</b></span>
+        <span>模型推断：<b>${modelInferred ? '是' : '否'}</b></span>
+        <span>状态：<b>${escapeHtml(reviewStatusLabel(item.review_status || 'pending'))}</b></span>
+      </div>
+      <div class="review-quality-hint ${escapeHtml(qualityHint.tone)}">
+        <b>系统提示</b>
+        <span>${escapeHtml(qualityHint.text)}</span>
       </div>
     </section>
-    <section class="review-section review-feedback-panel">
-      <div>
-        <h4>错误标签</h4>
-        <div class="review-error-tags">${renderReviewErrorTags(item)}</div>
-      </div>
-      <div class="review-attribution-grid">
-        <label class="review-field">
-          <span>根因归属</span>
-          <select id="reviewRootCauseSelect" class="review-input">${renderReviewSelectOptions(REVIEW_ROOT_CAUSES, item.review_root_cause)}</select>
-        </label>
-        <label class="review-field">
-          <span>建议升级位置</span>
-          <select id="reviewTargetSelect" class="review-input">${renderReviewSelectOptions(REVIEW_SUGGESTED_TARGETS, item.review_suggested_target)}</select>
-        </label>
-      </div>
-      <label class="review-field review-field-full">
-        <span>审查评论</span>
-        <textarea id="reviewNoteInput" class="review-textarea review-note-editor" rows="2" placeholder="写下判断依据、修改原因或模板升级线索">${escapeHtml(item.user_note || '')}</textarea>
-      </label>
-      <div class="review-action-grid">${renderReviewActionButtons(entry.run.id, item)}</div>
-    </section>
+
+    ${renderReviewSecondaryPanel(entry)}
+
+    <nav class="review-primary-actions" aria-label="审查操作">
+      <button type="button" class="primary good" onclick="saveCurrentReview('confirm')">确认正确</button>
+      <button type="button" onclick="openReviewMode('revise')">修改</button>
+      <button type="button" class="danger" onclick="openReviewMode('reject')">驳回</button>
+      <button type="button" class="warn" onclick="openReviewMode('evidence')">证据不足</button>
+      <button type="button" onclick="openReviewMode('not_reported')">应为未报告</button>
+      <button type="button" class="ghost" onclick="skipReviewItem()">跳过</button>
+    </nav>
   `;
-  document.querySelectorAll('.reviewErrorTag').forEach(input => {
-    input.onchange = () => input.closest('.review-error-tag')?.classList.toggle('checked', input.checked);
-  });
+}
+
+function reviewTagButton(value, label) {
+  const checked = state.reviewActionTags.includes(value);
+  return `<button type="button" class="review-panel-tag ${checked ? 'active' : ''}" onclick="toggleReviewModeTag('${escapeHtml(value)}')">${escapeHtml(label)}</button>`;
+}
+
+function renderReviewPanelActions(confirmLabel, status) {
+  return `
+    <div class="review-panel-actions">
+      <button type="button" class="primary" onclick="saveCurrentReview('${escapeHtml(status)}')">${escapeHtml(confirmLabel)}</button>
+      <button type="button" onclick="closeReviewMode()">取消</button>
+    </div>
+  `;
+}
+
+function renderReviewSecondaryPanel(entry) {
+  if (!state.reviewActionMode || state.reviewActionItemKey !== reviewItemKey(entry)) return '';
+  const item = entry.item;
+  if (state.reviewActionMode === 'revise') {
+    const tags = [
+      ['answer_too_generic', '答案过泛'],
+      ['missing_key_information', '缺少关键信息'],
+      ['missing_usage_mechanism', '缺少使用机制'],
+      ['evidence_insufficient', '证据不足'],
+      ['wrong_dimension', '维度归类不准'],
+      ['other', '其他'],
+    ];
+    return `
+      <section class="review-secondary-panel">
+        <h4>修订答案</h4>
+        <textarea id="reviewEditContent" class="review-textarea review-edit-compact" rows="4">${escapeHtml(state.reviewDraftContent)}</textarea>
+        <div class="review-panel-block">
+          <span>修改原因</span>
+          <div class="review-panel-tags">${tags.map(([value, label]) => reviewTagButton(value, label)).join('')}</div>
+        </div>
+        <textarea id="reviewModeNote" class="review-textarea review-note-editor" rows="2" placeholder="补充说明，可选">${escapeHtml(state.reviewDraftNote)}</textarea>
+        ${renderReviewPanelActions('保存修改并确认', 'revise')}
+      </section>
+    `;
+  }
+  if (state.reviewActionMode === 'reject') {
+    const tags = [
+      ['wrong_object_boundary', '对象不匹配'],
+      ['wrong_dimension', '维度不匹配'],
+      ['evidence_not_support_answer', '证据不支持'],
+      ['over_inference', '过度推断'],
+      ['related_work_misused', '误用 Related Work'],
+      ['not_reported_should_be_used', '应为未报告'],
+      ['other', '其他'],
+    ];
+    return `
+      <section class="review-secondary-panel">
+        <h4>请选择驳回原因</h4>
+        <div class="review-panel-tags">${tags.map(([value, label]) => reviewTagButton(value, label)).join('')}</div>
+        <textarea id="reviewModeNote" class="review-textarea review-note-editor" rows="2" placeholder="补充说明，可选">${escapeHtml(state.reviewDraftNote)}</textarea>
+        ${renderReviewPanelActions('确认驳回', 'reject')}
+      </section>
+    `;
+  }
+  if (state.reviewActionMode === 'evidence') {
+    const tags = [
+      ['evidence_missing', '缺少证据'],
+      ['evidence_not_support_answer', '证据不支持答案'],
+      ['wrong_section_evidence', '证据章节不合适'],
+      ['evidence_too_generic', '证据太泛'],
+      ['need_more_context', '需要更多上下文'],
+      ['over_inference', '过度推断'],
+    ];
+    return `
+      <section class="review-secondary-panel">
+        <h4>证据问题</h4>
+        <div class="review-panel-tags">${tags.map(([value, label]) => reviewTagButton(value, label)).join('')}</div>
+        <textarea id="reviewModeNote" class="review-textarea review-note-editor" rows="2" placeholder="补充说明，可选">${escapeHtml(state.reviewDraftNote)}</textarea>
+        <div class="review-panel-actions">
+          <button type="button" class="primary" onclick="saveCurrentReview('mark_evidence_insufficient')">确认标记证据不足</button>
+          <button type="button" onclick="saveCurrentReview('pending')">仅记录证据问题</button>
+          <button type="button" onclick="closeReviewMode()">取消</button>
+        </div>
+      </section>
+    `;
+  }
+  if (state.reviewActionMode === 'not_reported') {
+    const tags = [
+      ['not_reported_should_be_used', '论文未报告'],
+      ['evidence_insufficient', '证据不足，不能推断'],
+      ['over_inference', '模型强行补全'],
+    ];
+    return `
+      <section class="review-secondary-panel compact">
+        <h4>确认将该维度标记为 not_reported？</h4>
+        <div class="review-panel-tags">${tags.map(([value, label]) => reviewTagButton(value, label)).join('')}</div>
+        <textarea id="reviewModeNote" class="review-textarea review-note-editor" rows="2" placeholder="补充说明，可选">${escapeHtml(state.reviewDraftNote)}</textarea>
+        ${renderReviewPanelActions('确认并下一条', 'mark_not_reported')}
+      </section>
+    `;
+  }
+  return '';
 }
 
 function renderReviewEvidence(entry) {
@@ -3543,29 +3716,32 @@ function renderReviewEvidence(entry) {
   const candidates = pool?.feedback_pool?.upgrade_candidates || [];
   $('reviewEvidencePane').innerHTML = `
     <section class="review-side-section">
-      <header><h3>证据与上下文</h3><span>${(item.evidence || []).length} 条证据</span></header>
+      <header><h3>证据是否支撑模型结果？</h3><span>${(item.evidence || []).length} 条证据</span></header>
       ${(item.evidence || []).map((ev, index) => renderEvidenceCard(ev, entry, index)).join('') || '<p class="muted">无证据绑定。</p>'}
     </section>
-    <section class="review-side-section">
-      <header><h3>本维度反馈统计</h3><button type="button" onclick="refreshReviewFeedback().catch(err => toast(err.message))">刷新</button></header>
-      <div class="review-side-stats">
-        <div><span>确认率</span><b>${Math.round((metrics.confirm_rate || 0) * 100)}%</b></div>
-        <div><span>修改率</span><b>${Math.round((metrics.revise_rate || 0) * 100)}%</b></div>
-        <div><span>驳回率</span><b>${Math.round((metrics.reject_rate || 0) * 100)}%</b></div>
-        <div><span>证据问题</span><b>${Math.round((metrics.evidence_issue_rate || 0) * 100)}%</b></div>
-      </div>
-      <div class="feedback-tag-row">
-        ${Object.entries(pool?.feedback_pool?.common_error_tags || {}).slice(0, 5).map(([tag, count]) => `<span>${escapeHtml(tag)} <b>${count}</b></span>`).join('') || '<span>暂无高频错误</span>'}
-      </div>
-    </section>
-    <section class="review-side-section">
-      <header><h3>模板升级候选</h3></header>
-      ${candidates.slice(0, 3).map(item => `<div class="review-upgrade-card"><b>${escapeHtml(item.target_level)} · ${escapeHtml(item.suggested_target)}</b><p>${escapeHtml(item.recommended_change)}</p></div>`).join('') || '<p class="muted">当前维度暂无明显升级候选。</p>'}
-    </section>
-    <section class="review-side-section">
-      <header><h3>当前记录预览</h3></header>
-      <pre class="review-record-preview">${escapeHtml(JSON.stringify(buildReviewPreview(entry), null, 2))}</pre>
-    </section>
+    <details class="review-side-details">
+      <summary>查看后台反馈沉淀</summary>
+      <section class="review-side-section subtle">
+        <header><h3>本维度反馈统计</h3><button type="button" onclick="refreshReviewFeedback().catch(err => toast(err.message))">刷新</button></header>
+        <div class="review-side-stats">
+          <div><span>确认率</span><b>${Math.round((metrics.confirm_rate || 0) * 100)}%</b></div>
+          <div><span>修改率</span><b>${Math.round((metrics.revise_rate || 0) * 100)}%</b></div>
+          <div><span>驳回率</span><b>${Math.round((metrics.reject_rate || 0) * 100)}%</b></div>
+          <div><span>证据问题</span><b>${Math.round((metrics.evidence_issue_rate || 0) * 100)}%</b></div>
+        </div>
+        <div class="feedback-tag-row">
+          ${Object.entries(pool?.feedback_pool?.common_error_tags || {}).slice(0, 5).map(([tag, count]) => `<span>${escapeHtml(tag)} <b>${count}</b></span>`).join('') || '<span>暂无高频错误</span>'}
+        </div>
+      </section>
+      <section class="review-side-section subtle">
+        <header><h3>模板升级候选</h3></header>
+        ${candidates.slice(0, 2).map(item => `<div class="review-upgrade-card"><b>${escapeHtml(item.target_level)} · ${escapeHtml(item.suggested_target)}</b><p>${escapeHtml(item.recommended_change)}</p></div>`).join('') || '<p class="muted">当前维度暂无明显升级候选。</p>'}
+      </section>
+      <section class="review-side-section subtle">
+        <header><h3>当前记录预览</h3></header>
+        <pre class="review-record-preview">${escapeHtml(JSON.stringify(buildReviewPreview(entry), null, 2))}</pre>
+      </section>
+    </details>
   `;
 }
 
@@ -3577,13 +3753,23 @@ function renderEvidenceCard(ev, entry, index) {
   const current = chunkIndex >= 0 ? chunks[chunkIndex] : null;
   const next = chunkIndex >= 0 && chunkIndex < chunks.length - 1 ? chunks[chunkIndex + 1] : null;
   const risky = /related work|conclusion/i.test(ev.section_title || '');
+  const hint = evidenceSourceHint(ev, entry.item.dimension_label || entry.item.dimension_name);
+  const contextKey = `${reviewItemKey(entry)}:${index}`;
+  const expanded = Boolean(state.reviewExpandedEvidence[contextKey]);
   return `<article class="review-evidence-card ${risky ? 'risky' : ''}">
     <header>
       <b>证据 ${index + 1}</b>
       <span>${escapeHtml(ev.section_title || 'Unknown')} · p.${ev.page_start || '?'}</span>
     </header>
+    <p class="review-evidence-hint ${escapeHtml(hint.tone)}">${escapeHtml(hint.text)}</p>
     <blockquote>${escapeHtml(ev.quote || '无证据原文')}</blockquote>
-    <div class="review-context-stack">
+    <div class="review-evidence-actions">
+      <button type="button" onclick="markEvidenceJudgement(${index}, 'support')">支持答案</button>
+      <button type="button" onclick="markEvidenceJudgement(${index}, 'partial')">部分支持</button>
+      <button type="button" onclick="markEvidenceJudgement(${index}, 'not_support')">不支持</button>
+      <button type="button" onclick="toggleEvidenceContext(${index})">${expanded ? '收起上下文' : '看上下文'}</button>
+    </div>
+    <div class="review-context-stack ${expanded ? '' : 'collapsed'}">
       ${prev ? `<div><b>上一段</b><p>${escapeHtml(fmt(prev.text, 320))}</p></div>` : ''}
       <div class="current"><b>当前段</b><p>${escapeHtml(fmt(current?.text || ev.quote || '', 420))}</p></div>
       ${next ? `<div><b>下一段</b><p>${escapeHtml(fmt(next.text, 320))}</p></div>` : ''}
@@ -3651,6 +3837,7 @@ async function refreshReviewFeedback() {
 
 window.selectReviewItem = function(index) {
   state.reviewItemIndex = index;
+  resetReviewActionMode();
   renderReviewWorkbench();
 };
 
@@ -3658,6 +3845,7 @@ function setReviewItemIndex(index) {
   const entries = filteredReviewEntries();
   if (!entries.length) return;
   state.reviewItemIndex = Math.min(Math.max(index, 0), entries.length - 1);
+  resetReviewActionMode();
   renderReviewWorkbench();
 }
 
@@ -3665,33 +3853,139 @@ window.moveReviewItem = function(direction) {
   setReviewItemIndex(state.reviewItemIndex + direction);
 };
 
-window.fillReviewContent = function(mode) {
+window.openReviewMode = function(mode, tags = []) {
   const entry = currentReviewEntry();
   if (!entry) return;
-  if (mode === 'model') $('reviewContentInput').value = entry.item.content || '';
-  if (mode === 'not_reported') $('reviewContentInput').value = 'not_reported';
-  if (mode === 'clear') $('reviewContentInput').value = '';
+  state.reviewActionMode = mode;
+  state.reviewActionTags = tags;
+  state.reviewActionItemKey = reviewItemKey(entry);
+  state.reviewDraftContent = entry.item.edited_content || entry.item.content || '';
+  state.reviewDraftNote = entry.item.user_note || '';
+  renderReviewMain(entry);
 };
 
-window.reviewItem = async function(runId, itemId, status) {
+window.closeReviewMode = function() {
+  resetReviewActionMode();
+  renderReviewMain(currentReviewEntry());
+};
+
+window.toggleReviewModeTag = function(tag) {
+  if ($('reviewEditContent')) state.reviewDraftContent = $('reviewEditContent').value;
+  if ($('reviewModeNote')) state.reviewDraftNote = $('reviewModeNote').value;
+  const selected = new Set(state.reviewActionTags || []);
+  if (selected.has(tag)) selected.delete(tag);
+  else selected.add(tag);
+  state.reviewActionTags = [...selected];
+  renderReviewMain(currentReviewEntry());
+};
+
+window.skipReviewItem = function() {
+  resetReviewActionMode();
+  setReviewItemIndex(state.reviewItemIndex + 1);
+};
+
+function inferReviewRootCause(status, tags = []) {
+  const tagSet = new Set(tags);
+  if (tagSet.has('wrong_object_boundary')) return 'object_boundary_unclear';
+  if (tagSet.has('wrong_dimension')) return 'dimension_definition_unclear';
+  if (tagSet.has('over_inference')) return 'prompt_instruction_unclear';
+  if (
+    status === 'mark_evidence_insufficient'
+    || tagSet.has('evidence_not_support_answer')
+    || tagSet.has('wrong_section_evidence')
+    || tagSet.has('evidence_missing')
+    || tagSet.has('evidence_too_generic')
+    || tagSet.has('need_more_context')
+  ) return 'evidence_policy_unclear';
+  if (status === 'mark_not_reported' || tagSet.has('not_reported_should_be_used')) return 'prompt_instruction_unclear';
+  if (status === 'revise' && (tagSet.has('answer_too_generic') || tagSet.has('missing_key_information') || tagSet.has('missing_usage_mechanism'))) return 'dimension_definition_unclear';
+  if (status === 'confirm') return null;
+  return 'result_error';
+}
+
+function inferReviewTarget(status, tags = []) {
+  const tagSet = new Set(tags);
+  if (tagSet.has('wrong_object_boundary')) return 'object_definition.exclusion_criteria';
+  if (tagSet.has('wrong_dimension')) return 'dimension.question';
+  if (
+    tagSet.has('evidence_not_support_answer')
+    || tagSet.has('wrong_section_evidence')
+    || tagSet.has('evidence_missing')
+    || tagSet.has('evidence_too_generic')
+    || tagSet.has('need_more_context')
+    || status === 'mark_evidence_insufficient'
+  ) return 'prompt.evidence_policy';
+  if (tagSet.has('over_inference')) return 'prompt.inference_policy';
+  if (tagSet.has('not_reported_should_be_used') || status === 'mark_not_reported') return 'prompt.not_reported_policy';
+  if (tagSet.has('answer_too_generic') || tagSet.has('missing_key_information') || tagSet.has('missing_usage_mechanism')) return 'dimension.question';
+  return null;
+}
+
+function reviewModeNote() {
+  return $('reviewModeNote')?.value || '';
+}
+
+function reviewEditedContentForStatus(entry, status) {
+  if (status === 'mark_not_reported') return 'not_reported';
+  if (state.reviewActionMode === 'revise') return $('reviewEditContent') ? $('reviewEditContent').value : (state.reviewDraftContent || entry.item.content || '');
+  return entry.item.edited_content || entry.item.content || '';
+}
+
+window.saveCurrentReview = async function(status) {
+  const entry = currentReviewEntry();
+  if (!entry) return;
+  const tags = state.reviewActionMode ? state.reviewActionTags : [];
+  const userNote = reviewModeNote() || entry.item.user_note || '';
+  const editedContent = reviewEditedContentForStatus(entry, status);
   const payload = {
     status,
-    edited_title: $('reviewTitleInput').value,
-    edited_content: $('reviewContentInput').value,
-    user_note: $('reviewNoteInput').value,
-    tags: [...document.querySelectorAll('.reviewErrorTag:checked')].map(x => x.value),
-    root_cause: $('reviewRootCauseSelect').value || null,
-    suggested_target: $('reviewTargetSelect').value || null,
+    edited_title: entry.item.edited_title || entry.item.title || entry.item.dimension_label || entry.item.dimension_name,
+    edited_content: editedContent,
+    user_note: userNote,
+    tags,
+    root_cause: inferReviewRootCause(status, tags),
+    suggested_target: inferReviewTarget(status, tags),
   };
-  await api(`/api/extractions/${runId}/items/${itemId}/review`, {
-    method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
+  await api(`/api/extractions/${entry.run.id}/items/${entry.item.id}/review`, {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(payload),
   });
-  toast('审查状态已保存，并同步到反馈池');
+  toast(status === 'confirm' ? '已确认，进入下一条' : '审查反馈已保存，并同步到反馈池');
   const previousRunId = state.reviewRunId;
+  resetReviewActionMode();
   await refreshAll();
   state.reviewRunId = previousRunId;
   if ($('reviewRunSelect')) $('reviewRunSelect').value = previousRunId;
   renderReviewWorkbench();
+};
+
+window.reviewItem = async function(runId, itemId, status) {
+  await window.saveCurrentReview(status);
+};
+
+window.markEvidenceJudgement = function(index, judgement) {
+  const entry = currentReviewEntry();
+  if (!entry) return;
+  if (judgement === 'support') {
+    toast(`证据 ${index + 1} 已判断为支持答案，可继续确认结果`);
+    return;
+  }
+  if (judgement === 'partial') {
+    window.openReviewMode('evidence', ['evidence_too_generic', 'need_more_context']);
+    toast(`证据 ${index + 1} 已标记为部分支持，请确认是否记录证据问题`);
+    return;
+  }
+  window.openReviewMode('evidence', ['evidence_not_support_answer']);
+  toast(`证据 ${index + 1} 不支持答案，请确认是否标记为证据不足`);
+};
+
+window.toggleEvidenceContext = function(index) {
+  const entry = currentReviewEntry();
+  if (!entry) return;
+  const key = `${reviewItemKey(entry)}:${index}`;
+  state.reviewExpandedEvidence[key] = !state.reviewExpandedEvidence[key];
+  renderReviewEvidence(entry);
 };
 
 async function exportReviewRecords() {
@@ -3878,6 +4172,7 @@ async function bindEvents() {
   $('reviewRunSelect').onchange = () => {
     state.reviewRunId = $('reviewRunSelect').value || null;
     state.reviewItemIndex = 0;
+    resetReviewActionMode();
     renderReviewPanel();
   };
   ['reviewDimensionFilter', 'reviewStatusFilter', 'reviewRiskFilter'].forEach(id => {
