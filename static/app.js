@@ -3099,6 +3099,12 @@ function selectedPaperIdsInPapers(papers) {
   return state.selectedPaperIds;
 }
 
+function updateBatchMoveTargetTitle() {
+  const select = $('batchMovePaperSetSelect');
+  if (!select) return;
+  select.title = select.selectedOptions[0]?.textContent || '暂无其他论文集';
+}
+
 function renderPaperSetBatchActions(paperSet, papers) {
   const actions = $('paperSetBatchActions');
   if (!actions) return;
@@ -3108,13 +3114,14 @@ function renderPaperSetBatchActions(paperSet, papers) {
   $('paperSelectionCount').textContent = selected.length ? `已选 ${selected.length} 篇` : '未选择';
   $('selectAllPaperSetPapersBtn').textContent = selected.length && selected.length === papers.length ? '取消全选' : '全选';
   $('selectAllPaperSetPapersBtn').disabled = !papers.length;
-  $('batchMovePaperSetSelect').innerHTML = targetSets.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('')
-    || '<option value="">暂无其他论文集</option>';
+  $('batchMovePaperSetSelect').innerHTML = targetSets.map(item => `<option value="${escapeHtml(item.id)}" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</option>`).join('')
+    || '<option value="" title="暂无其他论文集">暂无其他论文集</option>';
   $('batchMovePaperSetSelect').disabled = !targetSets.length || !selected.length;
   $('batchMovePapersBtn').disabled = !targetSets.length || !selected.length;
   $('batchDeletePapersBtn').disabled = !selected.length;
   $('batchReparsePapersBtn').disabled = !selected.length;
   $('batchExportPapersBtn').disabled = !selected.length;
+  updateBatchMoveTargetTitle();
 }
 
 function renderPaperSetDetail() {
@@ -4767,6 +4774,7 @@ async function bindEvents() {
   $('cancelCreatePaperSetBtn').onclick = () => togglePaperSetCreate(false);
   $('managePaperSetBtn').onclick = openPaperSetManage;
   $('selectAllPaperSetPapersBtn').onclick = toggleSelectAllPaperSetPapers;
+  $('batchMovePaperSetSelect').onchange = updateBatchMoveTargetTitle;
   $('batchMovePapersBtn').onclick = () => moveSelectedPapers().catch(err => toast(err.message));
   $('batchDeletePapersBtn').onclick = () => deleteSelectedPapers().catch(err => toast(err.message));
   $('batchReparsePapersBtn').onclick = () => reparseSelectedPapers().catch(err => toast(err.message));

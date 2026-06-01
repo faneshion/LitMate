@@ -115,7 +115,7 @@ main { padding: 24px 32px 60px; }
 }
 .paper-set-batch-actions {
   display: grid;
-  grid-template-columns: auto auto minmax(180px, 1fr) repeat(4, auto);
+  grid-template-columns: auto auto auto 12em repeat(3, auto);
   gap: 8px;
   align-items: center;
   margin-bottom: 12px;
@@ -125,9 +125,14 @@ main { padding: 24px 32px 60px; }
   background: #f8fafc;
 }
 .paper-set-batch-actions select {
-  min-width: 180px;
+  width: 12em;
+  min-width: 0;
+  max-width: 12em;
+  overflow: hidden;
   padding-top: 8px;
   padding-bottom: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .paper-set-batch-actions button {
   min-height: 34px;

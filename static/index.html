@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Literature Research Assistant V2</title>
-  <link rel="stylesheet" href="/styles.css?v=paper-set-batch-20260601" />
+  <link rel="stylesheet" href="/styles.css?v=paper-set-batch-move-20260601" />
 </head>
 <body>
   <header class="topbar">
@@ -97,15 +97,15 @@
               <button id="managePaperSetBtn" type="button" hidden>管理论文</button>
             </div>
           </div>
-          <div id="paperSetBatchActions" class="paper-set-batch-actions" hidden>
-            <span id="paperSelectionCount" class="meta">未选择</span>
-            <button id="selectAllPaperSetPapersBtn" type="button">全选</button>
-            <select id="batchMovePaperSetSelect"></select>
-            <button id="batchMovePapersBtn" type="button">移动到</button>
-            <button id="batchDeletePapersBtn" type="button">删除</button>
-            <button id="batchReparsePapersBtn" type="button">重新抽取</button>
-            <button id="batchExportPapersBtn" type="button">导出</button>
-          </div>
+            <div id="paperSetBatchActions" class="paper-set-batch-actions" hidden>
+              <span id="paperSelectionCount" class="meta">未选择</span>
+              <button id="selectAllPaperSetPapersBtn" type="button">全选</button>
+              <button id="batchMovePapersBtn" type="button">移动到</button>
+              <select id="batchMovePaperSetSelect"></select>
+              <button id="batchDeletePapersBtn" type="button">删除</button>
+              <button id="batchReparsePapersBtn" type="button">重新抽取</button>
+              <button id="batchExportPapersBtn" type="button">导出</button>
+            </div>
           <div id="paperSetCreatePanel" class="paper-set-create-panel" hidden>
             <input id="paperSetNameInput" placeholder="论文集名称" />
             <input id="paperSetDetailInput" placeholder="详情，例如研究主题、筛选条件或用途" />
@@ -917,6 +917,6 @@
   </div>
 
   <div id="toast" class="toast"></div>
-  <script src="/app.js?v=paper-set-batch-20260601"></script>
+  <script src="/app.js?v=paper-set-batch-move-20260601"></script>
 </body>
 </html>
