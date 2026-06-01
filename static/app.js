@@ -3594,16 +3594,17 @@ function renderReviewMain(entry) {
       </div>
     </section>
 
-    ${renderReviewSecondaryPanel(entry)}
-
-    <nav class="review-primary-actions" aria-label="审查操作">
-      <button type="button" class="primary good" onclick="saveCurrentReview('confirm')">确认正确</button>
-      <button type="button" onclick="openReviewMode('revise')">修改</button>
-      <button type="button" class="danger" onclick="openReviewMode('reject')">驳回</button>
-      <button type="button" class="warn" onclick="openReviewMode('evidence')">证据不足</button>
-      <button type="button" onclick="openReviewMode('not_reported')">应为未报告</button>
-      <button type="button" class="ghost" onclick="skipReviewItem()">跳过</button>
-    </nav>
+    <section class="review-action-zone">
+      <nav class="review-primary-actions" aria-label="审查操作">
+        <button type="button" class="primary good ${item.review_status === 'confirm' ? 'active' : ''}" onclick="saveCurrentReview('confirm')">确认正确</button>
+        <button type="button" class="${state.reviewActionMode === 'revise' ? 'active' : ''}" onclick="openReviewMode('revise')">修改</button>
+        <button type="button" class="danger ${state.reviewActionMode === 'reject' || item.review_status === 'reject' ? 'active' : ''}" onclick="openReviewMode('reject')">驳回</button>
+        <button type="button" class="warn ${state.reviewActionMode === 'evidence' || item.review_status === 'mark_evidence_insufficient' ? 'active' : ''}" onclick="openReviewMode('evidence')">证据不足</button>
+        <button type="button" class="${state.reviewActionMode === 'not_reported' || item.review_status === 'mark_not_reported' ? 'active' : ''}" onclick="openReviewMode('not_reported')">应为未报告</button>
+        <button type="button" class="ghost" onclick="skipReviewItem()">跳过</button>
+      </nav>
+      ${renderReviewSecondaryPanel(entry)}
+    </section>
   `;
 }
 
@@ -3615,8 +3616,8 @@ function reviewTagButton(value, label) {
 function renderReviewPanelActions(confirmLabel, status) {
   return `
     <div class="review-panel-actions">
-      <button type="button" class="primary" onclick="saveCurrentReview('${escapeHtml(status)}')">${escapeHtml(confirmLabel)}</button>
       <button type="button" onclick="closeReviewMode()">取消</button>
+      <button type="button" class="primary" title="${escapeHtml(confirmLabel)}" onclick="saveCurrentReview('${escapeHtml(status)}')">提交</button>
     </div>
   `;
 }
@@ -3680,9 +3681,9 @@ function renderReviewSecondaryPanel(entry) {
         <div class="review-panel-tags">${tags.map(([value, label]) => reviewTagButton(value, label)).join('')}</div>
         <textarea id="reviewModeNote" class="review-textarea review-note-editor" rows="2" placeholder="补充说明，可选">${escapeHtml(state.reviewDraftNote)}</textarea>
         <div class="review-panel-actions">
-          <button type="button" class="primary" onclick="saveCurrentReview('mark_evidence_insufficient')">确认标记证据不足</button>
           <button type="button" onclick="saveCurrentReview('pending')">仅记录证据问题</button>
           <button type="button" onclick="closeReviewMode()">取消</button>
+          <button type="button" class="primary" title="确认标记证据不足" onclick="saveCurrentReview('mark_evidence_insufficient')">提交</button>
         </div>
       </section>
     `;
