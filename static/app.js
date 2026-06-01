@@ -28,6 +28,7 @@ const state = {
   objectAdvisorGeneratedAt: null,
   reviewRunId: null,
   reviewItemIndex: 0,
+  reviewFilters: {dimension: 'all', status: 'all', risk: 'all', query: ''},
   reviewScrollTimer: null
 };
 const PAPER_PAGE_SIZE = 6;
@@ -3095,9 +3096,10 @@ function renderRunList() {
 
 window.selectRunForReview = function(id) {
   if (!id) return;
+  state.reviewRunId = id;
+  state.reviewItemIndex = 0;
   document.querySelector('[data-tab="review"]').click();
-  $('reviewRunSelect').value = id;
-  renderReviewItems();
+  renderReviewPanel();
 };
 
 window.openExtractionResult = function(id) {
@@ -3249,12 +3251,17 @@ const REVIEW_SUGGESTED_TARGETS = [
 ];
 
 function renderReviewPanel() {
+  const selectedRunId = state.reviewRunId || $('reviewRunSelect')?.value;
   $('reviewRunSelect').innerHTML = state.runs.map(r => {
     const p = state.papers.find(x => x.id === r.paper_id);
-    return `<option value="${r.id}">${escapeHtml(fmt(p?.metadata.title || r.paper_id, 70))} · ${r.created_at}</option>`;
+    const t = state.templates.find(x => x.id === r.template_id);
+    return `<option value="${escapeHtml(r.id)}">${escapeHtml(fmt(t?.name || r.template_id, 28))} · ${escapeHtml(fmt(p?.metadata.title || r.paper_id, 52))}</option>`;
   }).join('');
-  renderReviewFeedbackSummary();
-  renderReviewItems();
+  const validRun = state.runs.find(r => r.id === selectedRunId) || state.runs[0];
+  state.reviewRunId = validRun?.id || null;
+  if (validRun) $('reviewRunSelect').value = validRun.id;
+  renderReviewFilters();
+  renderReviewWorkbench();
 }
 
 function confidenceClass(value) {
@@ -3271,6 +3278,342 @@ function confidenceText(value) {
 
 function reviewStatusLabel(status) {
   return REVIEW_STATUS_LABELS[status] || status || '待审查';
+}
+
+function reviewStatusGroup(status) {
+  if (['confirm', 'revise', 'confirmed', 'needs_revision'].includes(status)) return 'accepted';
+  if (status && status !== 'pending') return 'issues';
+  return 'pending';
+}
+
+function reviewRun() {
+  return state.runs.find(r => r.id === state.reviewRunId) || state.runs[0];
+}
+
+function reviewTemplate(run = reviewRun()) {
+  return state.templates.find(t => t.id === run?.template_id);
+}
+
+function reviewPaper(run = reviewRun()) {
+  return state.papers.find(p => p.id === run?.paper_id);
+}
+
+function activePromptForTemplate(template) {
+  if (!template) return null;
+  return (template.prompt_profiles || []).find(p => p.id === template.active_prompt_id) || (template.prompt_profiles || [])[0] || null;
+}
+
+function reviewRisk(entry) {
+  const item = entry.item;
+  const evidence = item.evidence || [];
+  const riskySection = evidence.some(ev => /related work|conclusion/i.test(ev.section_title || ''));
+  const status = item.review_status;
+  if (!evidence.length || Number(item.confidence || 0) < 0.45 || riskySection || ['reject', 'mark_wrong_object', 'mark_wrong_dimension'].includes(status)) return 'high';
+  if (Number(item.confidence || 0) < 0.75 || ['mark_evidence_insufficient', 'mark_over_inferred', 'mark_not_reported'].includes(status)) return 'medium';
+  return 'low';
+}
+
+function riskLabel(risk) {
+  return {high: '高风险', medium: '中风险', low: '低风险'}[risk] || risk;
+}
+
+function reviewQueueItems() {
+  const run = reviewRun();
+  if (!run) return [];
+  const paper = reviewPaper(run);
+  const template = reviewTemplate(run);
+  return (run.items || []).map((item, index) => ({run, paper, template, item, index, risk: reviewRisk({item})}));
+}
+
+function filteredReviewEntries() {
+  const filters = state.reviewFilters;
+  const query = (filters.query || '').trim().toLowerCase();
+  return reviewQueueItems().filter(entry => {
+    const item = entry.item;
+    const status = item.review_status || 'pending';
+    if (filters.dimension !== 'all' && item.dimension_name !== filters.dimension) return false;
+    if (filters.risk !== 'all' && entry.risk !== filters.risk) return false;
+    if (filters.status !== 'all') {
+      if (filters.status === 'accepted' && reviewStatusGroup(status) !== 'accepted') return false;
+      else if (filters.status === 'issues' && reviewStatusGroup(status) !== 'issues') return false;
+      else if (!['accepted', 'issues'].includes(filters.status)) {
+        const aliases = {
+          confirm: ['confirm', 'confirmed'],
+          revise: ['revise', 'needs_revision'],
+          reject: ['reject', 'rejected'],
+        }[filters.status] || [filters.status];
+        if (!aliases.includes(status)) return false;
+      }
+    }
+    if (!query) return true;
+    return [
+      entry.paper?.metadata?.title,
+      item.dimension_label,
+      item.dimension_name,
+      item.title,
+      item.content,
+      item.edited_content,
+      ...(item.tags || []),
+    ].join(' ').toLowerCase().includes(query);
+  }).sort((a, b) => {
+    const statusOrder = {pending: 0, issues: 1, accepted: 2};
+    const riskOrder = {high: 0, medium: 1, low: 2};
+    return (statusOrder[reviewStatusGroup(a.item.review_status)] - statusOrder[reviewStatusGroup(b.item.review_status)])
+      || (riskOrder[a.risk] - riskOrder[b.risk])
+      || (a.index - b.index);
+  });
+}
+
+function currentReviewEntry() {
+  const entries = filteredReviewEntries();
+  if (!entries.length) return null;
+  state.reviewItemIndex = Math.min(Math.max(state.reviewItemIndex, 0), entries.length - 1);
+  return entries[state.reviewItemIndex];
+}
+
+function reviewDimensionQuestion(entry) {
+  const dim = (entry.template?.dimensions || []).find(d => d.name === entry.item.dimension_name);
+  return dim?.description || dim?.label || entry.item.dimension_label || entry.item.dimension_name;
+}
+
+function renderReviewFilters() {
+  const run = reviewRun();
+  const dimensions = [...new Map((run?.items || []).map(item => [item.dimension_name, item.dimension_label || item.dimension_name])).entries()];
+  $('reviewDimensionFilter').innerHTML = '<option value="all">全部维度</option>' + dimensions.map(([id, label]) => `<option value="${escapeHtml(id)}">${escapeHtml(label)}</option>`).join('');
+  const dimensionValue = dimensions.some(([id]) => id === state.reviewFilters.dimension) ? state.reviewFilters.dimension : 'all';
+  state.reviewFilters.dimension = dimensionValue;
+  $('reviewDimensionFilter').value = dimensionValue;
+  $('reviewStatusFilter').value = state.reviewFilters.status || 'all';
+  $('reviewRiskFilter').value = state.reviewFilters.risk || 'all';
+  $('reviewSearchInput').value = state.reviewFilters.query || '';
+}
+
+function updateReviewFiltersFromInputs() {
+  state.reviewFilters = {
+    dimension: $('reviewDimensionFilter').value,
+    status: $('reviewStatusFilter').value,
+    risk: $('reviewRiskFilter').value,
+    query: $('reviewSearchInput').value,
+  };
+  state.reviewItemIndex = 0;
+  renderReviewWorkbench();
+}
+
+function renderReviewWorkbench() {
+  const run = reviewRun();
+  const template = reviewTemplate(run);
+  const prompt = activePromptForTemplate(template);
+  if (!run) {
+    $('reviewTemplateName').textContent = '人机协同审查';
+    $('reviewTemplateMeta').textContent = '暂无抽取结果';
+    $('reviewQueueCount').textContent = '0 条';
+    $('reviewQueueList').innerHTML = '<p class="muted">暂无审查队列。</p>';
+    $('reviewMainPane').innerHTML = '<div class="review-empty">暂无可审查的抽取结果。</div>';
+    $('reviewEvidencePane').innerHTML = '';
+    renderReviewTopbar();
+    return;
+  }
+  $('reviewTemplateName').textContent = template?.name || run.template_id;
+  $('reviewTemplateMeta').textContent = `模板 v${template?.version || '-'} · Prompt ${prompt?.name || prompt?.id || run.template_id} · ${run.model || '未知模型'}`;
+  const entries = filteredReviewEntries();
+  state.reviewItemIndex = Math.min(Math.max(state.reviewItemIndex, 0), Math.max(entries.length - 1, 0));
+  renderReviewTopbar();
+  renderReviewQueue(entries);
+  const entry = entries[state.reviewItemIndex];
+  renderReviewMain(entry);
+  renderReviewEvidence(entry);
+}
+
+function renderReviewTopbar() {
+  const items = reviewQueueItems();
+  const done = items.filter(entry => (entry.item.review_status || 'pending') !== 'pending').length;
+  const total = items.length;
+  const pct = total ? Math.round(done / total * 100) : 0;
+  $('reviewProgressText').textContent = `${done} / ${total}`;
+  $('reviewProgressBar').style.width = `${pct}%`;
+  const entries = filteredReviewEntries();
+  $('reviewPrevBtn').disabled = !entries.length || state.reviewItemIndex <= 0;
+  $('reviewNextBtn').disabled = !entries.length || state.reviewItemIndex >= entries.length - 1;
+}
+
+function renderReviewQueue(entries = filteredReviewEntries()) {
+  $('reviewQueueCount').textContent = `${entries.length} 条`;
+  $('reviewQueueList').innerHTML = entries.map((entry, index) => {
+    const item = entry.item;
+    const active = index === state.reviewItemIndex;
+    return `<button type="button" class="review-queue-card ${active ? 'active' : ''}" onclick="selectReviewItem(${index})">
+      <span class="review-queue-top">
+        <b>${escapeHtml(item.dimension_label || item.dimension_name)}</b>
+        <em class="${entry.risk}">${riskLabel(entry.risk)}</em>
+      </span>
+      <span class="review-queue-title">${escapeHtml(fmt(item.edited_title || item.title || '未命名结果', 72))}</span>
+      <span class="review-queue-paper">${escapeHtml(fmt(entry.paper?.metadata?.title || entry.run.paper_id, 84))}</span>
+      <span class="review-queue-tags">
+        <i class="${escapeHtml(item.review_status || 'pending')}">${escapeHtml(reviewStatusLabel(item.review_status || 'pending'))}</i>
+        <i>confidence ${confidenceText(item.confidence)}</i>
+        ${(item.tags || []).slice(0, 2).map(tag => `<i>${escapeHtml(tag)}</i>`).join('')}
+      </span>
+    </button>`;
+  }).join('') || '<div class="review-empty small">没有符合筛选条件的待审查内容。</div>';
+}
+
+function renderReviewMain(entry) {
+  if (!entry) {
+    $('reviewMainPane').innerHTML = '<div class="review-empty">请选择左侧队列中的一条抽取结果。</div>';
+    return;
+  }
+  const item = entry.item;
+  $('reviewMainPane').innerHTML = `
+    <section class="review-main-header">
+      <div>
+        <span class="kicker">维度结果 ${entry.index + 1}</span>
+        <h3>${escapeHtml(item.dimension_label || item.dimension_name)}</h3>
+        <p>${escapeHtml(entry.paper?.metadata?.title || entry.run.paper_id)}</p>
+      </div>
+      <div class="review-header-signals">
+        <span class="review-confidence ${confidenceClass(item.confidence)}"><span>confidence</span><b>${confidenceText(item.confidence)}</b></span>
+        <span class="badge ${escapeHtml(item.review_status || 'pending')}">${escapeHtml(reviewStatusLabel(item.review_status || 'pending'))}</span>
+      </div>
+    </section>
+    <section class="review-mini-metrics">
+      <div><span>研究对象</span><b>${escapeHtml(entry.template?.name || entry.run.template_id)}</b></div>
+      <div><span>维度 ID</span><b>${escapeHtml(item.dimension_name)}</b></div>
+      <div><span>证据</span><b>${(item.evidence || []).length} 条</b></div>
+      <div><span>风险</span><b>${riskLabel(entry.risk)}</b></div>
+    </section>
+    <section class="review-section">
+      <h4>抽取问题</h4>
+      <p class="review-question">${escapeHtml(reviewDimensionQuestion(entry))}</p>
+    </section>
+    <section class="review-section">
+      <h4>模型抽取结果</h4>
+      <div class="review-answer">${escapeHtml(item.content || '无内容')}</div>
+    </section>
+    <section class="review-section">
+      <h4>人工修订</h4>
+      <label class="review-field">
+        <span>标题</span>
+        <input id="reviewTitleInput" class="review-input" value="${escapeHtml(item.edited_title || item.title)}" />
+      </label>
+      <label class="review-field review-field-full">
+        <span>内容</span>
+        <textarea id="reviewContentInput" class="review-textarea review-content-editor" rows="5">${escapeHtml(item.edited_content || item.content)}</textarea>
+      </label>
+      <div class="review-inline-actions">
+        <button type="button" onclick="fillReviewContent('model')">使用模型答案</button>
+        <button type="button" onclick="fillReviewContent('not_reported')">填入 not_reported</button>
+        <button type="button" onclick="fillReviewContent('clear')">清空</button>
+      </div>
+    </section>
+    <section class="review-section review-feedback-panel">
+      <div>
+        <h4>错误标签</h4>
+        <div class="review-error-tags">${renderReviewErrorTags(item)}</div>
+      </div>
+      <div class="review-attribution-grid">
+        <label class="review-field">
+          <span>根因归属</span>
+          <select id="reviewRootCauseSelect" class="review-input">${renderReviewSelectOptions(REVIEW_ROOT_CAUSES, item.review_root_cause)}</select>
+        </label>
+        <label class="review-field">
+          <span>建议升级位置</span>
+          <select id="reviewTargetSelect" class="review-input">${renderReviewSelectOptions(REVIEW_SUGGESTED_TARGETS, item.review_suggested_target)}</select>
+        </label>
+      </div>
+      <label class="review-field review-field-full">
+        <span>审查评论</span>
+        <textarea id="reviewNoteInput" class="review-textarea review-note-editor" rows="2" placeholder="写下判断依据、修改原因或模板升级线索">${escapeHtml(item.user_note || '')}</textarea>
+      </label>
+      <div class="review-action-grid">${renderReviewActionButtons(entry.run.id, item)}</div>
+    </section>
+  `;
+  document.querySelectorAll('.reviewErrorTag').forEach(input => {
+    input.onchange = () => input.closest('.review-error-tag')?.classList.toggle('checked', input.checked);
+  });
+}
+
+function renderReviewEvidence(entry) {
+  if (!entry) {
+    $('reviewEvidencePane').innerHTML = '';
+    return;
+  }
+  const item = entry.item;
+  const pool = findFeedbackPool(entry);
+  const metrics = pool?.feedback_pool?.metrics || {};
+  const candidates = pool?.feedback_pool?.upgrade_candidates || [];
+  $('reviewEvidencePane').innerHTML = `
+    <section class="review-side-section">
+      <header><h3>证据与上下文</h3><span>${(item.evidence || []).length} 条证据</span></header>
+      ${(item.evidence || []).map((ev, index) => renderEvidenceCard(ev, entry, index)).join('') || '<p class="muted">无证据绑定。</p>'}
+    </section>
+    <section class="review-side-section">
+      <header><h3>本维度反馈统计</h3><button type="button" onclick="refreshReviewFeedback().catch(err => toast(err.message))">刷新</button></header>
+      <div class="review-side-stats">
+        <div><span>确认率</span><b>${Math.round((metrics.confirm_rate || 0) * 100)}%</b></div>
+        <div><span>修改率</span><b>${Math.round((metrics.revise_rate || 0) * 100)}%</b></div>
+        <div><span>驳回率</span><b>${Math.round((metrics.reject_rate || 0) * 100)}%</b></div>
+        <div><span>证据问题</span><b>${Math.round((metrics.evidence_issue_rate || 0) * 100)}%</b></div>
+      </div>
+      <div class="feedback-tag-row">
+        ${Object.entries(pool?.feedback_pool?.common_error_tags || {}).slice(0, 5).map(([tag, count]) => `<span>${escapeHtml(tag)} <b>${count}</b></span>`).join('') || '<span>暂无高频错误</span>'}
+      </div>
+    </section>
+    <section class="review-side-section">
+      <header><h3>模板升级候选</h3></header>
+      ${candidates.slice(0, 3).map(item => `<div class="review-upgrade-card"><b>${escapeHtml(item.target_level)} · ${escapeHtml(item.suggested_target)}</b><p>${escapeHtml(item.recommended_change)}</p></div>`).join('') || '<p class="muted">当前维度暂无明显升级候选。</p>'}
+    </section>
+    <section class="review-side-section">
+      <header><h3>当前记录预览</h3></header>
+      <pre class="review-record-preview">${escapeHtml(JSON.stringify(buildReviewPreview(entry), null, 2))}</pre>
+    </section>
+  `;
+}
+
+function renderEvidenceCard(ev, entry, index) {
+  const paper = entry.paper;
+  const chunks = paper?.chunks || [];
+  const chunkIndex = chunks.findIndex(chunk => chunk.id === ev.chunk_id);
+  const prev = chunkIndex > 0 ? chunks[chunkIndex - 1] : null;
+  const current = chunkIndex >= 0 ? chunks[chunkIndex] : null;
+  const next = chunkIndex >= 0 && chunkIndex < chunks.length - 1 ? chunks[chunkIndex + 1] : null;
+  const risky = /related work|conclusion/i.test(ev.section_title || '');
+  return `<article class="review-evidence-card ${risky ? 'risky' : ''}">
+    <header>
+      <b>证据 ${index + 1}</b>
+      <span>${escapeHtml(ev.section_title || 'Unknown')} · p.${ev.page_start || '?'}</span>
+    </header>
+    <blockquote>${escapeHtml(ev.quote || '无证据原文')}</blockquote>
+    <div class="review-context-stack">
+      ${prev ? `<div><b>上一段</b><p>${escapeHtml(fmt(prev.text, 320))}</p></div>` : ''}
+      <div class="current"><b>当前段</b><p>${escapeHtml(fmt(current?.text || ev.quote || '', 420))}</p></div>
+      ${next ? `<div><b>下一段</b><p>${escapeHtml(fmt(next.text, 320))}</p></div>` : ''}
+    </div>
+  </article>`;
+}
+
+function findFeedbackPool(entry) {
+  return (state.reviewFeedback?.dimension_pools || []).find(pool =>
+    pool.profile_id === entry.run.template_id && pool.dimension_id === entry.item.dimension_name
+  );
+}
+
+function buildReviewPreview(entry) {
+  const item = entry.item;
+  return {
+    paper_id: entry.run.paper_id,
+    profile_id: entry.run.template_id,
+    profile_version: entry.template?.version || '',
+    dimension_id: item.dimension_name,
+    extraction_id: entry.run.id,
+    result_id: item.id,
+    prompt_id: entry.template?.active_prompt_id || '',
+    model_name: entry.run.model,
+    review_action: item.review_status,
+    review_comment: item.user_note || '',
+    error_tags: item.tags || [],
+    root_cause: item.review_root_cause || '',
+    suggested_target: item.review_suggested_target || '',
+  };
 }
 
 function renderReviewActionButtons(runId, item) {
@@ -3291,7 +3634,7 @@ function renderReviewErrorTags(item) {
   const selected = new Set(item.tags || []);
   return REVIEW_ERROR_TAGS.map(tag => `
     <label class="review-error-tag ${selected.has(tag.value) ? 'checked' : ''}">
-      <input type="checkbox" class="reviewErrorTag" data-item-id="${escapeHtml(item.id)}" value="${escapeHtml(tag.value)}" ${selected.has(tag.value) ? 'checked' : ''} />
+      <input type="checkbox" class="reviewErrorTag" value="${escapeHtml(tag.value)}" ${selected.has(tag.value) ? 'checked' : ''} />
       <span>${escapeHtml(tag.label)}</span>
     </label>
   `).join('');
@@ -3303,215 +3646,67 @@ function renderReviewSelectOptions(options, selectedValue) {
 
 async function refreshReviewFeedback() {
   state.reviewFeedback = await api('/api/feedback/dimensions');
-  renderReviewFeedbackSummary();
+  renderReviewWorkbench();
 }
 
-function renderReviewFeedbackSummary() {
-  const data = state.reviewFeedback || {total_reviews: 0, dimension_pools: [], upgrade_candidates: []};
-  if (!$('reviewFeedbackMeta')) return;
-  $('reviewFeedbackMeta').textContent = data.total_reviews
-    ? `${data.total_reviews} 条审查 · ${data.dimension_count || 0} 个维度 · ${data.upgrade_candidates?.length || 0} 个升级候选`
-    : '暂无反馈聚合';
-  const pools = (data.dimension_pools || []).slice(0, 4);
-  $('reviewFeedbackPools').innerHTML = pools.map(pool => {
-    const metrics = pool.feedback_pool.metrics || {};
-    const tags = Object.entries(pool.feedback_pool.common_error_tags || {}).slice(0, 4);
-    const candidates = (pool.feedback_pool.upgrade_candidates || []).slice(0, 2);
-    return `<article class="feedback-pool-card">
-      <header>
-        <div>
-          <b>${escapeHtml(pool.dimension_name || pool.dimension_id)}</b>
-          <span>${escapeHtml(pool.dimension_id)} · ${pool.feedback_pool.total_reviews} 条反馈</span>
-        </div>
-        <strong>${Math.round((metrics.confirm_rate || 0) * 100)}%</strong>
-      </header>
-      <div class="feedback-metric-grid">
-        <span>修改 ${Math.round((metrics.revise_rate || 0) * 100)}%</span>
-        <span>驳回 ${Math.round((metrics.reject_rate || 0) * 100)}%</span>
-        <span>证据 ${Math.round((metrics.evidence_issue_rate || 0) * 100)}%</span>
-        <span>推断 ${Math.round((metrics.over_inference_rate || 0) * 100)}%</span>
-      </div>
-      <div class="feedback-tag-row">
-        ${tags.map(([tag, count]) => `<span>${escapeHtml(tag)} <b>${count}</b></span>`).join('') || '<span>暂无高频错误</span>'}
-      </div>
-      ${candidates.length ? `<div class="feedback-upgrade-list">
-        ${candidates.map(item => `<p><b>${escapeHtml(item.target_level)}</b> ${escapeHtml(item.title)}</p>`).join('')}
-      </div>` : ''}
-    </article>`;
-  }).join('') || '<p class="muted">完成审查后，这里会显示维度级反馈池和模板升级候选。</p>';
-}
-
-function renderReviewItems() {
-  const run = state.runs.find(r => r.id === $('reviewRunSelect').value) || state.runs[0];
-  const box = $('reviewItems');
-  if (!run) { box.innerHTML = '<p class="muted">暂无抽取结果。</p>'; return; }
-  if (state.reviewRunId !== run.id) {
-    state.reviewRunId = run.id;
-    state.reviewItemIndex = 0;
-  }
-  state.reviewItemIndex = Math.min(Math.max(state.reviewItemIndex, 0), Math.max((run.items || []).length - 1, 0));
-  if (!run.items?.length) {
-    box.innerHTML = '<p class="muted">该抽取结果暂无可审查条目。</p>';
-    return;
-  }
-  box.innerHTML = `
-    <div class="review-carousel-shell">
-      <button class="review-carousel-arrow review-carousel-arrow-left" type="button" aria-label="上一个维度结果" onclick="moveReviewItem(-1)">‹</button>
-      <div id="reviewTrack" class="review-carousel-track">
-        ${run.items.map((item, index) => `
-          <article class="review-card" data-review-index="${index}">
-            <header class="review-card-header">
-              <div class="review-title-block">
-                <div class="kicker">维度结果 ${index + 1}</div>
-                <h3>
-                  <span>${escapeHtml(item.dimension_label || item.dimension_name)}</span>
-                  <small>${escapeHtml(item.title || '未命名结果')}</small>
-                </h3>
-                <div class="meta">item ${escapeHtml(item.id)}</div>
-              </div>
-              <div class="review-header-signals">
-                <span class="review-confidence ${confidenceClass(item.confidence)}"><span>confidence</span><b>${confidenceText(item.confidence)}</b></span>
-                <span class="badge ${escapeHtml(item.review_status)}">${escapeHtml(reviewStatusLabel(item.review_status))}</span>
-              </div>
-            </header>
-            <div class="review-field-grid">
-              <label class="review-field">
-                <span>标题</span>
-                <input id="title_${item.id}" class="review-input" value="${escapeHtml(item.edited_title || item.title)}" />
-              </label>
-              <label class="review-field review-field-full">
-                <span>内容</span>
-                <textarea id="content_${item.id}" class="review-textarea review-content-editor" rows="3">${escapeHtml(item.edited_content || item.content)}</textarea>
-              </label>
-              <label class="review-field review-field-full">
-                <span>研究笔记</span>
-                <textarea id="note_${item.id}" class="review-textarea review-note-editor" rows="1" placeholder="可选：记录需要复核的判断依据">${escapeHtml(item.user_note || '')}</textarea>
-              </label>
-            </div>
-            <section class="review-feedback-panel">
-              <div>
-                <h4>审查动作</h4>
-                <div class="review-action-grid">
-                  ${renderReviewActionButtons(run.id, item)}
-                </div>
-              </div>
-              <div>
-                <h4>错误标签</h4>
-                <div class="review-error-tags">
-                  ${renderReviewErrorTags(item)}
-                </div>
-              </div>
-              <div class="review-attribution-grid">
-                <label class="review-field">
-                  <span>根因归属</span>
-                  <select id="root_${item.id}" class="review-input">${renderReviewSelectOptions(REVIEW_ROOT_CAUSES, item.review_root_cause)}</select>
-                </label>
-                <label class="review-field">
-                  <span>建议升级位置</span>
-                  <select id="target_${item.id}" class="review-input">${renderReviewSelectOptions(REVIEW_SUGGESTED_TARGETS, item.review_suggested_target)}</select>
-                </label>
-              </div>
-            </section>
-            <h4>证据</h4>
-            <div class="review-evidence-list">
-              ${(item.evidence || []).map(ev => `<div class="evidence"><b>${escapeHtml(ev.section_title || 'Unknown')}</b> · page ${ev.page_start || '?'}-${ev.page_end || '?'}<br/>${escapeHtml(ev.quote)}</div>`).join('') || '<p class="muted">无证据绑定。</p>'}
-            </div>
-          </article>
-        `).join('')}
-      </div>
-      <button class="review-carousel-arrow review-carousel-arrow-right" type="button" aria-label="下一个维度结果" onclick="moveReviewItem(1)">›</button>
-    </div>
-    <div class="review-carousel-footer">
-      <div id="reviewCarouselDots" class="review-carousel-dots" aria-label="维度位置">
-        ${run.items.map((item, index) => `
-          <button class="review-carousel-dot" type="button" aria-label="切换到${escapeHtml(item.dimension_label || item.dimension_name || `维度 ${index + 1}`)}" onclick="goReviewItem(${index})"></button>
-        `).join('')}
-      </div>
-      <span id="reviewCarouselCounter" class="review-carousel-counter"></span>
-    </div>
-  `;
-  const track = $('reviewTrack');
-  track.onscroll = () => {
-    clearTimeout(state.reviewScrollTimer);
-    state.reviewScrollTimer = setTimeout(syncReviewIndexFromScroll, 80);
-  };
-  document.querySelectorAll('.reviewErrorTag').forEach(input => {
-    input.onchange = () => input.closest('.review-error-tag')?.classList.toggle('checked', input.checked);
-  });
-  requestAnimationFrame(() => setReviewItemIndex(state.reviewItemIndex));
-}
-
-function setReviewItemIndex(index, scroll = true) {
-  const track = $('reviewTrack');
-  if (!track) return;
-  const cards = [...track.querySelectorAll('.review-card')];
-  if (!cards.length) return;
-  state.reviewItemIndex = Math.min(Math.max(index, 0), cards.length - 1);
-  cards.forEach((card, idx) => card.classList.toggle('active', idx === state.reviewItemIndex));
-  if (scroll) {
-    cards[state.reviewItemIndex].scrollIntoView({behavior: 'smooth', block: 'nearest', inline: 'center'});
-  }
-  updateReviewCarouselControls(cards.length);
-}
-
-function syncReviewIndexFromScroll() {
-  const track = $('reviewTrack');
-  if (!track) return;
-  const cards = [...track.querySelectorAll('.review-card')];
-  if (!cards.length) return;
-  const trackCenter = track.scrollLeft + track.clientWidth / 2;
-  let nearest = 0;
-  let nearestDistance = Infinity;
-  cards.forEach((card, index) => {
-    const cardCenter = card.offsetLeft + card.offsetWidth / 2;
-    const distance = Math.abs(trackCenter - cardCenter);
-    if (distance < nearestDistance) {
-      nearest = index;
-      nearestDistance = distance;
-    }
-  });
-  setReviewItemIndex(nearest, false);
-}
-
-function updateReviewCarouselControls(total) {
-  const counter = $('reviewCarouselCounter');
-  if (counter) counter.textContent = `${state.reviewItemIndex + 1} / ${total}`;
-  document.querySelectorAll('.review-carousel-dot').forEach((dot, index) => {
-    dot.classList.toggle('active', index === state.reviewItemIndex);
-    dot.setAttribute('aria-current', index === state.reviewItemIndex ? 'true' : 'false');
-  });
-  const prev = document.querySelector('.review-carousel-arrow-left');
-  const next = document.querySelector('.review-carousel-arrow-right');
-  if (prev) prev.disabled = state.reviewItemIndex <= 0;
-  if (next) next.disabled = state.reviewItemIndex >= total - 1;
-}
-
-window.goReviewItem = function(index) {
-  setReviewItemIndex(index);
+window.selectReviewItem = function(index) {
+  state.reviewItemIndex = index;
+  renderReviewWorkbench();
 };
+
+function setReviewItemIndex(index) {
+  const entries = filteredReviewEntries();
+  if (!entries.length) return;
+  state.reviewItemIndex = Math.min(Math.max(index, 0), entries.length - 1);
+  renderReviewWorkbench();
+}
 
 window.moveReviewItem = function(direction) {
   setReviewItemIndex(state.reviewItemIndex + direction);
 };
 
+window.fillReviewContent = function(mode) {
+  const entry = currentReviewEntry();
+  if (!entry) return;
+  if (mode === 'model') $('reviewContentInput').value = entry.item.content || '';
+  if (mode === 'not_reported') $('reviewContentInput').value = 'not_reported';
+  if (mode === 'clear') $('reviewContentInput').value = '';
+};
+
 window.reviewItem = async function(runId, itemId, status) {
   const payload = {
     status,
-    edited_title: $(`title_${itemId}`).value,
-    edited_content: $(`content_${itemId}`).value,
-    user_note: $(`note_${itemId}`).value,
-    tags: [...document.querySelectorAll(`.reviewErrorTag[data-item-id="${CSS.escape(itemId)}"]:checked`)].map(x => x.value),
-    root_cause: $(`root_${itemId}`).value || null,
-    suggested_target: $(`target_${itemId}`).value || null,
+    edited_title: $('reviewTitleInput').value,
+    edited_content: $('reviewContentInput').value,
+    user_note: $('reviewNoteInput').value,
+    tags: [...document.querySelectorAll('.reviewErrorTag:checked')].map(x => x.value),
+    root_cause: $('reviewRootCauseSelect').value || null,
+    suggested_target: $('reviewTargetSelect').value || null,
   };
   await api(`/api/extractions/${runId}/items/${itemId}/review`, {
     method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
   });
-  toast('审查状态已保存，并同步到素材库');
+  toast('审查状态已保存，并同步到反馈池');
+  const previousRunId = state.reviewRunId;
   await refreshAll();
-  $('reviewRunSelect').value = runId;
-  renderReviewItems();
+  state.reviewRunId = previousRunId;
+  if ($('reviewRunSelect')) $('reviewRunSelect').value = previousRunId;
+  renderReviewWorkbench();
 };
+
+async function exportReviewRecords() {
+  const run = reviewRun();
+  const params = new URLSearchParams();
+  if (run?.template_id) params.set('profile_id', run.template_id);
+  const records = await api('/api/reviews' + (params.toString() ? `?${params}` : ''));
+  const blob = new Blob([JSON.stringify({exported_at: new Date().toISOString(), records}, null, 2)], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `review-records-${run?.template_id || 'all'}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 function renderMaterialsPanel() {
   const dims = [...new Set(state.materials.map(m => m.dimension_name))].sort();
@@ -3681,11 +3876,17 @@ async function bindEvents() {
     state.extractDraftPaperIds = [];
   };
   $('reviewRunSelect').onchange = () => {
-    state.reviewRunId = null;
+    state.reviewRunId = $('reviewRunSelect').value || null;
     state.reviewItemIndex = 0;
-    renderReviewItems();
+    renderReviewPanel();
   };
-  $('refreshReviewFeedbackBtn').onclick = () => refreshReviewFeedback().catch(err => toast(err.message));
+  ['reviewDimensionFilter', 'reviewStatusFilter', 'reviewRiskFilter'].forEach(id => {
+    $(id).onchange = updateReviewFiltersFromInputs;
+  });
+  $('reviewSearchInput').addEventListener('input', updateReviewFiltersFromInputs);
+  $('reviewPrevBtn').onclick = () => setReviewItemIndex(state.reviewItemIndex - 1);
+  $('reviewNextBtn').onclick = () => setReviewItemIndex(state.reviewItemIndex + 1);
+  $('exportReviewRecordsBtn').onclick = () => exportReviewRecords().catch(err => toast(err.message));
   $('uploadBtn').onclick = async () => {
     const file = $('paperFile').files[0];
     if (!file) return toast('请选择文件');
