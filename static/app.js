@@ -764,6 +764,29 @@ function splitImportedDescription(text) {
   return {description, question: question || description};
 }
 
+function comparableDimensionText(text) {
+  return String(text || '')
+    .replace(/^Question:\s*/i, '')
+    .replace(/^抽取问题[:：]\s*/i, '')
+    .replace(/\s+/g, '')
+    .replace(/[，,。.!！?？；;：:、"'“”‘’()（）\[\]【】]/g, '')
+    .toLowerCase();
+}
+
+function sameDimensionText(left, right) {
+  const a = comparableDimensionText(left);
+  const b = comparableDimensionText(right);
+  return Boolean(a && b && a === b);
+}
+
+function combineDimensionText(description, question, questionPrefix = 'Question: ') {
+  const desc = String(description || '').trim();
+  const q = String(question || '').trim();
+  if (!desc) return q;
+  if (!q || sameDimensionText(desc, q)) return desc;
+  return [desc, `${questionPrefix}${q}`].join('\n');
+}
+
 function importedArray(value) {
   if (Array.isArray(value)) return value.filter(item => item !== null && item !== undefined);
   if (typeof value === 'string') return lines(value);
@@ -2262,7 +2285,7 @@ function objectConfigToTemplate(cfg) {
     dimensions: (cfg.dimensions || []).map(d => ({
       name: d.dimension_id,
       label: d.name,
-      description: [d.description, d.question ? `Question: ${d.question}` : ''].filter(Boolean).join('\n'),
+      description: combineDimensionText(d.description, d.question),
       output_type: d.output_type || 'list',
       required_evidence: d.requires_evidence !== false,
       allow_not_found: d.required !== true,
@@ -3438,15 +3461,19 @@ function currentReviewEntry() {
 
 function reviewDimensionQuestion(entry) {
   const dim = (entry.template?.dimensions || []).find(d => d.name === entry.item.dimension_name);
-  return dim?.description || dim?.label || entry.item.dimension_label || entry.item.dimension_name;
+  if (!dim) return entry.item.dimension_label || entry.item.dimension_name;
+  const parsed = splitImportedDescription(dim.description || '');
+  return combineDimensionText(parsed.description, parsed.question, '') || dim.label || entry.item.dimension_label || entry.item.dimension_name;
 }
 
 function reviewDimensionDefinition(entry) {
   const dim = (entry.template?.dimensions || []).find(d => d.name === entry.item.dimension_name);
   if (!dim) return '当前模板未提供更详细的维度定义。';
   const fields = (dim.fields || []).map(field => typeof field === 'string' ? field : (field.name || field.label || JSON.stringify(field)));
+  const parsed = splitImportedDescription(dim.description || '');
+  const description = combineDimensionText(parsed.description, parsed.question, '抽取问题：');
   const parts = [
-    dim.description ? `说明：${dim.description}` : '',
+    description ? `说明：${description}` : '',
     dim.output_type ? `输出类型：${dim.output_type}` : '',
     dim.required_evidence ? '需要证据：是' : '需要证据：否',
     dim.allow_not_found ? '允许未报告：是' : '允许未报告：否',
