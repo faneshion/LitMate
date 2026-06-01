@@ -106,6 +106,15 @@ class Paper(BaseModel):
     updated_at: str = Field(default_factory=now_iso)
 
 
+class PaperSet(BaseModel):
+    id: str = Field(default_factory=lambda: new_id("pset"))
+    name: str
+    detail: str = ""
+    paper_ids: List[str] = Field(default_factory=list)
+    created_at: str = Field(default_factory=now_iso)
+    updated_at: str = Field(default_factory=now_iso)
+
+
 class DimensionConfig(BaseModel):
     name: str
     label: str
@@ -270,6 +279,12 @@ class ArxivImportRequest(BaseModel):
 class ManualPaperRequest(BaseModel):
     metadata: PaperMetadata
     full_text: str = ""
+
+
+class PaperSetRequest(BaseModel):
+    name: str
+    detail: str = ""
+    paper_ids: List[str] = Field(default_factory=list)
 
 
 class SearchMaterialsResponse(BaseModel):
