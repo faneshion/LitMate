@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Literature Research Assistant V2</title>
-  <link rel="stylesheet" href="/styles.css?v=advisor-workflow-20260530" />
+  <link rel="stylesheet" href="/styles.css?v=dimension-feedback-20260601" />
 </head>
 <body>
   <header class="topbar">
@@ -327,45 +327,57 @@
                 </div>
                 <div id="objectDimensionList" class="dimension-list"></div>
               </aside>
-              <section class="object-card dimension-detail-pane">
-                <div class="object-card-heading inline-heading">
-                  <h3>维度配置</h3>
-                  <button id="removeDimensionBtn">删除当前维度</button>
-                </div>
-                <label>维度 ID</label>
-                <input id="dimId" />
-                <label>名称</label>
-                <input id="dimName" />
-                <label>描述</label>
-                <textarea id="dimDescription" rows="4"></textarea>
-                <label>抽取问题</label>
-                <textarea id="dimQuestion" rows="3"></textarea>
-                <div class="grid two compact-grid">
-                  <div>
-                    <label>输出类型</label>
-                    <select id="dimOutputType">
-                      <option value="list">列表</option>
-                      <option value="object">对象</option>
-                      <option value="text">文本</option>
-                      <option value="number">数值</option>
-                      <option value="boolean">布尔</option>
-                      <option value="structured_object">结构化对象</option>
-                      <option value="claim_with_evidence">带证据 Claim</option>
-                      <option value="method_step_list">方法步骤列表</option>
-                      <option value="comparison_result">对比结果</option>
-                    </select>
+              <div class="dimension-main-stack">
+                <section class="object-card dimension-detail-pane">
+                  <div class="object-card-heading inline-heading">
+                    <h3>维度配置</h3>
+                    <button id="removeDimensionBtn">删除当前维度</button>
                   </div>
-                  <div>
-                    <label>检索关键词，每行一个</label>
-                    <textarea id="dimKeywords" rows="4"></textarea>
+                  <label>维度 ID</label>
+                  <input id="dimId" />
+                  <label>名称</label>
+                  <input id="dimName" />
+                  <label>描述</label>
+                  <textarea id="dimDescription" rows="4"></textarea>
+                  <label>抽取问题</label>
+                  <textarea id="dimQuestion" rows="3"></textarea>
+                  <div class="grid two compact-grid">
+                    <div>
+                      <label>输出类型</label>
+                      <select id="dimOutputType">
+                        <option value="list">列表</option>
+                        <option value="object">对象</option>
+                        <option value="text">文本</option>
+                        <option value="number">数值</option>
+                        <option value="boolean">布尔</option>
+                        <option value="structured_object">结构化对象</option>
+                        <option value="claim_with_evidence">带证据 Claim</option>
+                        <option value="method_step_list">方法步骤列表</option>
+                        <option value="comparison_result">对比结果</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label>检索关键词，每行一个</label>
+                      <textarea id="dimKeywords" rows="4"></textarea>
+                    </div>
                   </div>
-                </div>
-                <div class="checkbox-group">
-                  <label class="inline"><input type="checkbox" id="dimRequired" /> 必填维度</label>
-                  <label class="inline"><input type="checkbox" id="dimRequiredEvidence" /> 必须返回原文</label>
-                  <label class="inline"><input type="checkbox" id="dimAllowInference" /> 允许推断</label>
-                </div>
-              </section>
+                  <div class="checkbox-group">
+                    <label class="inline"><input type="checkbox" id="dimRequired" /> 必填维度</label>
+                    <label class="inline"><input type="checkbox" id="dimRequiredEvidence" /> 必须返回原文</label>
+                    <label class="inline"><input type="checkbox" id="dimAllowInference" /> 允许推断</label>
+                  </div>
+                </section>
+                <section class="object-card dimension-feedback-pane">
+                  <div class="object-card-heading inline-heading">
+                    <div>
+                      <h3>反馈与迭代</h3>
+                      <p id="dimensionFeedbackScope">暂无维度反馈。</p>
+                    </div>
+                    <button id="refreshDimensionFeedbackBtn" type="button">刷新反馈</button>
+                  </div>
+                  <div id="dimensionFeedbackPanel" class="dimension-feedback-panel"></div>
+                </section>
+              </div>
             </div>
           </section>
 
@@ -857,6 +869,6 @@
   </div>
 
   <div id="toast" class="toast"></div>
-  <script src="/app.js?v=advisor-workflow-20260530"></script>
+  <script src="/app.js?v=dimension-feedback-20260601"></script>
 </body>
 </html>
