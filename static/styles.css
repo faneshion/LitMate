@@ -2367,7 +2367,6 @@ button:disabled:hover {
   align-content: start;
   gap: 12px;
   padding: 14px;
-  padding-bottom: 84px;
 }
 .review-main-header {
   display: flex;
@@ -2562,18 +2561,20 @@ button:disabled:hover {
 .review-quality-hint.neutral {
   background: #f8fafc;
 }
+.review-action-zone {
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-top: 3px solid #dbeafe;
+  border-radius: 8px;
+  background: #f8fafc;
+}
 .review-primary-actions {
-  position: sticky;
-  bottom: -14px;
-  z-index: 4;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin: 0 -14px -84px;
-  padding: 12px 14px;
-  border-top: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(8px);
 }
 .review-primary-actions button,
 .review-panel-actions button,
@@ -2608,6 +2609,40 @@ button:disabled:hover {
 .review-primary-actions button.ghost {
   background: #f8fafc;
   color: #475569;
+}
+.review-primary-actions button:hover,
+.review-primary-actions button.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(37, 99, 235, 0.14);
+}
+.review-primary-actions button.primary:hover,
+.review-primary-actions button.primary.active,
+.review-primary-actions button.good:hover,
+.review-primary-actions button.good.active {
+  border-color: #065f46;
+  background: #065f46;
+  color: #fff;
+}
+.review-primary-actions button.danger:hover,
+.review-primary-actions button.danger.active {
+  border-color: #991b1b;
+  background: #991b1b;
+  color: #fff;
+}
+.review-primary-actions button.warn:hover,
+.review-primary-actions button.warn.active {
+  border-color: #92400e;
+  background: #92400e;
+  color: #fff;
+}
+.review-primary-actions button:active,
+.review-panel-actions button:active,
+.review-evidence-actions button:active {
+  transform: translateY(0);
+  box-shadow: inset 0 2px 5px rgba(15, 23, 42, 0.18);
 }
 .review-secondary-panel {
   display: grid;
