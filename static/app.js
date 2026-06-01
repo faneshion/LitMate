@@ -16,6 +16,8 @@ const state = {
   selectedPaperSetId: null,
   paperSetCreateOpen: false,
   paperSetManageOpen: false,
+  importTargetPaperSetId: '',
+  selectedPaperIds: [],
   selectedPaperId: null,
   objectPromptDirty: false,
   selectedPromptProfileId: null,
@@ -2639,6 +2641,7 @@ function setImportBusy(isBusy) {
   document.querySelectorAll('.import-card button, .import-card input, .import-card textarea, #importMode').forEach(el => {
     el.disabled = isBusy;
   });
+  if ($('importPaperSetSelect')) $('importPaperSetSelect').disabled = isBusy;
 }
 
 function startImportProgress(initialLabel, onProgress) {
@@ -2762,7 +2765,9 @@ async function runPaperImport(label, pendingTitle, source, action) {
     updatePaperJob(jobId, {percent, status});
   });
   try {
-    await action();
+    const result = await action();
+    const papers = Array.isArray(result) ? result : (result?.id ? [result] : []);
+    await addImportedPapersToTarget(papers.map(paper => paper.id));
     updatePaperJob(jobId, {percent: 100, status: '解析完成'});
     finishImportProgress(timer);
     toast('导入完成');
@@ -2779,6 +2784,7 @@ async function runPaperImport(label, pendingTitle, source, action) {
 async function runArxivBatchImport(values) {
   const total = values.length;
   const jobId = addPaperJob(`批量 arXiv 导入（${total} 篇）`, 'arxiv');
+  const importedPapers = [];
   setImportBusy(true);
   $('importProgress').hidden = false;
   $('importProgress').classList.remove('error', 'done');
@@ -2797,7 +2803,8 @@ async function runArxivBatchImport(values) {
         updatePaperJob(jobId, {percent: current, status: `第 ${index + 1}/${total} 篇解析中`});
       }, 850);
       try {
-        await api('/api/papers/import/arxiv', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({arxiv_id_or_url: value})});
+        const paper = await api('/api/papers/import/arxiv', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({arxiv_id_or_url: value})});
+        importedPapers.push(paper);
       } finally {
         clearInterval(timer);
       }
@@ -2806,12 +2813,14 @@ async function runArxivBatchImport(values) {
       setImportProgressValue(completed, completedLabel);
       updatePaperJob(jobId, {percent: completed, status: completedLabel});
     }
+    await addImportedPapersToTarget(importedPapers.map(paper => paper.id));
     $('importProgress').classList.add('done');
     toast(`批量导入完成：${total} 篇`);
     state.paperPage = 1;
     await refreshAll();
     setTimeout(() => { $('importProgress').hidden = true; }, 900);
   } catch (err) {
+    if (importedPapers.length) await addImportedPapersToTarget(importedPapers.map(paper => paper.id));
     $('importProgress').classList.add('error');
     $('importProgressLabel').textContent = err.message;
     $('importProgressPercent').textContent = '失败';
@@ -2820,6 +2829,62 @@ async function runArxivBatchImport(values) {
     setImportBusy(false);
     removePaperJob(jobId);
   }
+}
+
+function validCustomPaperSets() {
+  return state.paperSets || [];
+}
+
+function uniqueIds(ids) {
+  return [...new Set((ids || []).filter(Boolean))];
+}
+
+async function savePaperSetRecord(paperSet, paperIds) {
+  const updated = await api(`/api/paper-sets/${paperSet.id}`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      name: paperSet.name,
+      detail: paperSet.detail || '',
+      paper_ids: uniqueIds(paperIds),
+    }),
+  });
+  const index = state.paperSets.findIndex(item => item.id === paperSet.id);
+  if (index >= 0) state.paperSets[index] = updated;
+  return updated;
+}
+
+async function createPaperSetRecord(name, detail = '', paperIds = []) {
+  const paperSet = await api('/api/paper-sets', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name, detail, paper_ids: uniqueIds(paperIds)}),
+  });
+  state.paperSets.unshift(paperSet);
+  return paperSet;
+}
+
+async function addImportedPapersToTarget(paperIds) {
+  const ids = uniqueIds(paperIds);
+  const targetId = state.importTargetPaperSetId;
+  if (!ids.length || !targetId) return;
+  const paperSet = state.paperSets.find(item => item.id === targetId);
+  if (!paperSet) return;
+  await savePaperSetRecord(paperSet, [...(paperSet.paper_ids || []), ...ids]);
+}
+
+function renderImportPaperSetSelect() {
+  const select = $('importPaperSetSelect');
+  if (!select) return;
+  const previous = state.importTargetPaperSetId || select.value || '';
+  const sets = validCustomPaperSets();
+  select.innerHTML = [
+    '<option value="">不添加到论文集</option>',
+    ...sets.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`),
+    '<option value="__new__">+ 新建论文集</option>',
+  ].join('');
+  state.importTargetPaperSetId = sets.some(item => item.id === previous) ? previous : '';
+  select.value = state.importTargetPaperSetId;
 }
 
 function latestPaperTime() {
@@ -2843,6 +2908,10 @@ function paperSetPapers(paperSet) {
   }
   const ids = new Set(paperSet.paper_ids || []);
   return state.papers.filter(paper => ids.has(paper.id));
+}
+
+function verifiedPaperCount(papers) {
+  return (papers || []).filter(paper => paper.metadata?.extra?.review_status === 'verified').length;
 }
 
 function paperSetCards() {
@@ -2903,16 +2972,22 @@ function renderPaperJobRow(job) {
   `;
 }
 
-function renderPaperRow(p) {
+function renderPaperRow(p, selectable = false) {
   const status = paperStatus(p);
   const parser = status.parser ? ` · parser ${status.parser}` : '';
+  const checked = state.selectedPaperIds.includes(p.id);
   const opProgress = status.op ? `
     <div class="paper-row-progress">
       <div class="paper-row-progress-bar" style="width: ${Math.max(0, Math.min(100, Math.round(status.op.percent || 0)))}%"></div>
     </div>
   ` : '';
   return `
-    <div class="paper-row ${p.id === state.selectedPaperId ? 'active' : ''}" data-paper-id="${escapeHtml(p.id)}">
+    <div class="paper-row ${selectable ? 'selectable' : ''} ${p.id === state.selectedPaperId ? 'active' : ''}" data-paper-id="${escapeHtml(p.id)}">
+      ${selectable ? `
+        <label class="paper-row-check" title="选择论文">
+          <input type="checkbox" class="paperBatchCheck" value="${escapeHtml(p.id)}" ${checked ? 'checked' : ''} onchange="togglePaperSelection('${escapeHtml(p.id)}', this.checked)" />
+        </label>
+      ` : ''}
       <div class="paper-row-main">
         <div class="paper-title-line">
           <h3 class="paper-title" title="${escapeHtml(p.metadata.title)}">${escapeHtml(p.metadata.title)}</h3>
@@ -2988,6 +3063,7 @@ function renderPaperSetCards() {
   $('managePaperSetBtn').hidden = true;
   $('paperSetManagePanel').hidden = true;
   $('paperSetManagePanel').innerHTML = '';
+  $('paperSetBatchActions').hidden = true;
   renderPaperSetCreatePanel();
   list.className = 'paper-set-grid';
   list.innerHTML = cards.map(item => {
@@ -3004,8 +3080,9 @@ function renderPaperSetCards() {
         </div>
         <div class="paper-set-meta-grid">
           ${listStat('论文数', papers.length)}
-          ${listStat('更新时间', fmtTime(item.updated_at || item.created_at))}
+          ${listStat('已审核', verifiedPaperCount(papers))}
         </div>
+        <div class="paper-set-updated"><span>更新时间</span><b>${escapeHtml(fmtTime(item.updated_at || item.created_at))}</b></div>
         <div class="paper-set-card-actions">
           <button type="button" onclick="enterPaperSet('${escapeHtml(item.id)}')">详情</button>
           ${isVirtual ? '' : `<button type="button" onclick="deletePaperSet('${escapeHtml(item.id)}')">删除</button>`}
@@ -3014,6 +3091,30 @@ function renderPaperSetCards() {
     `;
   }).join('') || '<p class="muted">暂无论文集。</p>';
   $('paperPagination').innerHTML = '';
+}
+
+function selectedPaperIdsInPapers(papers) {
+  const available = new Set((papers || []).map(paper => paper.id));
+  state.selectedPaperIds = state.selectedPaperIds.filter(id => available.has(id));
+  return state.selectedPaperIds;
+}
+
+function renderPaperSetBatchActions(paperSet, papers) {
+  const actions = $('paperSetBatchActions');
+  if (!actions) return;
+  const selected = selectedPaperIdsInPapers(papers);
+  const targetSets = validCustomPaperSets().filter(item => item.id !== paperSet?.id);
+  actions.hidden = false;
+  $('paperSelectionCount').textContent = selected.length ? `已选 ${selected.length} 篇` : '未选择';
+  $('selectAllPaperSetPapersBtn').textContent = selected.length && selected.length === papers.length ? '取消全选' : '全选';
+  $('selectAllPaperSetPapersBtn').disabled = !papers.length;
+  $('batchMovePaperSetSelect').innerHTML = targetSets.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('')
+    || '<option value="">暂无其他论文集</option>';
+  $('batchMovePaperSetSelect').disabled = !targetSets.length || !selected.length;
+  $('batchMovePapersBtn').disabled = !targetSets.length || !selected.length;
+  $('batchDeletePapersBtn').disabled = !selected.length;
+  $('batchReparsePapersBtn').disabled = !selected.length;
+  $('batchExportPapersBtn').disabled = !selected.length;
 }
 
 function renderPaperSetDetail() {
@@ -3042,7 +3143,7 @@ function renderPaperSetDetail() {
   list.className = 'paper-table';
   const start = (state.paperPage - 1) * PAPER_PAGE_SIZE;
   const pageItems = items.slice(start, start + PAPER_PAGE_SIZE);
-  list.innerHTML = pageItems.map(item => item.type === 'job' ? renderPaperJobRow(item.job) : renderPaperRow(item.paper)).join('')
+  list.innerHTML = pageItems.map(item => item.type === 'job' ? renderPaperJobRow(item.job) : renderPaperRow(item.paper, true)).join('')
     || '<p class="muted">这个论文集还没有论文。</p>';
 
   $('paperPagination').innerHTML = total > PAPER_PAGE_SIZE ? `
@@ -3050,9 +3151,11 @@ function renderPaperSetDetail() {
     <span class="meta">第 ${state.paperPage} / ${pageCount} 页</span>
     <button ${state.paperPage === pageCount ? 'disabled' : ''} onclick="goPaperPage(${state.paperPage + 1})">下一页</button>
   ` : '';
+  renderPaperSetBatchActions(paperSet, papers);
 }
 
 function renderPapers() {
+  renderImportPaperSetSelect();
   if (state.paperSetView === 'papers' && !currentPaperSet()) {
     state.paperSetView = 'sets';
     state.selectedPaperSetId = null;
@@ -3077,6 +3180,7 @@ window.enterPaperSet = function(id) {
   state.paperPage = 1;
   state.paperSetCreateOpen = false;
   state.paperSetManageOpen = false;
+  state.selectedPaperIds = [];
   renderPapers();
 };
 
@@ -3085,7 +3189,110 @@ function backToPaperSets() {
   state.selectedPaperSetId = null;
   state.paperPage = 1;
   state.paperSetManageOpen = false;
+  state.selectedPaperIds = [];
   renderPapers();
+}
+
+window.togglePaperSelection = function(id, checked) {
+  const selected = new Set(state.selectedPaperIds);
+  if (checked) selected.add(id);
+  else selected.delete(id);
+  state.selectedPaperIds = [...selected];
+  const paperSet = currentPaperSet();
+  renderPaperSetBatchActions(paperSet, paperSetPapers(paperSet));
+};
+
+function toggleSelectAllPaperSetPapers() {
+  const paperSet = currentPaperSet();
+  const papers = paperSetPapers(paperSet);
+  const selected = selectedPaperIdsInPapers(papers);
+  state.selectedPaperIds = selected.length === papers.length ? [] : papers.map(paper => paper.id);
+  renderPapers();
+}
+
+function selectedPaperObjects() {
+  const selected = new Set(state.selectedPaperIds);
+  return state.papers.filter(paper => selected.has(paper.id));
+}
+
+async function moveSelectedPapers() {
+  const targetId = $('batchMovePaperSetSelect').value;
+  const ids = uniqueIds(state.selectedPaperIds);
+  if (!targetId || !ids.length) return;
+  const target = state.paperSets.find(item => item.id === targetId);
+  if (!target) return toast('请选择目标论文集');
+  await savePaperSetRecord(target, [...(target.paper_ids || []), ...ids]);
+  const source = currentPaperSet();
+  if (source && !source.virtual && source.id !== target.id) {
+    const latestSource = state.paperSets.find(item => item.id === source.id) || source;
+    await savePaperSetRecord(latestSource, (latestSource.paper_ids || []).filter(id => !ids.includes(id)));
+  }
+  state.selectedPaperIds = [];
+  toast(`已移动 ${ids.length} 篇论文`);
+  await refreshAll();
+}
+
+async function deleteSelectedPapers() {
+  const ids = uniqueIds(state.selectedPaperIds);
+  if (!ids.length) return;
+  if (!confirm(`确定删除选中的 ${ids.length} 篇论文吗？相关抽取记录和素材也会删除。`)) return;
+  for (const id of ids) {
+    await api(`/api/papers/${id}`, {method: 'DELETE'});
+    removePaperOp(id);
+    if (state.selectedPaperId === id) {
+      state.selectedPaperId = null;
+      closePaperDetail();
+    }
+  }
+  state.selectedPaperIds = [];
+  toast(`已删除 ${ids.length} 篇论文`);
+  await refreshAll();
+}
+
+async function reparseSelectedPapers() {
+  const ids = uniqueIds(state.selectedPaperIds);
+  if (!ids.length) return;
+  let success = 0;
+  const failures = [];
+  toast(`开始重新抽取 ${ids.length} 篇论文`);
+  for (const id of ids) {
+    const timer = startPaperOpProgress(id, '重新抽取中');
+    try {
+      const paper = await api(`/api/papers/${id}/reparse`, {method: 'POST'});
+      upsertPaperInState(paper);
+      updatePaperOp(id, {percent: 100, status: '解析完成'});
+      success += 1;
+    } catch (err) {
+      failures.push(err.message);
+      updatePaperOp(id, {percent: 100, status: '解析失败'});
+    } finally {
+      clearInterval(timer);
+      setTimeout(() => removePaperOp(id), 700);
+    }
+  }
+  state.selectedPaperIds = [];
+  await refreshAll();
+  toast(failures.length ? `重新抽取完成：${success} 篇成功，${failures.length} 篇失败` : `重新抽取完成：${success} 篇成功`);
+}
+
+function exportSelectedPapers() {
+  const papers = selectedPaperObjects();
+  if (!papers.length) return;
+  const payload = {
+    exported_at: new Date().toISOString(),
+    paper_count: papers.length,
+    papers,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `litmate_papers_${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  toast(`已导出 ${papers.length} 篇论文`);
 }
 
 function togglePaperSetCreate(open = !state.paperSetCreateOpen) {
@@ -3101,17 +3308,37 @@ async function createPaperSet() {
   const name = $('paperSetNameInput').value.trim();
   const detail = $('paperSetDetailInput').value.trim();
   if (!name) return toast('请先填写论文集名称');
-  const paperSet = await api('/api/paper-sets', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({name, detail, paper_ids: []}),
-  });
-  state.paperSets.unshift(paperSet);
+  await createPaperSetRecord(name, detail, []);
   state.paperSetCreateOpen = false;
   setValue('paperSetNameInput', '');
   setValue('paperSetDetailInput', '');
   toast('论文集已创建');
   renderPapers();
+}
+
+function openQuickPaperSetModal() {
+  $('paperSetQuickModal').hidden = false;
+  document.body.classList.add('modal-open');
+  setValue('quickPaperSetName', '');
+  setValue('quickPaperSetDetail', '');
+  setTimeout(() => $('quickPaperSetName')?.focus(), 0);
+}
+
+function closeQuickPaperSetModal() {
+  $('paperSetQuickModal').hidden = true;
+  syncModalLock();
+  if ($('importPaperSetSelect')) $('importPaperSetSelect').value = state.importTargetPaperSetId || '';
+}
+
+async function createQuickPaperSet() {
+  const name = $('quickPaperSetName').value.trim();
+  const detail = $('quickPaperSetDetail').value.trim();
+  if (!name) return toast('请先填写论文集名称');
+  const paperSet = await createPaperSetRecord(name, detail, []);
+  state.importTargetPaperSetId = paperSet.id;
+  closeQuickPaperSetModal();
+  renderImportPaperSetSelect();
+  toast('论文集已创建，并设为导入目标');
 }
 
 function openPaperSetManage() {
@@ -3130,13 +3357,7 @@ window.savePaperSetMembership = async function(id) {
   const paperSet = (state.paperSets || []).find(item => item.id === id);
   if (!paperSet) return toast('未找到论文集');
   const paperIds = [...document.querySelectorAll('.paperSetManageCheck:checked')].map(input => input.value);
-  const updated = await api(`/api/paper-sets/${id}`, {
-    method: 'PUT',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({name: paperSet.name, detail: paperSet.detail || '', paper_ids: paperIds}),
-  });
-  const index = state.paperSets.findIndex(item => item.id === id);
-  if (index >= 0) state.paperSets[index] = updated;
+  await savePaperSetRecord(paperSet, paperIds);
   state.paperSetManageOpen = false;
   toast('论文集已更新');
   renderPapers();
@@ -4528,11 +4749,28 @@ async function bindEvents() {
   $('simulationRawJsonBtn').onclick = openSimulationRawModal;
   $('simulationRawClose').onclick = closeSimulationRawModal;
   $('extractionResultClose').onclick = closeExtractionResultModal;
+  $('importPaperSetSelect').onchange = () => {
+    if ($('importPaperSetSelect').value === '__new__') {
+      openQuickPaperSetModal();
+      return;
+    }
+    state.importTargetPaperSetId = $('importPaperSetSelect').value;
+  };
+  $('paperSetQuickClose').onclick = closeQuickPaperSetModal;
+  $('quickPaperSetCreateBtn').onclick = () => createQuickPaperSet().catch(err => toast(err.message));
+  $('quickPaperSetName').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') createQuickPaperSet().catch(err => toast(err.message));
+  });
   $('backToPaperSetsBtn').onclick = backToPaperSets;
   $('createPaperSetBtn').onclick = () => togglePaperSetCreate(true);
   $('confirmCreatePaperSetBtn').onclick = () => createPaperSet().catch(err => toast(err.message));
   $('cancelCreatePaperSetBtn').onclick = () => togglePaperSetCreate(false);
   $('managePaperSetBtn').onclick = openPaperSetManage;
+  $('selectAllPaperSetPapersBtn').onclick = toggleSelectAllPaperSetPapers;
+  $('batchMovePapersBtn').onclick = () => moveSelectedPapers().catch(err => toast(err.message));
+  $('batchDeletePapersBtn').onclick = () => deleteSelectedPapers().catch(err => toast(err.message));
+  $('batchReparsePapersBtn').onclick = () => reparseSelectedPapers().catch(err => toast(err.message));
+  $('batchExportPapersBtn').onclick = exportSelectedPapers;
   $('paperSetNameInput').addEventListener('keydown', (event) => {
     if (event.key === 'Enter') createPaperSet().catch(err => toast(err.message));
   });
@@ -4583,6 +4821,7 @@ async function bindEvents() {
     el.onclick = () => {
       if (el.dataset.closeModal === 'promptPreviewModal') closePromptPreviewModal();
       else if (el.dataset.closeModal === 'objectImportModal') closeObjectImportModal();
+      else if (el.dataset.closeModal === 'paperSetQuickModal') closeQuickPaperSetModal();
       else if (el.dataset.closeModal === 'simulationRawModal') closeSimulationRawModal();
       else if (el.dataset.closeModal === 'extractionResultModal') closeExtractionResultModal();
       else if (el.dataset.closeModal === 'objectConfigModal') closeObjectConfigModal();
@@ -4593,6 +4832,7 @@ async function bindEvents() {
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return;
     if (!$('promptPickerMenu')?.hidden) closePromptPicker();
+    else if (!$('paperSetQuickModal').hidden) closeQuickPaperSetModal();
     else if (!$('objectImportModal').hidden) closeObjectImportModal();
     else if (!$('simulationRawModal').hidden) closeSimulationRawModal();
     else if (!$('extractionResultModal').hidden) closeExtractionResultModal();
@@ -4656,11 +4896,7 @@ async function bindEvents() {
       return;
     }
     const title = values.length === 1 ? values[0] : `批量 arXiv 导入（${values.length} 篇）`;
-    await runPaperImport('正在从 arXiv 导入...', title, 'arxiv', async () => {
-      for (const value of values) {
-        await api('/api/papers/import/arxiv', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({arxiv_id_or_url: value})});
-      }
-    });
+    await runPaperImport('正在从 arXiv 导入...', title, 'arxiv', () => api('/api/papers/import/arxiv', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({arxiv_id_or_url: values[0]})}));
   };
   $('doiBtn').onclick = async () => {
     const v = $('doiInput').value.trim(); if (!v) return toast('请输入 DOI');
