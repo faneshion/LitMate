@@ -122,6 +122,7 @@ class DimensionConfig(BaseModel):
 class PromptProfile(BaseModel):
     id: str = Field(default_factory=lambda: new_id("prompt"))
     name: str = "默认 Prompt"
+    version: str = "1.0.0"
     content: str = ""
     created_at: str = Field(default_factory=now_iso)
     updated_at: str = Field(default_factory=now_iso)
@@ -165,6 +166,8 @@ class ExtractedItem(BaseModel):
     review_status: ReviewStatus = ReviewStatus.pending
     user_note: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
+    review_root_cause: Optional[str] = None
+    review_suggested_target: Optional[str] = None
     edited_title: Optional[str] = None
     edited_content: Optional[str] = None
     created_at: str = Field(default_factory=now_iso)
@@ -225,6 +228,30 @@ class ReviewUpdateRequest(BaseModel):
     edited_content: Optional[str] = None
     user_note: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
+    root_cause: Optional[str] = None
+    suggested_target: Optional[str] = None
+
+
+class ReviewRecord(BaseModel):
+    id: str = Field(default_factory=lambda: new_id("review"))
+    paper_id: str
+    profile_id: str
+    profile_version: str = ""
+    dimension_id: str
+    dimension_name: str = ""
+    extraction_id: str
+    result_id: str
+    prompt_id: str = ""
+    prompt_version: str = ""
+    model_name: str = ""
+    review_action: ReviewStatus
+    review_label: str = ""
+    review_comment: Optional[str] = None
+    reviewer_edit: Dict[str, Any] = Field(default_factory=dict)
+    error_tags: List[str] = Field(default_factory=list)
+    root_cause: Optional[str] = None
+    suggested_target: Optional[str] = None
+    created_at: str = Field(default_factory=now_iso)
 
 
 class BibTeXImportRequest(BaseModel):

@@ -3,6 +3,7 @@ const state = {
   templates: [],
   runs: [],
   materials: [],
+  reviewFeedback: null,
   config: null,
   selectedLlmProfileId: null,
   objectConfig: null,
@@ -122,8 +123,8 @@ function linkButton(href, label) {
 }
 
 async function refreshAll() {
-  [state.papers, state.templates, state.runs, state.materials] = await Promise.all([
-    api('/api/papers'), api('/api/templates'), api('/api/extractions'), api('/api/materials')
+  [state.papers, state.templates, state.runs, state.materials, state.reviewFeedback] = await Promise.all([
+    api('/api/papers'), api('/api/templates'), api('/api/extractions'), api('/api/materials'), api('/api/feedback/dimensions')
   ]);
   renderPapers(); renderObjectConfigPanel(); renderExtractionPanel(); renderReviewPanel(); renderMaterialsPanel();
 }
@@ -3223,11 +3224,36 @@ const REVIEW_STATUS_LABELS = {
   rejected: '已驳回',
 };
 
+const REVIEW_ROOT_CAUSES = [
+  {value: '', label: '不归因'},
+  {value: 'result_error', label: '结果本身错误'},
+  {value: 'dimension_definition_unclear', label: '维度定义不清'},
+  {value: 'prompt_instruction_unclear', label: 'Prompt 没说清楚'},
+  {value: 'object_boundary_unclear', label: '对象边界不清'},
+  {value: 'evidence_policy_unclear', label: '证据规则不清'},
+];
+
+const REVIEW_SUGGESTED_TARGETS = [
+  {value: '', label: '暂不指定'},
+  {value: 'dimension.question', label: '维度问题'},
+  {value: 'dimension.boundary', label: '维度边界'},
+  {value: 'dimension.output_schema', label: '维度输出结构'},
+  {value: 'prompt.dimension_instruction', label: 'Prompt 维度说明'},
+  {value: 'prompt.evidence_policy', label: 'Prompt 证据规则'},
+  {value: 'prompt.not_reported_policy', label: 'Prompt 未报告规则'},
+  {value: 'prompt.inference_policy', label: 'Prompt 推断规则'},
+  {value: 'object_definition.working_definition', label: '对象工作定义'},
+  {value: 'object_definition.inclusion_criteria', label: '对象纳入标准'},
+  {value: 'object_definition.exclusion_criteria', label: '对象排除标准'},
+  {value: 'object_definition.observation_signals', label: '对象观察信号'},
+];
+
 function renderReviewPanel() {
   $('reviewRunSelect').innerHTML = state.runs.map(r => {
     const p = state.papers.find(x => x.id === r.paper_id);
     return `<option value="${r.id}">${escapeHtml(fmt(p?.metadata.title || r.paper_id, 70))} · ${r.created_at}</option>`;
   }).join('');
+  renderReviewFeedbackSummary();
   renderReviewItems();
 }
 
@@ -3269,6 +3295,50 @@ function renderReviewErrorTags(item) {
       <span>${escapeHtml(tag.label)}</span>
     </label>
   `).join('');
+}
+
+function renderReviewSelectOptions(options, selectedValue) {
+  return options.map(item => `<option value="${escapeHtml(item.value)}" ${item.value === (selectedValue || '') ? 'selected' : ''}>${escapeHtml(item.label)}</option>`).join('');
+}
+
+async function refreshReviewFeedback() {
+  state.reviewFeedback = await api('/api/feedback/dimensions');
+  renderReviewFeedbackSummary();
+}
+
+function renderReviewFeedbackSummary() {
+  const data = state.reviewFeedback || {total_reviews: 0, dimension_pools: [], upgrade_candidates: []};
+  if (!$('reviewFeedbackMeta')) return;
+  $('reviewFeedbackMeta').textContent = data.total_reviews
+    ? `${data.total_reviews} 条审查 · ${data.dimension_count || 0} 个维度 · ${data.upgrade_candidates?.length || 0} 个升级候选`
+    : '暂无反馈聚合';
+  const pools = (data.dimension_pools || []).slice(0, 4);
+  $('reviewFeedbackPools').innerHTML = pools.map(pool => {
+    const metrics = pool.feedback_pool.metrics || {};
+    const tags = Object.entries(pool.feedback_pool.common_error_tags || {}).slice(0, 4);
+    const candidates = (pool.feedback_pool.upgrade_candidates || []).slice(0, 2);
+    return `<article class="feedback-pool-card">
+      <header>
+        <div>
+          <b>${escapeHtml(pool.dimension_name || pool.dimension_id)}</b>
+          <span>${escapeHtml(pool.dimension_id)} · ${pool.feedback_pool.total_reviews} 条反馈</span>
+        </div>
+        <strong>${Math.round((metrics.confirm_rate || 0) * 100)}%</strong>
+      </header>
+      <div class="feedback-metric-grid">
+        <span>修改 ${Math.round((metrics.revise_rate || 0) * 100)}%</span>
+        <span>驳回 ${Math.round((metrics.reject_rate || 0) * 100)}%</span>
+        <span>证据 ${Math.round((metrics.evidence_issue_rate || 0) * 100)}%</span>
+        <span>推断 ${Math.round((metrics.over_inference_rate || 0) * 100)}%</span>
+      </div>
+      <div class="feedback-tag-row">
+        ${tags.map(([tag, count]) => `<span>${escapeHtml(tag)} <b>${count}</b></span>`).join('') || '<span>暂无高频错误</span>'}
+      </div>
+      ${candidates.length ? `<div class="feedback-upgrade-list">
+        ${candidates.map(item => `<p><b>${escapeHtml(item.target_level)}</b> ${escapeHtml(item.title)}</p>`).join('')}
+      </div>` : ''}
+    </article>`;
+  }).join('') || '<p class="muted">完成审查后，这里会显示维度级反馈池和模板升级候选。</p>';
 }
 
 function renderReviewItems() {
@@ -3330,6 +3400,16 @@ function renderReviewItems() {
                 <div class="review-error-tags">
                   ${renderReviewErrorTags(item)}
                 </div>
+              </div>
+              <div class="review-attribution-grid">
+                <label class="review-field">
+                  <span>根因归属</span>
+                  <select id="root_${item.id}" class="review-input">${renderReviewSelectOptions(REVIEW_ROOT_CAUSES, item.review_root_cause)}</select>
+                </label>
+                <label class="review-field">
+                  <span>建议升级位置</span>
+                  <select id="target_${item.id}" class="review-input">${renderReviewSelectOptions(REVIEW_SUGGESTED_TARGETS, item.review_suggested_target)}</select>
+                </label>
               </div>
             </section>
             <h4>证据</h4>
@@ -3420,7 +3500,9 @@ window.reviewItem = async function(runId, itemId, status) {
     edited_title: $(`title_${itemId}`).value,
     edited_content: $(`content_${itemId}`).value,
     user_note: $(`note_${itemId}`).value,
-    tags: [...document.querySelectorAll(`.reviewErrorTag[data-item-id="${CSS.escape(itemId)}"]:checked`)].map(x => x.value)
+    tags: [...document.querySelectorAll(`.reviewErrorTag[data-item-id="${CSS.escape(itemId)}"]:checked`)].map(x => x.value),
+    root_cause: $(`root_${itemId}`).value || null,
+    suggested_target: $(`target_${itemId}`).value || null,
   };
   await api(`/api/extractions/${runId}/items/${itemId}/review`, {
     method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
@@ -3603,6 +3685,7 @@ async function bindEvents() {
     state.reviewItemIndex = 0;
     renderReviewItems();
   };
+  $('refreshReviewFeedbackBtn').onclick = () => refreshReviewFeedback().catch(err => toast(err.message));
   $('uploadBtn').onclick = async () => {
     const file = $('paperFile').files[0];
     if (!file) return toast('请选择文件');

@@ -502,6 +502,16 @@
         <h2>人机协同审查</h2>
         <label>选择抽取结果</label>
         <select id="reviewRunSelect"></select>
+        <div class="review-feedback-overview">
+          <div class="review-feedback-overview-heading">
+            <div>
+              <b>维度反馈池</b>
+              <span id="reviewFeedbackMeta" class="meta">暂无反馈聚合</span>
+            </div>
+            <button id="refreshReviewFeedbackBtn" type="button">刷新聚合</button>
+          </div>
+          <div id="reviewFeedbackPools" class="review-feedback-pools"></div>
+        </div>
         <div id="reviewItems" class="review-list"></div>
       </div>
     </section>
