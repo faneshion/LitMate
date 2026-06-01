@@ -644,6 +644,7 @@ def review_item(run_id: str, item_id: str, req: ReviewUpdateRequest) -> Extracti
             item.review_root_cause = req.root_cause
             item.review_suggested_target = req.suggested_target
             item.updated_at = now_iso()
+            prompt_id = prompt.id if prompt else ((template.active_prompt_id or "") if template else "")
             review_store.append(ReviewRecord(
                 paper_id=run.paper_id,
                 profile_id=template.id if template else run.template_id,
@@ -652,7 +653,7 @@ def review_item(run_id: str, item_id: str, req: ReviewUpdateRequest) -> Extracti
                 dimension_name=item.dimension_label,
                 extraction_id=run.id,
                 result_id=item.id,
-                prompt_id=prompt.id if prompt else (template.active_prompt_id if template else ""),
+                prompt_id=prompt_id,
                 prompt_version=prompt.version if prompt else "",
                 model_name=run.model,
                 review_action=req.status,

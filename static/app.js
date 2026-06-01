@@ -35,6 +35,7 @@ const state = {
   reviewDraftContent: '',
   reviewDraftNote: '',
   reviewExpandedEvidence: {},
+  reviewSaving: false,
   reviewScrollTimer: null
 };
 const PAPER_PAGE_SIZE = 6;
@@ -3585,6 +3586,7 @@ function renderReviewMain(entry) {
     return;
   }
   const item = entry.item;
+  const savingAttr = state.reviewSaving ? 'disabled aria-busy="true"' : '';
   const question = reviewDimensionQuestion(entry);
   const qualityHint = reviewQualityHint(entry);
   const modelInferred = itemModelInferred(item);
@@ -3623,12 +3625,12 @@ function renderReviewMain(entry) {
 
     <section class="review-action-zone">
       <nav class="review-primary-actions" aria-label="审查操作">
-        <button type="button" class="primary good ${item.review_status === 'confirm' ? 'active' : ''}" onclick="saveCurrentReview('confirm')">确认正确</button>
-        <button type="button" class="${state.reviewActionMode === 'revise' ? 'active' : ''}" onclick="openReviewMode('revise')">修改</button>
-        <button type="button" class="danger ${state.reviewActionMode === 'reject' || item.review_status === 'reject' ? 'active' : ''}" onclick="openReviewMode('reject')">驳回</button>
-        <button type="button" class="warn ${state.reviewActionMode === 'evidence' || item.review_status === 'mark_evidence_insufficient' ? 'active' : ''}" onclick="openReviewMode('evidence')">证据不足</button>
-        <button type="button" class="${state.reviewActionMode === 'not_reported' || item.review_status === 'mark_not_reported' ? 'active' : ''}" onclick="openReviewMode('not_reported')">应为未报告</button>
-        <button type="button" class="ghost" onclick="skipReviewItem()">跳过</button>
+        <button type="button" class="primary good ${item.review_status === 'confirm' ? 'active' : ''}" onclick="saveCurrentReview('confirm')" ${savingAttr}>${state.reviewSaving ? '保存中...' : '确认正确'}</button>
+        <button type="button" class="${state.reviewActionMode === 'revise' ? 'active' : ''}" onclick="openReviewMode('revise')" ${savingAttr}>修改</button>
+        <button type="button" class="danger ${state.reviewActionMode === 'reject' || item.review_status === 'reject' ? 'active' : ''}" onclick="openReviewMode('reject')" ${savingAttr}>驳回</button>
+        <button type="button" class="warn ${state.reviewActionMode === 'evidence' || item.review_status === 'mark_evidence_insufficient' ? 'active' : ''}" onclick="openReviewMode('evidence')" ${savingAttr}>证据不足</button>
+        <button type="button" class="${state.reviewActionMode === 'not_reported' || item.review_status === 'mark_not_reported' ? 'active' : ''}" onclick="openReviewMode('not_reported')" ${savingAttr}>应为未报告</button>
+        <button type="button" class="ghost" onclick="skipReviewItem()" ${savingAttr}>跳过</button>
       </nav>
       ${renderReviewSecondaryPanel(entry)}
     </section>
@@ -3641,10 +3643,11 @@ function reviewTagButton(value, label) {
 }
 
 function renderReviewPanelActions(confirmLabel, status) {
+  const savingAttr = state.reviewSaving ? 'disabled aria-busy="true"' : '';
   return `
     <div class="review-panel-actions">
-      <button type="button" onclick="closeReviewMode()">取消</button>
-      <button type="button" class="primary" title="${escapeHtml(confirmLabel)}" onclick="saveCurrentReview('${escapeHtml(status)}')">提交</button>
+      <button type="button" onclick="closeReviewMode()" ${savingAttr}>取消</button>
+      <button type="button" class="primary" title="${escapeHtml(confirmLabel)}" onclick="saveCurrentReview('${escapeHtml(status)}')" ${savingAttr}>${state.reviewSaving ? '提交中...' : '提交'}</button>
     </div>
   `;
 }
@@ -3694,6 +3697,7 @@ function renderReviewSecondaryPanel(entry) {
     `;
   }
   if (state.reviewActionMode === 'evidence') {
+    const savingAttr = state.reviewSaving ? 'disabled aria-busy="true"' : '';
     const tags = [
       ['evidence_missing', '缺少证据'],
       ['evidence_not_support_answer', '证据不支持答案'],
@@ -3708,9 +3712,9 @@ function renderReviewSecondaryPanel(entry) {
         <div class="review-panel-tags">${tags.map(([value, label]) => reviewTagButton(value, label)).join('')}</div>
         <textarea id="reviewModeNote" class="review-textarea review-note-editor" rows="2" placeholder="补充说明，可选">${escapeHtml(state.reviewDraftNote)}</textarea>
         <div class="review-panel-actions">
-          <button type="button" onclick="saveCurrentReview('pending')">仅记录证据问题</button>
-          <button type="button" onclick="closeReviewMode()">取消</button>
-          <button type="button" class="primary" title="确认标记证据不足" onclick="saveCurrentReview('mark_evidence_insufficient')">提交</button>
+          <button type="button" onclick="saveCurrentReview('pending')" ${savingAttr}>仅记录证据问题</button>
+          <button type="button" onclick="closeReviewMode()" ${savingAttr}>取消</button>
+          <button type="button" class="primary" title="确认标记证据不足" onclick="saveCurrentReview('mark_evidence_insufficient')" ${savingAttr}>${state.reviewSaving ? '提交中...' : '提交'}</button>
         </div>
       </section>
     `;
@@ -3960,6 +3964,7 @@ function reviewEditedContentForStatus(entry, status) {
 }
 
 window.saveCurrentReview = async function(status) {
+  if (state.reviewSaving) return;
   const entry = currentReviewEntry();
   if (!entry) return;
   const tags = state.reviewActionMode ? state.reviewActionTags : [];
@@ -3974,18 +3979,33 @@ window.saveCurrentReview = async function(status) {
     root_cause: inferReviewRootCause(status, tags),
     suggested_target: inferReviewTarget(status, tags),
   };
-  await api(`/api/extractions/${entry.run.id}/items/${entry.item.id}/review`, {
-    method: 'PUT',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify(payload),
-  });
-  toast(status === 'confirm' ? '已确认，进入下一条' : '审查反馈已保存，并同步到反馈池');
-  const previousRunId = state.reviewRunId;
-  resetReviewActionMode();
-  await refreshAll();
-  state.reviewRunId = previousRunId;
-  if ($('reviewRunSelect')) $('reviewRunSelect').value = previousRunId;
-  renderReviewWorkbench();
+  state.reviewSaving = true;
+  renderReviewMain(entry);
+  toast('正在保存审查结果...');
+  try {
+    const updatedRun = await api(`/api/extractions/${entry.run.id}/items/${entry.item.id}/review`, {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload),
+    });
+    state.runs = state.runs.map(run => run.id === updatedRun.id ? updatedRun : run);
+    try {
+      state.reviewFeedback = await api('/api/feedback/dimensions');
+    } catch (_) {}
+    resetReviewActionMode();
+    state.reviewSaving = false;
+    renderReviewPanel();
+    const total = updatedRun.items.length;
+    const done = updatedRun.items.filter(item => (item.review_status || 'pending') !== 'pending').length;
+    const message = status === 'pending'
+      ? `已记录证据问题，当前条目仍待审查。进度 ${done}/${total}`
+      : `审查已保存，进度 ${done}/${total}`;
+    toast(message);
+  } catch (err) {
+    state.reviewSaving = false;
+    renderReviewMain(currentReviewEntry());
+    toast(`保存失败：${err.message}`);
+  }
 };
 
 window.reviewItem = async function(runId, itemId, status) {
