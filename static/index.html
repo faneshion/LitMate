@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Literature Research Assistant V2</title>
-  <link rel="stylesheet" href="/styles.css?v=dimension-feedback-20260601" />
+  <link rel="stylesheet" href="/styles.css?v=paper-sets-20260601" />
 </head>
 <body>
   <header class="topbar">
@@ -83,10 +83,25 @@
         </aside>
 
         <section class="card paper-library-card">
-          <div class="card-heading">
-            <h2>论文列表</h2>
-            <span id="paperCount" class="meta"></span>
+          <div class="card-heading paper-library-heading">
+            <div>
+              <h2 id="paperLibraryTitle">论文集</h2>
+              <p id="paperLibrarySubtitle" class="meta"></p>
+            </div>
+            <div class="paper-library-actions">
+              <span id="paperCount" class="meta"></span>
+              <button id="backToPaperSetsBtn" type="button" hidden>返回论文集</button>
+              <button id="createPaperSetBtn" type="button">新建论文集</button>
+              <button id="managePaperSetBtn" type="button" hidden>管理论文</button>
+            </div>
           </div>
+          <div id="paperSetCreatePanel" class="paper-set-create-panel" hidden>
+            <input id="paperSetNameInput" placeholder="论文集名称" />
+            <input id="paperSetDetailInput" placeholder="详情，例如研究主题、筛选条件或用途" />
+            <button id="confirmCreatePaperSetBtn" type="button">创建</button>
+            <button id="cancelCreatePaperSetBtn" type="button">取消</button>
+          </div>
+          <div id="paperSetManagePanel" class="paper-set-manage-panel" hidden></div>
           <div id="paperList" class="paper-table"></div>
           <div id="paperPagination" class="pagination"></div>
         </section>
@@ -869,6 +884,6 @@
   </div>
 
   <div id="toast" class="toast"></div>
-  <script src="/app.js?v=dimension-feedback-20260601"></script>
+  <script src="/app.js?v=paper-sets-20260601"></script>
 </body>
 </html>

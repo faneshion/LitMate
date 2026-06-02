@@ -1,5 +1,6 @@
 const state = {
   papers: [],
+  paperSets: [],
   templates: [],
   runs: [],
   materials: [],
@@ -11,6 +12,10 @@ const state = {
   paperJobs: [],
   paperOps: {},
   paperPage: 1,
+  paperSetView: 'sets',
+  selectedPaperSetId: null,
+  paperSetCreateOpen: false,
+  paperSetManageOpen: false,
   selectedPaperId: null,
   objectPromptDirty: false,
   selectedPromptProfileId: null,
@@ -131,8 +136,8 @@ function linkButton(href, label) {
 }
 
 async function refreshAll() {
-  [state.papers, state.templates, state.runs, state.materials, state.reviewFeedback] = await Promise.all([
-    api('/api/papers'), api('/api/templates'), api('/api/extractions'), api('/api/materials'), api('/api/feedback/dimensions')
+  [state.papers, state.paperSets, state.templates, state.runs, state.materials, state.reviewFeedback] = await Promise.all([
+    api('/api/papers'), api('/api/paper-sets'), api('/api/templates'), api('/api/extractions'), api('/api/materials'), api('/api/feedback/dimensions')
   ]);
   renderPapers(); renderObjectConfigPanel(); renderExtractionPanel(); renderReviewPanel(); renderMaterialsPanel();
 }
@@ -2817,92 +2822,243 @@ async function runArxivBatchImport(values) {
   }
 }
 
-function renderPapers() {
+function latestPaperTime() {
+  const times = state.papers
+    .map(paper => paper.updated_at || paper.created_at)
+    .filter(Boolean)
+    .sort();
+  return times[times.length - 1] || '';
+}
+
+function assignedPaperIds() {
+  return new Set((state.paperSets || []).flatMap(item => item.paper_ids || []));
+}
+
+function paperSetPapers(paperSet) {
+  if (!paperSet) return [];
+  if (paperSet.id === '__all__') return state.papers;
+  if (paperSet.id === '__uncategorized__') {
+    const assigned = assignedPaperIds();
+    return state.papers.filter(paper => !assigned.has(paper.id));
+  }
+  const ids = new Set(paperSet.paper_ids || []);
+  return state.papers.filter(paper => ids.has(paper.id));
+}
+
+function paperSetCards() {
+  const ungrouped = paperSetPapers({id: '__uncategorized__'});
+  return [
+    {
+      id: '__all__',
+      name: '全部论文',
+      detail: '系统自动汇总当前论文库中的所有论文。',
+      paper_ids: state.papers.map(paper => paper.id),
+      updated_at: latestPaperTime(),
+      virtual: true,
+    },
+    ...(state.paperSets || []).map(item => ({...item, virtual: false})),
+    {
+      id: '__uncategorized__',
+      name: '未归集论文',
+      detail: '尚未加入自定义论文集的论文。',
+      paper_ids: ungrouped.map(paper => paper.id),
+      updated_at: latestPaperTime(),
+      virtual: true,
+    },
+  ];
+}
+
+function currentPaperSet() {
+  const cards = paperSetCards();
+  if (state.paperSetView === 'papers' && state.selectedPaperSetId) {
+    return cards.find(item => item.id === state.selectedPaperSetId) || null;
+  }
+  return cards.find(item => item.id === state.selectedPaperSetId) || cards[0];
+}
+
+function renderPaperJobRow(job) {
+  const percent = Math.max(0, Math.min(100, Math.round(job.percent || 0)));
+  return `
+    <div class="paper-row pending-row">
+      <div class="paper-row-main">
+        <div class="paper-title-line">
+          <h3 class="paper-title" title="${escapeHtml(job.title)}">${escapeHtml(job.title)}</h3>
+          <span class="badge pending">解析中 ${percent}%</span>
+        </div>
+        <div class="meta">${escapeHtml(sourceLabel(job.source))} · ${escapeHtml(job.status || '解析中')} · 开始于 ${escapeHtml(job.startedAt)}</div>
+        <div class="paper-row-progress">
+          <div class="paper-row-progress-bar" style="width: ${percent}%"></div>
+        </div>
+      </div>
+      <div class="paper-actions">
+        <button disabled>查看详情</button>
+        <button disabled>导出 JSON</button>
+        <button disabled>删除</button>
+      </div>
+      <div class="paper-stats">
+        ${listStat('Status', '解析中')}
+        ${listStat('Progress', `${percent}%`)}
+      </div>
+    </div>
+  `;
+}
+
+function renderPaperRow(p) {
+  const status = paperStatus(p);
+  const parser = status.parser ? ` · parser ${status.parser}` : '';
+  const opProgress = status.op ? `
+    <div class="paper-row-progress">
+      <div class="paper-row-progress-bar" style="width: ${Math.max(0, Math.min(100, Math.round(status.op.percent || 0)))}%"></div>
+    </div>
+  ` : '';
+  return `
+    <div class="paper-row ${p.id === state.selectedPaperId ? 'active' : ''}" data-paper-id="${escapeHtml(p.id)}">
+      <div class="paper-row-main">
+        <div class="paper-title-line">
+          <h3 class="paper-title" title="${escapeHtml(p.metadata.title)}">${escapeHtml(p.metadata.title)}</h3>
+          <span class="badge ${status.className}">${status.label}</span>
+        </div>
+        <div class="paper-authors-line">${escapeHtml((p.metadata.authors || []).slice(0, 4).join(', ') || '作者未知')} ${p.metadata.year || ''}</div>
+        <div class="paper-meta-line"><span>来源：</span><b>${escapeHtml(sourceLabel(p.source))}${escapeHtml(parser)}</b></div>
+        <div class="paper-meta-line">
+          <span>导入：</span><b>${escapeHtml(fmtTime(p.created_at))}</b>
+          <span> · 解析：</span><b>${escapeHtml(fmtTime(p.updated_at))}</b>
+          <span> · 耗时：</span><b>${escapeHtml(fmtDuration(p.metadata?.extra?.parse_duration_seconds))}</b>
+        </div>
+        ${opProgress}
+      </div>
+      <div class="paper-actions">
+        <button onclick="openPaperDetail('${escapeHtml(p.id)}')">查看详情</button>
+        <button onclick="exportPaper('${escapeHtml(p.id)}')">导出 JSON</button>
+        <button onclick="deletePaper('${escapeHtml(p.id)}')">删除</button>
+      </div>
+      <div class="paper-stats">
+        ${listStat('Sections', p.sections.length)}
+        ${listStat('Chunks', p.chunks.length)}
+        ${listStat('Figures', p.figures.length)}
+        ${listStat('Refs', p.references.length)}
+      </div>
+    </div>
+  `;
+}
+
+function renderPaperSetCreatePanel() {
+  $('paperSetCreatePanel').hidden = !state.paperSetCreateOpen;
+}
+
+function renderPaperSetManagePanel(paperSet) {
+  const panel = $('paperSetManagePanel');
+  if (!state.paperSetManageOpen || !paperSet || paperSet.virtual) {
+    panel.hidden = true;
+    panel.innerHTML = '';
+    return;
+  }
+  const selected = new Set(paperSet.paper_ids || []);
+  panel.hidden = false;
+  panel.innerHTML = `
+    <div class="paper-set-manage-heading">
+      <div>
+        <b>管理集合论文</b>
+        <span>${escapeHtml(paperSet.name)} · ${selected.size} 篇已选</span>
+      </div>
+      <div class="paper-set-manage-actions">
+        <button type="button" onclick="savePaperSetMembership('${escapeHtml(paperSet.id)}')">保存</button>
+        <button type="button" onclick="closePaperSetManage()">取消</button>
+      </div>
+    </div>
+    <div class="paper-set-checks">
+      ${state.papers.map(paper => `
+        <label>
+          <input type="checkbox" class="paperSetManageCheck" value="${escapeHtml(paper.id)}" ${selected.has(paper.id) ? 'checked' : ''} />
+          <span>${escapeHtml(fmt(paper.metadata?.title || paper.id, 92))}</span>
+        </label>
+      `).join('') || '<p class="muted">暂无可加入的论文。</p>'}
+    </div>
+  `;
+}
+
+function renderPaperSetCards() {
   const list = $('paperList');
+  const cards = paperSetCards();
+  $('paperLibraryTitle').textContent = '论文集';
+  $('paperLibrarySubtitle').textContent = '按研究主题、项目或任务组织论文。';
+  $('paperCount').textContent = `${cards.length} 个集合 · ${state.papers.length} 篇论文`;
+  $('backToPaperSetsBtn').hidden = true;
+  $('createPaperSetBtn').hidden = false;
+  $('managePaperSetBtn').hidden = true;
+  $('paperSetManagePanel').hidden = true;
+  $('paperSetManagePanel').innerHTML = '';
+  renderPaperSetCreatePanel();
+  list.className = 'paper-set-grid';
+  list.innerHTML = cards.map(item => {
+    const papers = paperSetPapers(item);
+    const isVirtual = Boolean(item.virtual);
+    return `
+      <article class="paper-set-card ${isVirtual ? 'virtual' : ''}">
+        <div class="paper-set-card-main">
+          <div class="paper-set-folder" aria-hidden="true"><span></span></div>
+          <div>
+            <h3>${escapeHtml(item.name)}</h3>
+            <p>${escapeHtml(item.detail || '暂无详情。')}</p>
+          </div>
+        </div>
+        <div class="paper-set-meta-grid">
+          ${listStat('论文数', papers.length)}
+          ${listStat('更新时间', fmtTime(item.updated_at || item.created_at))}
+        </div>
+        <div class="paper-set-card-actions">
+          <button type="button" onclick="enterPaperSet('${escapeHtml(item.id)}')">详情</button>
+          ${isVirtual ? '' : `<button type="button" onclick="deletePaperSet('${escapeHtml(item.id)}')">删除</button>`}
+        </div>
+      </article>
+    `;
+  }).join('') || '<p class="muted">暂无论文集。</p>';
+  $('paperPagination').innerHTML = '';
+}
+
+function renderPaperSetDetail() {
+  const list = $('paperList');
+  const paperSet = currentPaperSet();
+  const papers = paperSetPapers(paperSet);
+  const includeJobs = paperSet.id === '__all__';
   const items = [
-    ...state.paperJobs.map(job => ({type: 'job', job})),
-    ...state.papers.map(paper => ({type: 'paper', paper}))
+    ...(includeJobs ? state.paperJobs.map(job => ({type: 'job', job})) : []),
+    ...papers.map(paper => ({type: 'paper', paper}))
   ];
   const total = items.length;
   const pageCount = Math.max(1, Math.ceil(total / PAPER_PAGE_SIZE));
   if (state.paperPage > pageCount) state.paperPage = pageCount;
   if (state.paperPage < 1) state.paperPage = 1;
 
-  $('paperCount').textContent = total ? `${state.papers.length} 篇论文` : '';
+  $('paperLibraryTitle').textContent = paperSet.name;
+  $('paperLibrarySubtitle').textContent = paperSet.detail || '暂无详情。';
+  $('paperCount').textContent = `${papers.length} 篇论文`;
+  $('backToPaperSetsBtn').hidden = false;
+  $('createPaperSetBtn').hidden = true;
+  $('managePaperSetBtn').hidden = Boolean(paperSet.virtual);
+  renderPaperSetCreatePanel();
+  renderPaperSetManagePanel(paperSet);
 
+  list.className = 'paper-table';
   const start = (state.paperPage - 1) * PAPER_PAGE_SIZE;
   const pageItems = items.slice(start, start + PAPER_PAGE_SIZE);
-  list.innerHTML = pageItems.map(item => {
-    if (item.type === 'job') {
-      const percent = Math.max(0, Math.min(100, Math.round(item.job.percent || 0)));
-      return `
-        <div class="paper-row pending-row">
-          <div class="paper-row-main">
-            <div class="paper-title-line">
-              <h3 class="paper-title" title="${escapeHtml(item.job.title)}">${escapeHtml(item.job.title)}</h3>
-              <span class="badge pending">解析中 ${percent}%</span>
-            </div>
-            <div class="meta">${escapeHtml(sourceLabel(item.job.source))} · ${escapeHtml(item.job.status || '解析中')} · 开始于 ${escapeHtml(item.job.startedAt)}</div>
-            <div class="paper-row-progress">
-              <div class="paper-row-progress-bar" style="width: ${percent}%"></div>
-            </div>
-          </div>
-          <div class="paper-actions">
-            <button disabled>查看详情</button>
-            <button disabled>导出 JSON</button>
-            <button disabled>删除</button>
-          </div>
-          <div class="paper-stats">
-            ${listStat('Status', '解析中')}
-            ${listStat('Progress', `${percent}%`)}
-          </div>
-        </div>
-      `;
-    }
-    const p = item.paper;
-    const status = paperStatus(p);
-    const parser = status.parser ? ` · parser ${status.parser}` : '';
-    const opProgress = status.op ? `
-      <div class="paper-row-progress">
-        <div class="paper-row-progress-bar" style="width: ${Math.max(0, Math.min(100, Math.round(status.op.percent || 0)))}%"></div>
-      </div>
-    ` : '';
-    return `
-      <div class="paper-row ${p.id === state.selectedPaperId ? 'active' : ''}" data-paper-id="${escapeHtml(p.id)}">
-        <div class="paper-row-main">
-          <div class="paper-title-line">
-            <h3 class="paper-title" title="${escapeHtml(p.metadata.title)}">${escapeHtml(p.metadata.title)}</h3>
-            <span class="badge ${status.className}">${status.label}</span>
-          </div>
-          <div class="paper-authors-line">${escapeHtml((p.metadata.authors || []).slice(0, 4).join(', ') || '作者未知')} ${p.metadata.year || ''}</div>
-          <div class="paper-meta-line"><span>来源：</span><b>${escapeHtml(sourceLabel(p.source))}${escapeHtml(parser)}</b></div>
-          <div class="paper-meta-line">
-            <span>导入：</span><b>${escapeHtml(fmtTime(p.created_at))}</b>
-            <span> · 解析：</span><b>${escapeHtml(fmtTime(p.updated_at))}</b>
-            <span> · 耗时：</span><b>${escapeHtml(fmtDuration(p.metadata?.extra?.parse_duration_seconds))}</b>
-          </div>
-          ${opProgress}
-        </div>
-        <div class="paper-actions">
-          <button onclick="openPaperDetail('${p.id}')">查看详情</button>
-          <button onclick="exportPaper('${p.id}')">导出 JSON</button>
-          <button onclick="deletePaper('${p.id}')">删除</button>
-        </div>
-        <div class="paper-stats">
-          ${listStat('Sections', p.sections.length)}
-          ${listStat('Chunks', p.chunks.length)}
-          ${listStat('Figures', p.figures.length)}
-          ${listStat('Refs', p.references.length)}
-        </div>
-      </div>
-    `;
-  }).join('') || '<p class="muted">暂无论文。</p>';
+  list.innerHTML = pageItems.map(item => item.type === 'job' ? renderPaperJobRow(item.job) : renderPaperRow(item.paper)).join('')
+    || '<p class="muted">这个论文集还没有论文。</p>';
 
   $('paperPagination').innerHTML = total > PAPER_PAGE_SIZE ? `
     <button ${state.paperPage === 1 ? 'disabled' : ''} onclick="goPaperPage(${state.paperPage - 1})">上一页</button>
     <span class="meta">第 ${state.paperPage} / ${pageCount} 页</span>
     <button ${state.paperPage === pageCount ? 'disabled' : ''} onclick="goPaperPage(${state.paperPage + 1})">下一页</button>
   ` : '';
+}
+
+function renderPapers() {
+  if (state.paperSetView === 'papers' && !currentPaperSet()) {
+    state.paperSetView = 'sets';
+    state.selectedPaperSetId = null;
+  }
+  if (state.paperSetView === 'sets') renderPaperSetCards();
+  else renderPaperSetDetail();
 
   if (state.selectedPaperId && !state.papers.some(p => p.id === state.selectedPaperId)) {
     state.selectedPaperId = null;
@@ -2913,6 +3069,88 @@ function renderPapers() {
 window.goPaperPage = function(page) {
   state.paperPage = page;
   renderPapers();
+};
+
+window.enterPaperSet = function(id) {
+  state.paperSetView = 'papers';
+  state.selectedPaperSetId = id;
+  state.paperPage = 1;
+  state.paperSetCreateOpen = false;
+  state.paperSetManageOpen = false;
+  renderPapers();
+};
+
+function backToPaperSets() {
+  state.paperSetView = 'sets';
+  state.selectedPaperSetId = null;
+  state.paperPage = 1;
+  state.paperSetManageOpen = false;
+  renderPapers();
+}
+
+function togglePaperSetCreate(open = !state.paperSetCreateOpen) {
+  state.paperSetCreateOpen = open;
+  if (!open) {
+    setValue('paperSetNameInput', '');
+    setValue('paperSetDetailInput', '');
+  }
+  renderPapers();
+}
+
+async function createPaperSet() {
+  const name = $('paperSetNameInput').value.trim();
+  const detail = $('paperSetDetailInput').value.trim();
+  if (!name) return toast('请先填写论文集名称');
+  const paperSet = await api('/api/paper-sets', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name, detail, paper_ids: []}),
+  });
+  state.paperSets.unshift(paperSet);
+  state.paperSetCreateOpen = false;
+  setValue('paperSetNameInput', '');
+  setValue('paperSetDetailInput', '');
+  toast('论文集已创建');
+  renderPapers();
+}
+
+function openPaperSetManage() {
+  const paperSet = currentPaperSet();
+  if (!paperSet || paperSet.virtual) return;
+  state.paperSetManageOpen = true;
+  renderPapers();
+}
+
+window.closePaperSetManage = function() {
+  state.paperSetManageOpen = false;
+  renderPapers();
+};
+
+window.savePaperSetMembership = async function(id) {
+  const paperSet = (state.paperSets || []).find(item => item.id === id);
+  if (!paperSet) return toast('未找到论文集');
+  const paperIds = [...document.querySelectorAll('.paperSetManageCheck:checked')].map(input => input.value);
+  const updated = await api(`/api/paper-sets/${id}`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name: paperSet.name, detail: paperSet.detail || '', paper_ids: paperIds}),
+  });
+  const index = state.paperSets.findIndex(item => item.id === id);
+  if (index >= 0) state.paperSets[index] = updated;
+  state.paperSetManageOpen = false;
+  toast('论文集已更新');
+  renderPapers();
+};
+
+window.deletePaperSet = async function(id) {
+  const paperSet = (state.paperSets || []).find(item => item.id === id);
+  if (!paperSet) return;
+  if (!confirm(`确定删除论文集「${paperSet.name}」吗？论文文件不会被删除。`)) return;
+  await api(`/api/paper-sets/${id}`, {method: 'DELETE'});
+  state.paperSets = state.paperSets.filter(item => item.id !== id);
+  if (state.selectedPaperSetId === id) backToPaperSets();
+  else renderPapers();
+  toast('论文集已删除');
 };
 
 function renderPaperDetail(p) {
@@ -4290,6 +4528,14 @@ async function bindEvents() {
   $('simulationRawJsonBtn').onclick = openSimulationRawModal;
   $('simulationRawClose').onclick = closeSimulationRawModal;
   $('extractionResultClose').onclick = closeExtractionResultModal;
+  $('backToPaperSetsBtn').onclick = backToPaperSets;
+  $('createPaperSetBtn').onclick = () => togglePaperSetCreate(true);
+  $('confirmCreatePaperSetBtn').onclick = () => createPaperSet().catch(err => toast(err.message));
+  $('cancelCreatePaperSetBtn').onclick = () => togglePaperSetCreate(false);
+  $('managePaperSetBtn').onclick = openPaperSetManage;
+  $('paperSetNameInput').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') createPaperSet().catch(err => toast(err.message));
+  });
   $('promptPickerToggle').onclick = togglePromptPicker;
   $('saveCurrentPromptBtn').onclick = saveCurrentPrompt;
   $('saveNewPromptBtn').onclick = saveNewPrompt;

@@ -32,6 +32,8 @@ from .models import (
     ManualPaperRequest,
     MaterialItem,
     Paper,
+    PaperSet,
+    PaperSetRequest,
     ReviewRecord,
     ReviewStatus,
     ReviewUpdateRequest,
@@ -52,6 +54,7 @@ app.add_middleware(
 )
 
 paper_store = JSONLStore(settings.data_dir / "papers.jsonl", Paper)
+paper_set_store = JSONLStore(settings.data_dir / "paper_sets.jsonl", PaperSet)
 template_store = JSONLStore(settings.data_dir / "templates.jsonl", ExtractionTemplate)
 run_store = JSONLStore(settings.data_dir / "extraction_runs.jsonl", ExtractionRun)
 material_store = JSONLStore(settings.data_dir / "materials.jsonl", MaterialItem)
@@ -454,6 +457,65 @@ def list_papers() -> List[Paper]:
     return sorted(paper_store.list(), key=lambda p: p.updated_at or p.created_at, reverse=True)
 
 
+def _valid_unique_paper_ids(paper_ids: List[str]) -> List[str]:
+    valid_ids = {paper.id for paper in paper_store.list()}
+    cleaned: List[str] = []
+    for paper_id in paper_ids:
+        if paper_id in valid_ids and paper_id not in cleaned:
+            cleaned.append(paper_id)
+    return cleaned
+
+
+@app.get("/api/paper-sets", response_model=List[PaperSet])
+def list_paper_sets() -> List[PaperSet]:
+    sets: List[PaperSet] = []
+    for item in paper_set_store.list():
+        cleaned_ids = _valid_unique_paper_ids(item.paper_ids)
+        if cleaned_ids != item.paper_ids:
+            item.paper_ids = cleaned_ids
+            item.updated_at = now_iso()
+            paper_set_store.upsert(item)
+        sets.append(item)
+    return sorted(sets, key=lambda item: item.updated_at or item.created_at, reverse=True)
+
+
+@app.post("/api/paper-sets", response_model=PaperSet)
+def create_paper_set(req: PaperSetRequest) -> PaperSet:
+    name = req.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="论文集名称不能为空。")
+    paper_set = PaperSet(
+        name=name,
+        detail=req.detail.strip(),
+        paper_ids=_valid_unique_paper_ids(req.paper_ids),
+    )
+    paper_set_store.append(paper_set)
+    return paper_set
+
+
+@app.put("/api/paper-sets/{paper_set_id}", response_model=PaperSet)
+def update_paper_set(paper_set_id: str, req: PaperSetRequest) -> PaperSet:
+    paper_set = paper_set_store.get(paper_set_id)
+    if not paper_set:
+        raise HTTPException(status_code=404, detail="Paper set not found")
+    name = req.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="论文集名称不能为空。")
+    paper_set.name = name
+    paper_set.detail = req.detail.strip()
+    paper_set.paper_ids = _valid_unique_paper_ids(req.paper_ids)
+    paper_set.updated_at = now_iso()
+    paper_set_store.upsert(paper_set)
+    return paper_set
+
+
+@app.delete("/api/paper-sets/{paper_set_id}")
+def delete_paper_set(paper_set_id: str) -> dict:
+    if not paper_set_store.delete(paper_set_id):
+        raise HTTPException(status_code=404, detail="Paper set not found")
+    return {"ok": True, "deleted": paper_set_id}
+
+
 @app.get("/api/papers/{paper_id}", response_model=Paper)
 def get_paper(paper_id: str) -> Paper:
     paper = paper_store.get(paper_id)
@@ -529,6 +591,11 @@ def delete_paper(paper_id: str) -> dict:
     run_store.replace_all([r for r in run_store.list() if r.paper_id != paper_id])
     material_store.replace_all([m for m in material_store.list() if m.paper_id != paper_id])
     note_store.replace_all([n for n in note_store.list() if n.paper_id != paper_id])
+    for paper_set in paper_set_store.list():
+        if paper_id in paper_set.paper_ids:
+            paper_set.paper_ids = [item for item in paper_set.paper_ids if item != paper_id]
+            paper_set.updated_at = now_iso()
+            paper_set_store.upsert(paper_set)
     _delete_paper_artifacts(paper)
     return {"ok": True, "deleted": paper_id}
 

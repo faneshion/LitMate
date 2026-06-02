@@ -94,6 +94,173 @@ main { padding: 24px 32px 60px; }
   flex-direction: column;
   overflow: hidden;
 }
+.paper-library-heading {
+  align-items: flex-start;
+}
+.paper-library-heading p {
+  margin: 4px 0 0;
+}
+.paper-library-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.paper-library-actions button {
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.paper-set-create-panel,
+.paper-set-manage-panel {
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f9fafb;
+}
+.paper-set-create-panel {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.8fr) minmax(220px, 1.3fr) auto auto;
+  gap: 8px;
+  align-items: center;
+}
+.paper-set-create-panel button {
+  min-height: 38px;
+  padding: 7px 12px;
+}
+.paper-set-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  align-content: start;
+  padding-right: 4px;
+}
+.paper-set-card {
+  display: grid;
+  gap: 14px;
+  min-height: 190px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(17, 24, 39, 0.04);
+}
+.paper-set-card:hover {
+  border-color: #2563eb;
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.11);
+}
+.paper-set-card.virtual {
+  background: #f8fafc;
+}
+.paper-set-card-main {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+.paper-set-folder {
+  position: relative;
+  width: 44px;
+  height: 34px;
+  margin-top: 2px;
+  border: 1px solid #bfdbfe;
+  border-radius: 5px 8px 8px 8px;
+  background: #dbeafe;
+}
+.paper-set-folder span {
+  position: absolute;
+  left: 5px;
+  top: -7px;
+  width: 18px;
+  height: 8px;
+  border: 1px solid #bfdbfe;
+  border-bottom: 0;
+  border-radius: 5px 5px 0 0;
+  background: #dbeafe;
+}
+.paper-set-card h3 {
+  margin: 0 0 6px;
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 16px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.paper-set-card p {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.paper-set-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.paper-set-card-actions,
+.paper-set-manage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.paper-set-card-actions button,
+.paper-set-manage-actions button {
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.paper-set-manage-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.paper-set-manage-heading b,
+.paper-set-manage-heading span {
+  display: block;
+}
+.paper-set-manage-heading span {
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 12px;
+}
+.paper-set-checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+}
+.paper-set-checks label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  font-size: 13px;
+}
+.paper-set-checks input {
+  width: auto;
+}
+.paper-set-checks span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .paper-sidebar .card { margin-bottom: 0; }
 .paper-detail-card {
   min-height: calc(100vh - 190px);
@@ -3404,6 +3571,19 @@ body.modal-open { overflow: hidden; }
   }
   .paper-library-card {
     min-height: 0;
+  }
+  .paper-library-heading,
+  .paper-set-manage-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .paper-library-actions,
+  .paper-set-manage-actions {
+    justify-content: flex-start;
+  }
+  .paper-set-create-panel,
+  .paper-set-checks {
+    grid-template-columns: 1fr;
   }
   .paper-row {
     grid-template-columns: minmax(0, 1fr) minmax(260px, 300px) minmax(220px, 260px);
