@@ -3005,6 +3005,14 @@ button:disabled:hover {
   font-size: 12px;
   font-weight: 750;
 }
+.review-selector-stack {
+  display: grid;
+  gap: 8px;
+}
+.review-selector-stack label {
+  display: grid;
+  gap: 5px;
+}
 .review-sidebar select,
 .review-sidebar input {
   min-height: 34px;

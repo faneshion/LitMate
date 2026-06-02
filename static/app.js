@@ -4212,16 +4212,90 @@ const REVIEW_SUGGESTED_TARGETS = [
   {value: 'object_definition.observation_signals', label: '对象观察信号'},
 ];
 
+function reviewableRunItems(run) {
+  return (run?.items || []).filter(item => item && (
+    item.dimension_name ||
+    item.dimension_label ||
+    item.title ||
+    item.content ||
+    item.edited_content ||
+    item.normalized_value
+  ));
+}
+
+function reviewableRuns() {
+  return [...(state.runs || [])]
+    .filter(run => reviewableRunItems(run).length > 0)
+    .sort((a, b) => {
+      const timeA = Date.parse(a.created_at || a.updated_at || '') || 0;
+      const timeB = Date.parse(b.created_at || b.updated_at || '') || 0;
+      return (timeB - timeA) || String(b.id || '').localeCompare(String(a.id || ''));
+    });
+}
+
+function selectReviewRunForSelection(templateId, paperId = '') {
+  const runs = reviewableRuns();
+  if (!runs.length) return null;
+  const templateRuns = templateId ? runs.filter(run => run.template_id === templateId) : runs;
+  const scopedRuns = templateRuns.length ? templateRuns : runs;
+  if (paperId) {
+    const paperRun = scopedRuns.find(run => run.paper_id === paperId);
+    if (paperRun) return paperRun;
+  }
+  return scopedRuns[0] || null;
+}
+
 function renderReviewPanel() {
-  const selectedRunId = state.reviewRunId || $('reviewRunSelect')?.value;
-  $('reviewRunSelect').innerHTML = state.runs.map(r => {
-    const p = state.papers.find(x => x.id === r.paper_id);
-    const t = state.templates.find(x => x.id === r.template_id);
-    return `<option value="${escapeHtml(r.id)}">${escapeHtml(fmt(t?.name || r.template_id, 28))} · ${escapeHtml(fmt(p?.metadata.title || r.paper_id, 52))}</option>`;
-  }).join('');
-  const validRun = state.runs.find(r => r.id === selectedRunId) || state.runs[0];
+  const runs = reviewableRuns();
+  const templateSelect = $('reviewTemplateSelect');
+  const paperSelect = $('reviewPaperSelect');
+
+  if (!runs.length) {
+    state.reviewRunId = null;
+    if (templateSelect) {
+      templateSelect.innerHTML = '<option value="">暂无可审查对象</option>';
+      templateSelect.disabled = true;
+    }
+    if (paperSelect) {
+      paperSelect.innerHTML = '<option value="">暂无可审查论文</option>';
+      paperSelect.disabled = true;
+    }
+    renderReviewFilters();
+    renderReviewWorkbench();
+    return;
+  }
+
+  let validRun = runs.find(run => run.id === state.reviewRunId) || runs[0];
+  const templateIds = uniqueIds(runs.map(run => run.template_id));
+  if (templateSelect) {
+    templateSelect.disabled = false;
+    templateSelect.innerHTML = templateIds.map(templateId => {
+      const template = state.templates.find(item => item.id === templateId);
+      const label = template?.name || templateId;
+      return `<option value="${escapeHtml(templateId)}" title="${escapeHtml(label)}">${escapeHtml(fmt(label, 22))}</option>`;
+    }).join('');
+    templateSelect.value = validRun.template_id;
+  }
+
+  const templateRuns = runs.filter(run => run.template_id === validRun.template_id);
+  const paperRunMap = new Map();
+  templateRuns.forEach(run => {
+    if (!paperRunMap.has(run.paper_id)) paperRunMap.set(run.paper_id, run);
+  });
+  const paperRuns = [...paperRunMap.values()];
+  if (!paperRuns.some(run => run.paper_id === validRun.paper_id)) validRun = paperRuns[0] || validRun;
   state.reviewRunId = validRun?.id || null;
-  if (validRun) $('reviewRunSelect').value = validRun.id;
+
+  if (paperSelect) {
+    paperSelect.disabled = false;
+    paperSelect.innerHTML = paperRuns.map(run => {
+      const paper = state.papers.find(item => item.id === run.paper_id);
+      const label = paper?.metadata?.title || run.paper_id;
+      return `<option value="${escapeHtml(run.paper_id)}" title="${escapeHtml(label)}">${escapeHtml(fmt(label, 34))}</option>`;
+    }).join('');
+    paperSelect.value = validRun?.paper_id || '';
+  }
+
   renderReviewFilters();
   renderReviewWorkbench();
 }
@@ -4307,7 +4381,8 @@ function reviewQualityHint(entry) {
 }
 
 function reviewRun() {
-  return state.runs.find(r => r.id === state.reviewRunId) || state.runs[0];
+  const runs = reviewableRuns();
+  return runs.find(r => r.id === state.reviewRunId) || runs[0];
 }
 
 function reviewTemplate(run = reviewRun()) {
@@ -4342,7 +4417,7 @@ function reviewQueueItems() {
   if (!run) return [];
   const paper = reviewPaper(run);
   const template = reviewTemplate(run);
-  return (run.items || []).map((item, index) => ({run, paper, template, item, index, risk: reviewRisk({item})}));
+  return reviewableRunItems(run).map((item, index) => ({run, paper, template, item, index, risk: reviewRisk({item})}));
 }
 
 function filteredReviewEntries() {
@@ -4416,7 +4491,7 @@ function reviewDimensionDefinition(entry) {
 
 function renderReviewFilters() {
   const run = reviewRun();
-  const dimensions = [...new Map((run?.items || []).map(item => [item.dimension_name, item.dimension_label || item.dimension_name])).entries()];
+  const dimensions = [...new Map(reviewableRunItems(run).map(item => [item.dimension_name, item.dimension_label || item.dimension_name])).entries()];
   $('reviewDimensionFilter').innerHTML = '<option value="all">全部维度</option>' + dimensions.map(([id, label]) => `<option value="${escapeHtml(id)}">${escapeHtml(label)}</option>`).join('');
   const dimensionValue = dimensions.some(([id]) => id === state.reviewFilters.dimension) ? state.reviewFilters.dimension : 'all';
   state.reviewFilters.dimension = dimensionValue;
@@ -5409,8 +5484,16 @@ async function bindEvents() {
     document.querySelectorAll('.extractPaperCheck').forEach(input => input.checked = false);
     state.extractDraftPaperIds = [];
   };
-  $('reviewRunSelect').onchange = () => {
-    state.reviewRunId = $('reviewRunSelect').value || null;
+  $('reviewTemplateSelect').onchange = () => {
+    const run = selectReviewRunForSelection($('reviewTemplateSelect').value || '');
+    state.reviewRunId = run?.id || null;
+    state.reviewItemIndex = 0;
+    resetReviewActionMode();
+    renderReviewPanel();
+  };
+  $('reviewPaperSelect').onchange = () => {
+    const run = selectReviewRunForSelection($('reviewTemplateSelect').value || '', $('reviewPaperSelect').value || '');
+    state.reviewRunId = run?.id || null;
     state.reviewItemIndex = 0;
     resetReviewActionMode();
     renderReviewPanel();
