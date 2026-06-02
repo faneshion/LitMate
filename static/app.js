@@ -1343,6 +1343,7 @@ function renderCurrentDimensionForm() {
     setValue('dimQuestion', '');
     setValue('dimOutputType', 'list');
     setValue('dimKeywords', '');
+    renderCurrentDimensionFeedback();
     return;
   }
   setValue('dimId', dim.dimension_id);
@@ -1354,6 +1355,7 @@ function renderCurrentDimensionForm() {
   setChecked('dimRequired', dim.required);
   setChecked('dimRequiredEvidence', dim.requires_evidence);
   setChecked('dimAllowInference', dim.allow_inference);
+  renderCurrentDimensionFeedback();
 }
 
 function saveCurrentDimensionForm() {
@@ -1368,6 +1370,168 @@ function saveCurrentDimensionForm() {
   dim.required = $('dimRequired').checked;
   dim.requires_evidence = $('dimRequiredEvidence').checked;
   dim.allow_inference = $('dimAllowInference').checked;
+}
+
+function feedbackPercent(value) {
+  const n = Number(value);
+  return `${Math.round((Number.isFinite(n) ? n : 0) * 100)}%`;
+}
+
+function feedbackCountEntries(obj, limit = 6) {
+  return Object.entries(obj || {})
+    .filter(([key, count]) => key && Number(count) > 0)
+    .sort((a, b) => Number(b[1]) - Number(a[1]))
+    .slice(0, limit);
+}
+
+function feedbackLookupLabel(value, options) {
+  const item = (options || []).find(option => option.value === value);
+  return item?.label || value || '';
+}
+
+function feedbackTargetLevelLabel(value) {
+  return ({
+    dimension: '维度',
+    prompt: 'Prompt',
+    object_definition: '对象定义',
+    result: '结果',
+  })[value] || value || '模板';
+}
+
+function findCurrentDimensionFeedbackPool(dim = currentObjectDimension()) {
+  if (!dim) return null;
+  const profile = state.objectConfig?.object_definition || {};
+  const profileId = profile.profile_id || '';
+  const version = profile.version || '';
+  const dimensionKeys = new Set([dim.dimension_id, dim.name].filter(Boolean));
+  const pools = (state.reviewFeedback?.dimension_pools || []).filter(pool => {
+    if (profileId && pool.profile_id !== profileId) return false;
+    return dimensionKeys.has(pool.dimension_id) || dimensionKeys.has(pool.dimension_name);
+  });
+  return pools.find(pool => pool.profile_version === version && pool.dimension_id === dim.dimension_id)
+    || pools.find(pool => pool.dimension_id === dim.dimension_id)
+    || pools.find(pool => pool.profile_version === version)
+    || pools[0]
+    || null;
+}
+
+function renderFeedbackTagRows(entries, options = []) {
+  if (!entries.length) return '<p class="muted">暂无记录。</p>';
+  return `<div class="feedback-tag-row compact">${entries.map(([key, count]) => `
+    <span title="${escapeHtml(key)}">${escapeHtml(feedbackLookupLabel(key, options))} <b>${escapeHtml(count)}</b></span>
+  `).join('')}</div>`;
+}
+
+function renderCurrentDimensionFeedback() {
+  const panel = $('dimensionFeedbackPanel');
+  if (!panel) return;
+  const scope = $('dimensionFeedbackScope');
+  const dim = currentObjectDimension();
+  if (!dim) {
+    if (scope) scope.textContent = '未选择维度';
+    panel.innerHTML = '<div class="dimension-feedback-empty"><b>暂无维度</b><p>选择或新增维度后显示反馈汇总。</p></div>';
+    return;
+  }
+
+  const poolWrapper = findCurrentDimensionFeedbackPool(dim);
+  const dimLabel = dim.name || dim.dimension_id || '当前维度';
+  if (!poolWrapper) {
+    if (scope) scope.textContent = `${dimLabel} · 暂无审查反馈`;
+    panel.innerHTML = `
+      <div class="dimension-feedback-empty">
+        <b>暂无反馈记录</b>
+        <p>该维度完成审查后，统计会自动汇总到这里。</p>
+      </div>
+    `;
+    return;
+  }
+
+  const pool = poolWrapper.feedback_pool || {};
+  const metrics = pool.metrics || {};
+  const total = pool.total_reviews || 0;
+  const candidates = pool.upgrade_candidates || [];
+  const cases = pool.representative_cases || [];
+  const edits = pool.common_user_edits || [];
+  const tagRows = feedbackCountEntries(pool.common_error_tags, 8);
+  const rootRows = feedbackCountEntries(pool.common_root_causes, 6);
+  const targetRows = feedbackCountEntries(pool.common_suggested_targets, 6);
+
+  if (scope) {
+    scope.textContent = `${poolWrapper.dimension_name || dimLabel} · v${poolWrapper.profile_version || state.objectConfig?.object_definition?.version || '-'} · ${total} 条审查`;
+  }
+
+  panel.innerHTML = `
+    <div class="dimension-feedback-counts">
+      <div><b>${escapeHtml(total)}</b><span>审查总数</span></div>
+      <div><b>${escapeHtml(pool.confirmed || 0)}</b><span>确认</span></div>
+      <div><b>${escapeHtml(pool.revised || 0)}</b><span>修改</span></div>
+      <div><b>${escapeHtml(pool.rejected || 0)}</b><span>驳回</span></div>
+    </div>
+    <div class="dimension-feedback-metrics">
+      <div class="good"><span>确认率</span><b>${feedbackPercent(metrics.confirm_rate)}</b></div>
+      <div><span>修改率</span><b>${feedbackPercent(metrics.revise_rate)}</b></div>
+      <div class="warn"><span>驳回率</span><b>${feedbackPercent(metrics.reject_rate)}</b></div>
+      <div class="warn"><span>证据问题</span><b>${feedbackPercent(metrics.evidence_issue_rate)}</b></div>
+      <div class="warn"><span>过度推断</span><b>${feedbackPercent(metrics.over_inference_rate)}</b></div>
+      <div><span>未报告修正</span><b>${feedbackPercent(metrics.not_reported_correction_rate)}</b></div>
+      <div><span>维度错误</span><b>${feedbackPercent(metrics.wrong_dimension_rate)}</b></div>
+      <div><span>平均修改幅度</span><b>${escapeHtml(metrics.average_edit_distance || 0)}</b></div>
+    </div>
+    <div class="dimension-feedback-grid">
+      <section>
+        <h4>高频错误标签</h4>
+        ${renderFeedbackTagRows(tagRows, REVIEW_ERROR_TAGS)}
+      </section>
+      <section>
+        <h4>根因归因</h4>
+        ${renderFeedbackTagRows(rootRows, REVIEW_ROOT_CAUSES)}
+      </section>
+      <section>
+        <h4>建议升级位置</h4>
+        ${renderFeedbackTagRows(targetRows, REVIEW_SUGGESTED_TARGETS)}
+      </section>
+    </div>
+    <section class="dimension-feedback-block">
+      <h4>升级候选</h4>
+      <div class="dimension-upgrade-list">
+        ${candidates.slice(0, 4).map(item => `
+          <article>
+            <header>
+              <b>${escapeHtml(item.title || '模板升级建议')}</b>
+              <span>${escapeHtml(feedbackTargetLevelLabel(item.target_level))} · ${escapeHtml(item.suggested_target || '')}</span>
+            </header>
+            <p>${escapeHtml(item.recommended_change || item.reason || '')}</p>
+            ${item.reason ? `<small>${escapeHtml(item.reason)}</small>` : ''}
+          </article>
+        `).join('') || '<p class="muted">暂无明显升级候选。</p>'}
+      </div>
+    </section>
+    <details class="dimension-feedback-details">
+      <summary>代表性反馈与人工修订</summary>
+      <div class="dimension-feedback-case-list">
+        ${cases.slice(0, 4).map(item => `
+          <article>
+            <b>${escapeHtml(reviewStatusLabel(item.review_action))}</b>
+            <p>${escapeHtml(item.review_comment || (item.error_tags || []).map(tag => feedbackLookupLabel(tag, REVIEW_ERROR_TAGS)).join('、') || '无补充说明')}</p>
+            ${(item.error_tags || []).length ? `<span>${escapeHtml(item.error_tags.map(tag => feedbackLookupLabel(tag, REVIEW_ERROR_TAGS)).join('、'))}</span>` : ''}
+          </article>
+        `).join('') || '<p class="muted">暂无代表性反馈。</p>'}
+        ${edits.slice(0, 3).map(item => `
+          <article>
+            <b>人工修订</b>
+            <p>${escapeHtml(fmt(item.new_answer || item.comment || '', 180))}</p>
+            ${item.old_answer ? `<span>原答案：${escapeHtml(fmt(item.old_answer, 120))}</span>` : ''}
+          </article>
+        `).join('')}
+      </div>
+    </details>
+  `;
+}
+
+async function refreshDimensionFeedback() {
+  state.reviewFeedback = await api('/api/feedback/dimensions');
+  renderCurrentDimensionFeedback();
+  toast('维度反馈已刷新');
 }
 
 function addObjectDimension() {
@@ -3865,6 +4029,7 @@ function renderReviewSelectOptions(options, selectedValue) {
 async function refreshReviewFeedback() {
   state.reviewFeedback = await api('/api/feedback/dimensions');
   renderReviewWorkbench();
+  renderCurrentDimensionFeedback();
 }
 
 window.selectReviewItem = function(index) {
@@ -4135,6 +4300,7 @@ async function bindEvents() {
   $('runSimulationBtn').onclick = runObjectSimulation;
   $('addDimensionBtn').onclick = addObjectDimension;
   $('removeDimensionBtn').onclick = removeObjectDimension;
+  $('refreshDimensionFeedbackBtn').onclick = () => refreshDimensionFeedback().catch(err => toast(err.message));
   $('addTermIncludeBtn').onclick = addTermInclude;
   $('termIncludeInput').addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
@@ -4160,6 +4326,7 @@ async function bindEvents() {
       renderObjectDimensionList();
       renderObjectPreview();
       renderObjectOverviewStats(state.objectConfig);
+      renderCurrentDimensionFeedback();
     });
   });
   $('importMode').onchange = updateImportMode;
