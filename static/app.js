@@ -2930,8 +2930,26 @@ function paperParseFilterKey(paper) {
   return 'metadata_only';
 }
 
+function paperRuns(paperId, templateId = '') {
+  return state.runs
+    .filter(run => run.paper_id === paperId && (!templateId || run.template_id === templateId))
+    .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+}
+
 function paperHasExtraction(paperId) {
-  return state.runs.some(run => run.paper_id === paperId);
+  return paperRuns(paperId).length > 0;
+}
+
+function extractionStatsForPaper(paperId) {
+  const runs = paperRuns(paperId);
+  const templateIds = new Set(runs.map(run => run.template_id).filter(Boolean));
+  const itemCount = runs.reduce((total, run) => total + (run.items?.length || 0), 0);
+  return {
+    runCount: runs.length,
+    objectCount: templateIds.size,
+    itemCount,
+    latestRun: runs[0] || null,
+  };
 }
 
 function paperSearchText(paper) {
@@ -2997,6 +3015,7 @@ function renderPaperJobRow(job) {
 
 function renderPaperRow(p, selectable = false) {
   const status = paperStatus(p);
+  const extractionStats = extractionStatsForPaper(p.id);
   const parser = status.parser ? ` · parser ${status.parser}` : '';
   const checked = state.selectedPaperIds.includes(p.id);
   const opProgress = status.op ? `
@@ -3027,14 +3046,15 @@ function renderPaperRow(p, selectable = false) {
       </div>
       <div class="paper-actions">
         <button onclick="openPaperDetail('${escapeHtml(p.id)}')">查看详情</button>
+        <button ${extractionStats.latestRun ? '' : 'disabled'} onclick="openLatestExtractionResult('${escapeHtml(p.id)}')">查看抽取结果</button>
         <button onclick="exportPaper('${escapeHtml(p.id)}')">导出 JSON</button>
         <button onclick="deletePaper('${escapeHtml(p.id)}')">删除</button>
       </div>
       <div class="paper-stats">
         ${listStat('Sections', p.sections.length)}
         ${listStat('Chunks', p.chunks.length)}
-        ${listStat('Figures', p.figures.length)}
-        ${listStat('Refs', p.references.length)}
+        ${listStat('抽取对象', extractionStats.objectCount)}
+        ${listStat('抽取项', extractionStats.itemCount)}
       </div>
     </div>
   `;
@@ -3121,7 +3141,9 @@ function paperFiltersAreDefault() {
 function renderPaperSetCards() {
   const list = $('paperList');
   const cards = validCustomPaperSets();
+  $('paperLibraryToolbar').hidden = true;
   $('paperSetBatchActions').hidden = true;
+  $('paperParseExtractActions').hidden = true;
   $('paperLibraryFilters').hidden = true;
   const managePanel = $('paperSetManagePanel');
   if (managePanel) {
@@ -3168,6 +3190,12 @@ function updateBatchAddTargetTitle() {
   select.title = select.selectedOptions[0]?.textContent || '暂无论文集';
 }
 
+function updateBatchMoveTargetTitle() {
+  const select = $('batchMovePaperSetSelect');
+  if (!select) return;
+  select.title = select.selectedOptions[0]?.textContent || '暂无论文集';
+}
+
 function updateLibraryBatchTemplateTitle() {
   const select = $('libraryBatchTemplateSelect');
   if (!select) return;
@@ -3175,11 +3203,13 @@ function updateLibraryBatchTemplateTitle() {
 }
 
 function renderPaperSetBatchActions(papers) {
-  const actions = $('paperSetBatchActions');
-  if (!actions) return;
+  const collectionActions = $('paperSetBatchActions');
+  const processingActions = $('paperParseExtractActions');
+  if (!collectionActions || !processingActions) return;
   const selected = selectedPaperIdsInPapers(papers);
   const busy = state.libraryBatchExtractionBusy;
-  actions.hidden = false;
+  collectionActions.hidden = false;
+  processingActions.hidden = false;
   $('paperSelectionCount').textContent = selected.length ? `已选 ${selected.length} 篇` : '未选择';
   $('selectAllPaperSetPapersBtn').textContent = selected.length && selected.length === papers.length ? '取消全选' : '全选';
   $('selectAllPaperSetPapersBtn').disabled = !papers.length || busy;
@@ -3191,6 +3221,13 @@ function renderPaperSetBatchActions(papers) {
     : [{value: '', label: '暂无论文集'}], addValue);
   addSelect.disabled = !paperSets.length || !selected.length || busy;
   $('batchAddPapersToSetBtn').disabled = !paperSets.length || !selected.length || busy;
+  const moveSelect = $('batchMovePaperSetSelect');
+  const moveValue = moveSelect?.value || '';
+  applySelectOptions(moveSelect, paperSets.length
+    ? paperSets.map(item => ({value: item.id, label: item.name}))
+    : [{value: '', label: '暂无论文集'}], moveValue);
+  moveSelect.disabled = !paperSets.length || !selected.length || busy;
+  $('batchMovePapersBtn').disabled = !paperSets.length || !selected.length || busy;
   const templateSelect = $('libraryBatchTemplateSelect');
   const templateValue = templateSelect?.value || '';
   applySelectOptions(templateSelect, state.templates.length
@@ -3203,11 +3240,13 @@ function renderPaperSetBatchActions(papers) {
   $('batchReparsePapersBtn').disabled = !selected.length || busy;
   $('batchExportPapersBtn').disabled = !selected.length || busy;
   updateBatchAddTargetTitle();
+  updateBatchMoveTargetTitle();
   updateLibraryBatchTemplateTitle();
 }
 
 function renderPaperLibraryAll() {
   const list = $('paperList');
+  $('paperLibraryToolbar').hidden = false;
   renderPaperLibraryFilters();
   const papers = filteredLibraryPapers();
   const includeJobs = paperFiltersAreDefault();
@@ -3316,6 +3355,27 @@ async function addSelectedPapersToSet() {
   await refreshAll();
 }
 
+async function moveSelectedPapersToSet() {
+  const targetId = $('batchMovePaperSetSelect').value;
+  const ids = uniqueIds(state.selectedPaperIds);
+  if (!targetId || !ids.length) return;
+  const target = state.paperSets.find(item => item.id === targetId);
+  if (!target) return toast('请选择目标论文集');
+  for (const paperSet of validCustomPaperSets()) {
+    if (paperSet.id === target.id) {
+      await savePaperSetRecord(paperSet, [...(paperSet.paper_ids || []), ...ids]);
+    } else {
+      const nextIds = (paperSet.paper_ids || []).filter(id => !ids.includes(id));
+      if (nextIds.length !== (paperSet.paper_ids || []).length) {
+        await savePaperSetRecord(paperSet, nextIds);
+      }
+    }
+  }
+  state.selectedPaperIds = [];
+  toast(`已移动 ${ids.length} 篇论文`);
+  await refreshAll();
+}
+
 async function runLibraryBatchExtraction() {
   const ids = uniqueIds(state.selectedPaperIds);
   const templateId = $('libraryBatchTemplateSelect').value;
@@ -3398,10 +3458,16 @@ async function reparseSelectedPapers() {
 function exportSelectedPapers() {
   const papers = selectedPaperObjects();
   if (!papers.length) return;
+  const selected = new Set(papers.map(paper => paper.id));
+  const extractionRuns = state.runs.filter(run => selected.has(run.paper_id));
+  const templateIds = new Set(extractionRuns.map(run => run.template_id).filter(Boolean));
   const payload = {
     exported_at: new Date().toISOString(),
     paper_count: papers.length,
+    extraction_run_count: extractionRuns.length,
     papers,
+    extraction_runs: extractionRuns,
+    templates: state.templates.filter(template => templateIds.has(template.id)),
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], {type: 'application/json'});
   const url = URL.createObjectURL(blob);
@@ -3412,7 +3478,7 @@ function exportSelectedPapers() {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
-  toast(`已导出 ${papers.length} 篇论文`);
+  toast(`已导出 ${papers.length} 篇论文和 ${extractionRuns.length} 条抽取结果`);
 }
 
 function togglePaperSetCreate(open = !state.paperSetCreateOpen) {
@@ -3561,7 +3627,7 @@ window.openPaperDetail = function(id) {
   $('paperModalTitle').textContent = p.metadata?.title || '论文解析详情';
   $('paperModalMeta').textContent = `来源：${sourceLabel(p.source)} · 导入：${fmtTime(p.created_at)} · 解析：${fmtTime(p.updated_at)} · 解析耗时：${fmtDuration(p.metadata?.extra?.parse_duration_seconds)}`;
   $('paperReparseBtn').disabled = Boolean(state.paperOps[p.id]);
-  $('paperReparseBtn').textContent = state.paperOps[p.id] ? '重新抽取中' : '重新抽取';
+  $('paperReparseBtn').textContent = state.paperOps[p.id] ? '重新解析中' : '重新解析';
   $('paperReparseBtn').onclick = () => reparsePaper(p.id);
   $('paperVerifyBtn').disabled = p.metadata?.extra?.review_status === 'verified';
   $('paperVerifyBtn').textContent = p.metadata?.extra?.review_status === 'verified' ? '已校验' : '校验通过';
@@ -3597,17 +3663,17 @@ window.closePaperDetail = closePaperDetail;
 window.reparsePaper = async function(id) {
   const p = state.papers.find(x => x.id === id);
   if (!p) return;
-  const timer = startPaperOpProgress(id, '重新抽取中');
+  const timer = startPaperOpProgress(id, '重新解析中');
   if (state.selectedPaperId === id && !$('paperDetailModal').hidden) {
     $('paperReparseBtn').disabled = true;
-    $('paperReparseBtn').textContent = '重新抽取中';
+    $('paperReparseBtn').textContent = '重新解析中';
   }
-  toast('正在重新抽取论文解析结果...');
+  toast('正在重新解析论文...');
   try {
     const paper = await api(`/api/papers/${id}/reparse`, {method: 'POST'});
     upsertPaperInState(paper);
     updatePaperOp(id, {percent: 100, status: '解析完成'});
-    toast('重新抽取完成');
+    toast('重新解析完成');
     await refreshAll();
     if (state.selectedPaperId === id && !$('paperDetailModal').hidden) {
       openPaperDetail(id);
@@ -3619,7 +3685,7 @@ window.reparsePaper = async function(id) {
     removePaperOp(id);
     if (state.selectedPaperId === id && !$('paperDetailModal').hidden) {
       $('paperReparseBtn').disabled = false;
-      $('paperReparseBtn').textContent = '重新抽取';
+      $('paperReparseBtn').textContent = '重新解析';
     }
   }
 };
@@ -3761,7 +3827,7 @@ function renderDimensionChecks() {
 }
 
 function latestRunForPaper(paperId, templateId = '') {
-  return state.runs.find(r => r.paper_id === paperId && (!templateId || r.template_id === templateId));
+  return paperRuns(paperId, templateId)[0] || null;
 }
 
 function jobKey(paperId, templateId) {
@@ -3827,6 +3893,12 @@ window.selectRunForReview = function(id) {
   resetReviewActionMode();
   document.querySelector('[data-tab="review"]').click();
   renderReviewPanel();
+};
+
+window.openLatestExtractionResult = function(paperId) {
+  const run = paperRuns(paperId)[0];
+  if (!run) return toast('这篇论文暂无抽取结果');
+  openExtractionResult(run.id);
 };
 
 window.openExtractionResult = function(id) {
@@ -4840,6 +4912,8 @@ async function bindEvents() {
   $('selectAllPaperSetPapersBtn').onclick = toggleSelectAllPaperSetPapers;
   $('batchAddPaperSetSelect').onchange = updateBatchAddTargetTitle;
   $('batchAddPapersToSetBtn').onclick = () => addSelectedPapersToSet().catch(err => toast(err.message));
+  $('batchMovePaperSetSelect').onchange = updateBatchMoveTargetTitle;
+  $('batchMovePapersBtn').onclick = () => moveSelectedPapersToSet().catch(err => toast(err.message));
   $('libraryBatchTemplateSelect').onchange = updateLibraryBatchTemplateTitle;
   $('batchRunExtractionBtn').onclick = () => runLibraryBatchExtraction().catch(err => toast(err.message));
   $('batchDeletePapersBtn').onclick = () => deleteSelectedPapers().catch(err => toast(err.message));
