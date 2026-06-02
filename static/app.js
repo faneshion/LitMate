@@ -2566,7 +2566,7 @@ async function saveResearchObjectConfig() {
 
 async function publishObjectTemplate() {
   await saveResearchObjectConfig();
-  toast('模板已发布，可在科研对象抽取中使用');
+    toast('模板已发布，可在论文管理中发起抽取');
 }
 
 async function importResearchObjectConfig() {

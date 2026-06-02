@@ -4,13 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Literature Research Assistant V2</title>
-  <link rel="stylesheet" href="/styles.css?v=paper-library-compact-stats-20260602" />
+  <link rel="stylesheet" href="/styles.css?v=paper-nav-integrated-20260602" />
 </head>
 <body>
   <header class="topbar">
     <div>
       <h1>文献精读与研究辅助系统 V2</h1>
-      <p>论文管理 · 科研对象抽取 · 人机审查 · 素材管理与分析</p>
+      <p>论文管理 · 人机审查 · 素材管理与分析</p>
     </div>
     <div class="topbar-actions">
       <button id="refreshBtn">刷新数据</button>
@@ -21,9 +21,8 @@
 
   <nav class="tabs">
     <button class="tab active" data-tab="papers">1 论文管理</button>
-    <button class="tab" data-tab="extract">2 科研对象抽取</button>
-    <button class="tab" data-tab="review">3 人机审查</button>
-    <button class="tab" data-tab="materials">4 素材管理与分析</button>
+    <button class="tab" data-tab="review">2 人机审查</button>
+    <button class="tab" data-tab="materials">3 素材管理与分析</button>
   </nav>
 
   <main>
@@ -544,7 +543,7 @@
           <div id="templateSummary" class="template-summary muted"></div>
           <label>选择抽取维度</label>
           <div id="dimensionChecks" class="checks"></div>
-          <button id="runExtractionBtn">运行科研对象抽取</button>
+          <button id="runExtractionBtn">运行抽取</button>
         </section>
         <section class="card extraction-workspace-card">
           <div class="card-heading">
@@ -920,6 +919,6 @@
   </div>
 
   <div id="toast" class="toast"></div>
-  <script src="/app.js?v=paper-library-compact-stats-20260602"></script>
+  <script src="/app.js?v=paper-nav-integrated-20260602"></script>
 </body>
 </html>
