@@ -154,7 +154,8 @@ main { padding: 24px 32px 60px; }
   grid-template-columns: minmax(220px, 1.5fr) repeat(4, minmax(128px, 0.75fr)) auto;
 }
 .paper-library-collection-row {
-  grid-template-columns: auto minmax(11em, 14em) auto auto minmax(11em, 14em) auto;
+  grid-template-columns: auto minmax(12em, 16em) auto;
+  justify-content: start;
 }
 .paper-library-processing-row {
   grid-template-columns: auto minmax(14em, 18em) auto repeat(3, auto);
@@ -578,6 +579,7 @@ hr { border: none; border-top: 1px solid var(--line); margin: 18px 0; }
 }
 .paper-title-line {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   min-width: 0;
@@ -636,6 +638,42 @@ hr { border: none; border-top: 1px solid var(--line); margin: 18px 0; }
   gap: 8px;
   align-self: stretch;
   min-width: 0;
+}
+.paper-stats.compact {
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+.paper-stat-group {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f9fafb;
+}
+.paper-stat-group b {
+  color: #111827;
+  font-size: 12px;
+  line-height: 1.15;
+}
+.paper-stat-group div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.paper-stat-group span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #fff;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
 }
 .paper-stat {
   display: grid;
@@ -3437,6 +3475,9 @@ button:disabled:hover {
 .badge { display: inline-block; border-radius: 999px; padding: 2px 8px; font-size: 12px; background: var(--soft); color: var(--muted); }
 .badge.pending { background: #dbeafe; color: #1d4ed8; }
 .badge.verified { background: #e0e7ff; color: #3730a3; }
+.badge.extraction_todo { background: #f1f5f9; color: #475569; }
+.badge.extraction_pending_review { background: #fff7ed; color: #c2410c; }
+.badge.extraction_reviewed { background: #dcfce7; color: #166534; }
 .badge.confirm,
 .badge.confirmed { background: #d1fae5; color: var(--good); }
 .badge.reject,

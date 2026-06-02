@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Literature Research Assistant V2</title>
-  <link rel="stylesheet" href="/styles.css?v=paper-management-extraction-20260602" />
+  <link rel="stylesheet" href="/styles.css?v=paper-library-compact-stats-20260602" />
 </head>
 <body>
   <header class="topbar">
@@ -118,15 +118,12 @@
               </div>
             </div>
             <div id="paperSetBatchActions" class="paper-library-toolbar-row paper-library-collection-row" hidden>
-              <span class="toolbar-label">选择集合</span>
-              <select id="batchAddPaperSetSelect"></select>
-              <button id="batchAddPapersToSetBtn" type="button">加入集合</button>
               <span class="toolbar-label">移动到</span>
               <select id="batchMovePaperSetSelect"></select>
-              <button id="batchMovePapersBtn" type="button">移动</button>
+              <button id="batchMovePapersBtn" type="button">确定</button>
             </div>
             <div id="paperParseExtractActions" class="paper-library-toolbar-row paper-library-processing-row" hidden>
-              <span class="toolbar-label">抽取对象</span>
+              <span class="toolbar-label">抽取解析</span>
               <select id="libraryBatchTemplateSelect"></select>
               <button id="batchRunExtractionBtn" type="button">发起抽取</button>
               <button id="batchReparsePapersBtn" type="button">重新解析</button>
@@ -923,6 +920,6 @@
   </div>
 
   <div id="toast" class="toast"></div>
-  <script src="/app.js?v=paper-management-extraction-20260602"></script>
+  <script src="/app.js?v=paper-library-compact-stats-20260602"></script>
 </body>
 </html>
