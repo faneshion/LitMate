@@ -772,6 +772,97 @@ hr { border: none; border-top: 1px solid var(--line); margin: 18px 0; }
 }
 .muted { color: var(--muted); }
 .detail { white-space: pre-wrap; line-height: 1.55; }
+.evidence-graph-panel {
+  display: grid;
+  gap: 12px;
+  white-space: normal;
+}
+.evidence-graph-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.evidence-graph-header h3 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+.evidence-graph-header p {
+  margin: 0;
+  color: var(--muted);
+}
+.evidence-graph-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.evidence-graph-stats,
+.evidence-graph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.evidence-graph-stats span,
+.evidence-graph-legend span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 12px;
+}
+.evidence-graph-stats b {
+  margin-left: 4px;
+  color: #0f172a;
+}
+.evidence-graph-legend i {
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 999px;
+}
+.evidence-graph-legend i.paper { background: #2563eb; }
+.evidence-graph-legend i.material { background: #f59e0b; }
+.evidence-graph-legend i.dimension {
+  border-radius: 2px;
+  background: #7c3aed;
+  transform: rotate(45deg);
+}
+.evidence-graph-legend i.evidence { background: #10b981; }
+.evidence-graph-canvas {
+  position: relative;
+  min-height: 520px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f8fafc;
+}
+.graph-loading,
+.graph-empty {
+  display: grid;
+  min-height: 520px;
+  place-items: center;
+  padding: 24px;
+  color: var(--muted);
+  text-align: center;
+}
+.evidence-graph-raw {
+  max-height: 420px;
+  overflow: auto;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  background: #0f172a;
+  color: #e2e8f0;
+  white-space: pre;
+}
 .paper-record {
   white-space: normal;
   line-height: 1.55;

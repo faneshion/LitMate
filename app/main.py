@@ -845,8 +845,14 @@ def gap_analysis(template_id: str = "tmpl_experience_v2") -> dict:
 
 
 @app.get("/api/analysis/evidence-graph")
-def evidence_graph() -> dict:
-    return build_evidence_graph(material_store.list(), paper_store.list())
+def evidence_graph(paper_ids: Optional[str] = None) -> dict:
+    selected_ids = {pid.strip() for pid in (paper_ids or "").split(",") if pid.strip()}
+    papers = paper_store.list()
+    materials = material_store.list()
+    if selected_ids:
+        papers = [paper for paper in papers if paper.id in selected_ids]
+        materials = [material for material in materials if material.paper_id in selected_ids]
+    return build_evidence_graph(materials, papers)
 
 
 @app.get("/api/export/run/{run_id}")
