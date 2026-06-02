@@ -2754,7 +2754,7 @@ function startPaperOpProgress(paperId, initialLabel = '解析中') {
   updatePaperOp(paperId, {percent: value, status: initialLabel});
   return setInterval(() => {
     value = Math.min(92, value + Math.max(1, Math.round((94 - value) * 0.16)));
-    updatePaperOp(paperId, {percent: value, status: '解析中'});
+    updatePaperOp(paperId, {percent: value, status: initialLabel});
   }, 850);
 }
 
@@ -2962,6 +2962,74 @@ function extractionStatusForPaper(paperId) {
   return {label: '待审查', className: 'extraction_pending_review'};
 }
 
+function extractionJobProgress(job) {
+  const explicit = Number(job?.percent);
+  if (Number.isFinite(explicit)) return Math.max(0, Math.min(100, Math.round(explicit)));
+  if (job?.status === 'completed' || job?.status === 'failed') return 100;
+  if (job?.status === 'running') return 68;
+  if (job?.status === 'queued') return 12;
+  return 0;
+}
+
+function paperActiveExtractionJob(paperId) {
+  const prefix = `${paperId}::`;
+  const priority = {running: 4, queued: 3, failed: 2, completed: 1};
+  return Object.entries(state.extractionJobs || {})
+    .filter(([key]) => key.startsWith(prefix))
+    .map(([key, job]) => ({key, ...job}))
+    .sort((a, b) => {
+      const score = (priority[b.status] || 0) - (priority[a.status] || 0);
+      if (score) return score;
+      return String(b.updatedAt || b.startedAt || '').localeCompare(String(a.updatedAt || a.startedAt || ''));
+    })[0] || null;
+}
+
+function paperTaskProgress(paper) {
+  const op = state.paperOps[paper.id];
+  if (op) {
+    const percent = Math.max(0, Math.min(100, Math.round(op.percent || 0)));
+    const failed = /失败/.test(op.status || '');
+    const completed = percent >= 100 && /完成/.test(op.status || '');
+    return {
+      label: op.status || '解析中',
+      detail: '正在更新文件解析结果',
+      percent,
+      className: failed ? 'failed' : (completed ? 'completed' : 'running'),
+    };
+  }
+  const job = paperActiveExtractionJob(paper.id);
+  if (!job) return null;
+  const label = {
+    queued: '抽取排队中',
+    running: '抽取中',
+    completed: '抽取完成',
+    failed: '抽取失败',
+  }[job.status] || '抽取中';
+  return {
+    label,
+    detail: job.message || '正在更新内容抽取结果',
+    percent: extractionJobProgress(job),
+    className: job.status || 'running',
+  };
+}
+
+function renderPaperTaskProgress(task) {
+  if (!task) return '';
+  const percent = Math.max(0, Math.min(100, Math.round(task.percent || 0)));
+  return `
+    <div class="paper-row-task ${escapeHtml(task.className || 'running')}">
+      <div class="paper-row-task-head">
+        <span>${escapeHtml(task.label || '处理中')}</span>
+        <b>${percent}%</b>
+      </div>
+      <div class="paper-row-progress">
+        <div class="paper-row-progress-bar" style="width: ${percent}%"></div>
+      </div>
+      ${task.detail ? `<div class="paper-row-task-detail" title="${escapeHtml(task.detail)}">${escapeHtml(task.detail)}</div>` : ''}
+    </div>
+  `;
+}
+
 function paperSearchText(paper) {
   const meta = paper.metadata || {};
   return [
@@ -3029,11 +3097,7 @@ function renderPaperRow(p, selectable = false) {
   const extractionStatus = extractionStatusForPaper(p.id);
   const parser = status.parser ? ` · parser ${status.parser}` : '';
   const checked = state.selectedPaperIds.includes(p.id);
-  const opProgress = status.op ? `
-    <div class="paper-row-progress">
-      <div class="paper-row-progress-bar" style="width: ${Math.max(0, Math.min(100, Math.round(status.op.percent || 0)))}%"></div>
-    </div>
-  ` : '';
+  const taskProgress = renderPaperTaskProgress(paperTaskProgress(p));
   return `
     <div class="paper-row ${selectable ? 'selectable' : ''} ${p.id === state.selectedPaperId ? 'active' : ''}" data-paper-id="${escapeHtml(p.id)}">
       ${selectable ? `
@@ -3054,7 +3118,7 @@ function renderPaperRow(p, selectable = false) {
           <span> · 解析：</span><b>${escapeHtml(fmtTime(p.updated_at))}</b>
           <span> · 耗时：</span><b>${escapeHtml(fmtDuration(p.metadata?.extra?.parse_duration_seconds))}</b>
         </div>
-        ${opProgress}
+        ${taskProgress}
       </div>
       <div class="paper-actions">
         <button onclick="openPaperDetail('${escapeHtml(p.id)}')">查看详情</button>
@@ -3383,12 +3447,23 @@ async function runLibraryBatchExtraction() {
   const dims = (template.dimensions || []).map(dim => dim.name || dim.dimension_id || dim.label).filter(Boolean);
   if (!dims.length) return toast('当前模板没有可用维度');
   state.libraryBatchExtractionBusy = true;
-  renderPapers();
+  const startedAt = new Date().toISOString();
+  ids.forEach((paperId, index) => {
+    updateExtractionJob(jobKey(paperId, templateId), {
+      status: 'queued',
+      percent: Math.max(4, Math.round((index / Math.max(ids.length, 1)) * 10)),
+      message: `等待抽取 ${index + 1}/${ids.length} · ${template.name}`,
+      startedAt,
+      templateName: template.name,
+    }, false);
+  });
+  renderExtractionProgressViews();
   let completed = 0;
   try {
-    for (const paperId of ids) {
+    for (let index = 0; index < ids.length; index += 1) {
+      const paperId = ids[index];
       const key = jobKey(paperId, templateId);
-      state.extractionJobs[key] = {status: 'running', message: '论文库批量抽取中'};
+      const timer = startExtractionJobProgress(key, `正在抽取 ${index + 1}/${ids.length} · ${template.name}`);
       try {
         const run = await api('/api/extractions/run', {
           method: 'POST',
@@ -3396,10 +3471,12 @@ async function runLibraryBatchExtraction() {
           body: JSON.stringify({paper_id: paperId, template_id: templateId, dimension_names: dims}),
         });
         state.runs = [run, ...state.runs.filter(item => item.id !== run.id)];
-        state.extractionJobs[key] = {status: 'completed', message: `${run.items.length} 条结果，${run.errors.length} 个错误`, run};
+        updateExtractionJob(key, {status: 'completed', percent: 100, message: `${run.items.length} 条结果，${run.errors.length} 个错误`, run});
         completed += 1;
       } catch (err) {
-        state.extractionJobs[key] = {status: 'failed', message: err.message};
+        updateExtractionJob(key, {status: 'failed', percent: 100, message: err.message});
+      } finally {
+        clearInterval(timer);
       }
     }
   } finally {
@@ -3677,10 +3754,11 @@ window.reparsePaper = async function(id) {
       openPaperDetail(id);
     }
   } catch (err) {
+    updatePaperOp(id, {percent: 100, status: '解析失败'});
     toast(err.message);
   } finally {
     clearInterval(timer);
-    removePaperOp(id);
+    setTimeout(() => removePaperOp(id), 900);
     if (state.selectedPaperId === id && !$('paperDetailModal').hidden) {
       $('paperReparseBtn').disabled = false;
       $('paperReparseBtn').textContent = '重新解析';
@@ -3832,6 +3910,30 @@ function jobKey(paperId, templateId) {
   return `${paperId}::${templateId}`;
 }
 
+function renderExtractionProgressViews() {
+  renderPapers();
+  renderExtractionPaperRuns();
+}
+
+function updateExtractionJob(key, patch, shouldRender = true) {
+  state.extractionJobs[key] = {
+    ...(state.extractionJobs[key] || {}),
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  };
+  if (shouldRender) renderExtractionProgressViews();
+}
+
+function startExtractionJobProgress(key, message = '抽取中') {
+  let value = 12;
+  updateExtractionJob(key, {status: 'running', percent: value, message});
+  return setInterval(() => {
+    if (state.extractionJobs[key]?.status !== 'running') return;
+    value = Math.min(92, value + Math.max(1, Math.round((94 - value) * 0.14)));
+    updateExtractionJob(key, {status: 'running', percent: value, message});
+  }, 900);
+}
+
 function renderExtractionPaperRuns() {
   const ids = selectedExtractPaperIds();
   const templateId = $('templateSelect')?.value || '';
@@ -3849,7 +3951,7 @@ function renderExtractionPaperRuns() {
       failed: '失败',
       idle: '未抽取',
     }[status] || status;
-    const progress = status === 'completed' ? 100 : status === 'running' ? 68 : status === 'queued' ? 18 : status === 'failed' ? 100 : 0;
+    const progress = extractionJobProgress(job || {status});
     return `<article class="extraction-paper-card ${escapeHtml(status)}">
       <div class="extraction-paper-main">
         <h3>${escapeHtml(p.metadata?.title || p.id)}</h3>
@@ -3943,14 +4045,13 @@ async function runSelectedExtractions() {
   if (!dims.length) return toast('请至少选择一个抽取维度');
   $('runExtractionBtn').disabled = true;
   paperIds.forEach(id => {
-    state.extractionJobs[jobKey(id, templateId)] = {status: 'queued', message: '等待开始'};
+    updateExtractionJob(jobKey(id, templateId), {status: 'queued', percent: 8, message: '等待开始'}, false);
   });
-  renderExtractionPaperRuns();
+  renderExtractionProgressViews();
   let completed = 0;
   for (const paperId of paperIds) {
     const key = jobKey(paperId, templateId);
-    state.extractionJobs[key] = {status: 'running', message: '正在调用大模型'};
-    renderExtractionPaperRuns();
+    const timer = startExtractionJobProgress(key, '正在调用大模型');
     try {
       const run = await api('/api/extractions/run', {
         method: 'POST',
@@ -3958,13 +4059,15 @@ async function runSelectedExtractions() {
         body: JSON.stringify({paper_id: paperId, template_id: templateId, dimension_names: dims}),
       });
       state.runs = [run, ...state.runs.filter(item => item.id !== run.id)];
-      state.extractionJobs[key] = {status: 'completed', message: `${run.items.length} 条结果，${run.errors.length} 个错误`, run};
+      updateExtractionJob(key, {status: 'completed', percent: 100, message: `${run.items.length} 条结果，${run.errors.length} 个错误`, run}, false);
       completed += 1;
     } catch (err) {
-      state.extractionJobs[key] = {status: 'failed', message: err.message};
+      updateExtractionJob(key, {status: 'failed', percent: 100, message: err.message}, false);
+    } finally {
+      clearInterval(timer);
     }
     renderRunList();
-    renderExtractionPaperRuns();
+    renderExtractionProgressViews();
   }
   $('runExtractionBtn').disabled = false;
   toast(`抽取任务完成：${completed}/${paperIds.length} 篇成功`);
@@ -3973,10 +4076,10 @@ async function runSelectedExtractions() {
     const key = jobKey(id, templateId);
     const latest = latestRunForPaper(id, templateId);
     if (latest && state.extractionJobs[key]?.status === 'completed') {
-      state.extractionJobs[key].run = latest;
+      updateExtractionJob(key, {run: latest}, false);
     }
   });
-  renderExtractionPaperRuns();
+  renderExtractionProgressViews();
 }
 
 const REVIEW_ACTIONS = [
