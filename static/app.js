@@ -43,9 +43,13 @@ const state = {
   reviewDraftNote: '',
   reviewExpandedEvidence: {},
   reviewSaving: false,
-  reviewScrollTimer: null
+  reviewScrollTimer: null,
+  evidenceGraphData: null,
+  evidenceGraphCy: null
 };
 const PAPER_PAGE_SIZE = 6;
+const CYTOSCAPE_CDN = 'https://cdn.jsdelivr.net/npm/cytoscape@3.28.1/dist/cytoscape.min.js';
+let cytoscapeLoadPromise = null;
 const SIMULATION_SAMPLE_TEXTS = [
   `Title: Reflective Memory Policies for Long-Horizon Scientific Agents
 
@@ -5002,7 +5006,7 @@ async function searchMaterials() {
 }
 
 async function comparePapers() {
-  const ids = [...document.querySelectorAll('.comparePaper:checked')].map(x => x.value);
+  const ids = selectedAnalysisPaperIds();
   if (!ids.length) { toast('请至少选择一篇论文'); return; }
   const data = await api('/api/analysis/compare?paper_ids=' + encodeURIComponent(ids.join(',')) + '&template_id=tmpl_experience_v2');
   const cols = ['title', 'year', ...data.dimensions];
@@ -5014,10 +5018,204 @@ async function gapAnalysis() {
   $('analysisOutput').innerHTML = `<pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
 }
 
-async function evidenceGraph() {
-  const data = await api('/api/analysis/evidence-graph');
-  $('analysisOutput').innerHTML = `<p>当前证据图包含 ${data.nodes.length} 个节点、${data.links.length} 条边。可将下面 JSON 接入 D3/Cytoscape 可视化。</p><pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+function selectedAnalysisPaperIds() {
+  return [...document.querySelectorAll('.comparePaper:checked')].map(x => x.value);
 }
+
+function evidenceGraphTypeLabel(type) {
+  return {
+    paper: '论文',
+    material: '抽取结果',
+    dimension: '维度',
+    evidence: '证据',
+  }[type] || type || '节点';
+}
+
+function evidenceGraphNodeCounts(data) {
+  return (data.nodes || []).reduce((counts, node) => {
+    const key = node.type || 'unknown';
+    counts[key] = (counts[key] || 0) + 1;
+    return counts;
+  }, {});
+}
+
+function loadCytoscape() {
+  if (window.cytoscape) return Promise.resolve(window.cytoscape);
+  if (cytoscapeLoadPromise) return cytoscapeLoadPromise;
+  cytoscapeLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = CYTOSCAPE_CDN;
+    script.async = true;
+    script.onload = () => window.cytoscape ? resolve(window.cytoscape) : reject(new Error('Cytoscape.js 加载失败'));
+    script.onerror = () => reject(new Error('无法加载 Cytoscape.js，可先查看原始数据'));
+    document.head.appendChild(script);
+  });
+  return cytoscapeLoadPromise;
+}
+
+function evidenceGraphElements(data) {
+  const nodes = (data.nodes || []).map(node => ({
+    data: {
+      id: node.id,
+      label: node.label || node.id,
+      type: node.type || 'unknown',
+      fullLabel: node.label || node.id,
+    },
+  }));
+  const edges = (data.links || []).map((link, index) => ({
+    data: {
+      id: `edge:${index}:${link.source}->${link.target}`,
+      source: link.source,
+      target: link.target,
+      label: link.type || '',
+      type: link.type || '',
+    },
+  }));
+  return [...nodes, ...edges];
+}
+
+function renderEvidenceGraphShell(data, paperIds) {
+  const counts = evidenceGraphNodeCounts(data);
+  state.evidenceGraphData = data;
+  $('analysisOutput').classList.remove('muted');
+  $('analysisOutput').innerHTML = `
+    <section class="evidence-graph-panel">
+      <header class="evidence-graph-header">
+        <div>
+          <h3>证据图</h3>
+          <p>使用 Cytoscape.js 可视化 ${paperIds.length} 篇论文的抽取结果证据网络。</p>
+        </div>
+        <div class="evidence-graph-actions">
+          <button type="button" onclick="fitEvidenceGraph()">适配视图</button>
+          <button type="button" onclick="toggleEvidenceGraphRaw()">原始数据</button>
+        </div>
+      </header>
+      <div class="evidence-graph-stats">
+        <span>节点 <b>${(data.nodes || []).length}</b></span>
+        <span>边 <b>${(data.links || []).length}</b></span>
+        <span>论文 <b>${counts.paper || 0}</b></span>
+        <span>抽取结果 <b>${counts.material || 0}</b></span>
+        <span>证据 <b>${counts.evidence || 0}</b></span>
+      </div>
+      <div class="evidence-graph-legend">
+        <span><i class="paper"></i>论文</span>
+        <span><i class="material"></i>抽取结果</span>
+        <span><i class="dimension"></i>维度</span>
+        <span><i class="evidence"></i>证据</span>
+      </div>
+      <div id="evidenceGraphCanvas" class="evidence-graph-canvas">
+        <div class="graph-loading">正在加载 Cytoscape.js...</div>
+      </div>
+      <pre id="evidenceGraphRaw" class="evidence-graph-raw" hidden>${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+    </section>
+  `;
+}
+
+function renderEvidenceGraphFallback(message) {
+  const canvas = $('evidenceGraphCanvas');
+  if (!canvas) return;
+  canvas.innerHTML = `<div class="graph-empty">${escapeHtml(message)}</div>`;
+}
+
+async function renderEvidenceGraphVisualization(data) {
+  const canvas = $('evidenceGraphCanvas');
+  if (!canvas) return;
+  if (!(data.nodes || []).length) {
+    renderEvidenceGraphFallback('没有可视化节点。请确认所选论文已有抽取结果和证据。');
+    return;
+  }
+  try {
+    const cytoscape = await loadCytoscape();
+    state.evidenceGraphCy?.destroy?.();
+    state.evidenceGraphCy = cytoscape({
+      container: canvas,
+      elements: evidenceGraphElements(data),
+      minZoom: 0.25,
+      maxZoom: 2.5,
+      wheelSensitivity: 0.18,
+      style: [
+        {
+          selector: 'node',
+          style: {
+            'label': 'data(label)',
+            'font-size': 10,
+            'text-wrap': 'wrap',
+            'text-max-width': 96,
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'color': '#0f172a',
+            'background-color': '#94a3b8',
+            'border-width': 1,
+            'border-color': '#ffffff',
+            'width': 34,
+            'height': 34,
+          },
+        },
+        {selector: 'node[type = "paper"]', style: {'shape': 'round-rectangle', 'background-color': '#2563eb', 'color': '#ffffff', 'width': 64, 'height': 34}},
+        {selector: 'node[type = "material"]', style: {'shape': 'ellipse', 'background-color': '#f59e0b', 'width': 46, 'height': 46}},
+        {selector: 'node[type = "dimension"]', style: {'shape': 'diamond', 'background-color': '#7c3aed', 'color': '#ffffff', 'width': 44, 'height': 44}},
+        {selector: 'node[type = "evidence"]', style: {'shape': 'round-tag', 'background-color': '#10b981', 'color': '#052e1b', 'width': 54, 'height': 30}},
+        {
+          selector: 'edge',
+          style: {
+            'curve-style': 'bezier',
+            'width': 1.4,
+            'line-color': '#cbd5e1',
+            'target-arrow-shape': 'triangle',
+            'target-arrow-color': '#cbd5e1',
+            'arrow-scale': 0.65,
+            'label': 'data(label)',
+            'font-size': 8,
+            'text-rotation': 'autorotate',
+            'text-margin-y': -6,
+            'color': '#64748b',
+          },
+        },
+      ],
+      layout: {
+        name: 'cose',
+        animate: true,
+        animationDuration: 650,
+        fit: true,
+        padding: 38,
+        nodeRepulsion: 9000,
+        idealEdgeLength: 118,
+        edgeElasticity: 80,
+        gravity: 0.25,
+        numIter: 900,
+      },
+    });
+    state.evidenceGraphCy.on('tap', 'node', event => {
+      const node = event.target.data();
+      toast(`${evidenceGraphTypeLabel(node.type)}：${node.fullLabel || node.label || node.id}`);
+    });
+  } catch (err) {
+    renderEvidenceGraphFallback(err.message);
+  }
+}
+
+async function evidenceGraph() {
+  const ids = selectedAnalysisPaperIds();
+  if (!ids.length) { toast('请至少选择一篇论文'); return; }
+  const data = await api('/api/analysis/evidence-graph?paper_ids=' + encodeURIComponent(ids.join(',')));
+  renderEvidenceGraphShell(data, ids);
+  await renderEvidenceGraphVisualization(data);
+}
+
+window.toggleEvidenceGraphRaw = function() {
+  const raw = $('evidenceGraphRaw');
+  if (!raw) return;
+  raw.hidden = !raw.hidden;
+};
+
+window.fitEvidenceGraph = function() {
+  if (!state.evidenceGraphCy) {
+    toast('证据图尚未加载完成');
+    return;
+  }
+  state.evidenceGraphCy.fit(undefined, 36);
+  state.evidenceGraphCy.center();
+};
 
 async function bindEvents() {
   $('refreshBtn').onclick = refreshAll;
