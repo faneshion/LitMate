@@ -653,6 +653,13 @@ def get_template(template_id: str) -> ExtractionTemplate:
     return tmpl
 
 
+@app.delete("/api/templates/{template_id}")
+def delete_template(template_id: str) -> dict:
+    if not template_store.delete(template_id):
+        raise HTTPException(status_code=404, detail="Template not found")
+    return {"ok": True, "deleted": template_id}
+
+
 @app.post("/api/extractions/run", response_model=ExtractionRun)
 async def run_extraction(req: RunExtractionRequest) -> ExtractionRun:
     paper = paper_store.get(req.paper_id)
