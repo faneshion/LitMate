@@ -2944,12 +2944,22 @@ function extractionStatsForPaper(paperId) {
   const runs = paperRuns(paperId);
   const templateIds = new Set(runs.map(run => run.template_id).filter(Boolean));
   const itemCount = runs.reduce((total, run) => total + (run.items?.length || 0), 0);
+  const reviewableItems = runs.flatMap(run => run.items || []);
+  const reviewedItems = reviewableItems.filter(item => (item.review_status || 'pending') !== 'pending');
   return {
     runCount: runs.length,
     objectCount: templateIds.size,
     itemCount,
+    reviewedItemCount: reviewedItems.length,
     latestRun: runs[0] || null,
   };
+}
+
+function extractionStatusForPaper(paperId) {
+  const stats = extractionStatsForPaper(paperId);
+  if (!stats.runCount || !stats.itemCount) return {label: '待抽取', className: 'extraction_todo'};
+  if (stats.reviewedItemCount >= stats.itemCount) return {label: '已审查', className: 'extraction_reviewed'};
+  return {label: '待审查', className: 'extraction_pending_review'};
 }
 
 function paperSearchText(paper) {
@@ -3016,6 +3026,7 @@ function renderPaperJobRow(job) {
 function renderPaperRow(p, selectable = false) {
   const status = paperStatus(p);
   const extractionStats = extractionStatsForPaper(p.id);
+  const extractionStatus = extractionStatusForPaper(p.id);
   const parser = status.parser ? ` · parser ${status.parser}` : '';
   const checked = state.selectedPaperIds.includes(p.id);
   const opProgress = status.op ? `
@@ -3034,6 +3045,7 @@ function renderPaperRow(p, selectable = false) {
         <div class="paper-title-line">
           <h3 class="paper-title" title="${escapeHtml(p.metadata.title)}">${escapeHtml(p.metadata.title)}</h3>
           <span class="badge ${status.className}">${status.label}</span>
+          <span class="badge ${extractionStatus.className}">${extractionStatus.label}</span>
         </div>
         <div class="paper-authors-line">${escapeHtml((p.metadata.authors || []).slice(0, 4).join(', ') || '作者未知')} ${p.metadata.year || ''}</div>
         <div class="paper-meta-line"><span>来源：</span><b>${escapeHtml(sourceLabel(p.source))}${escapeHtml(parser)}</b></div>
@@ -3050,11 +3062,23 @@ function renderPaperRow(p, selectable = false) {
         <button onclick="exportPaper('${escapeHtml(p.id)}')">导出 JSON</button>
         <button onclick="deletePaper('${escapeHtml(p.id)}')">删除</button>
       </div>
-      <div class="paper-stats">
-        ${listStat('Sections', p.sections.length)}
-        ${listStat('Chunks', p.chunks.length)}
-        ${listStat('抽取对象', extractionStats.objectCount)}
-        ${listStat('抽取项', extractionStats.itemCount)}
+      <div class="paper-stats compact">
+        <section class="paper-stat-group">
+          <b>文件解析</b>
+          <div>
+            <span>章节 ${p.sections.length}</span>
+            <span>Chunks ${p.chunks.length}</span>
+            <span>图表 ${p.figures.length}</span>
+          </div>
+        </section>
+        <section class="paper-stat-group">
+          <b>内容抽取</b>
+          <div>
+            <span>对象 ${extractionStats.objectCount}</span>
+            <span>结果 ${extractionStats.itemCount}</span>
+            <span>已审 ${extractionStats.reviewedItemCount}</span>
+          </div>
+        </section>
       </div>
     </div>
   `;
@@ -3184,12 +3208,6 @@ function selectedPaperIdsInPapers(papers) {
   return state.selectedPaperIds;
 }
 
-function updateBatchAddTargetTitle() {
-  const select = $('batchAddPaperSetSelect');
-  if (!select) return;
-  select.title = select.selectedOptions[0]?.textContent || '暂无论文集';
-}
-
 function updateBatchMoveTargetTitle() {
   const select = $('batchMovePaperSetSelect');
   if (!select) return;
@@ -3214,13 +3232,6 @@ function renderPaperSetBatchActions(papers) {
   $('selectAllPaperSetPapersBtn').textContent = selected.length && selected.length === papers.length ? '取消全选' : '全选';
   $('selectAllPaperSetPapersBtn').disabled = !papers.length || busy;
   const paperSets = validCustomPaperSets();
-  const addSelect = $('batchAddPaperSetSelect');
-  const addValue = addSelect?.value || '';
-  applySelectOptions(addSelect, paperSets.length
-    ? paperSets.map(item => ({value: item.id, label: item.name}))
-    : [{value: '', label: '暂无论文集'}], addValue);
-  addSelect.disabled = !paperSets.length || !selected.length || busy;
-  $('batchAddPapersToSetBtn').disabled = !paperSets.length || !selected.length || busy;
   const moveSelect = $('batchMovePaperSetSelect');
   const moveValue = moveSelect?.value || '';
   applySelectOptions(moveSelect, paperSets.length
@@ -3239,7 +3250,6 @@ function renderPaperSetBatchActions(papers) {
   $('batchDeletePapersBtn').disabled = !selected.length || busy;
   $('batchReparsePapersBtn').disabled = !selected.length || busy;
   $('batchExportPapersBtn').disabled = !selected.length || busy;
-  updateBatchAddTargetTitle();
   updateBatchMoveTargetTitle();
   updateLibraryBatchTemplateTitle();
 }
@@ -3341,18 +3351,6 @@ function toggleSelectAllPaperSetPapers() {
 function selectedPaperObjects() {
   const selected = new Set(state.selectedPaperIds);
   return state.papers.filter(paper => selected.has(paper.id));
-}
-
-async function addSelectedPapersToSet() {
-  const targetId = $('batchAddPaperSetSelect').value;
-  const ids = uniqueIds(state.selectedPaperIds);
-  if (!targetId || !ids.length) return;
-  const target = state.paperSets.find(item => item.id === targetId);
-  if (!target) return toast('请选择目标论文集');
-  await savePaperSetRecord(target, [...(target.paper_ids || []), ...ids]);
-  state.selectedPaperIds = [];
-  toast(`已加入 ${ids.length} 篇论文`);
-  await refreshAll();
 }
 
 async function moveSelectedPapersToSet() {
@@ -4910,8 +4908,6 @@ async function bindEvents() {
   $('confirmCreatePaperSetBtn').onclick = () => createPaperSet().catch(err => toast(err.message));
   $('cancelCreatePaperSetBtn').onclick = () => togglePaperSetCreate(false);
   $('selectAllPaperSetPapersBtn').onclick = toggleSelectAllPaperSetPapers;
-  $('batchAddPaperSetSelect').onchange = updateBatchAddTargetTitle;
-  $('batchAddPapersToSetBtn').onclick = () => addSelectedPapersToSet().catch(err => toast(err.message));
   $('batchMovePaperSetSelect').onchange = updateBatchMoveTargetTitle;
   $('batchMovePapersBtn').onclick = () => moveSelectedPapersToSet().catch(err => toast(err.message));
   $('libraryBatchTemplateSelect').onchange = updateLibraryBatchTemplateTitle;
