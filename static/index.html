@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Literature Research Assistant V2</title>
-  <link rel="stylesheet" href="/styles.css?v=paper-library-tabs-20260601" />
+  <link rel="stylesheet" href="/styles.css?v=paper-management-extraction-20260602" />
 </head>
 <body>
   <header class="topbar">
@@ -105,23 +105,34 @@
             <button class="paper-library-tab active" type="button" data-paper-library-tab="all">全部论文</button>
             <button class="paper-library-tab" type="button" data-paper-library-tab="sets">论文集合</button>
           </div>
-          <div id="paperLibraryFilters" class="paper-library-filters">
-            <input id="paperSearchInput" type="search" placeholder="搜索标题、作者、摘要或正文" />
-            <select id="paperYearFilter"></select>
-            <select id="paperCollectionFilter"></select>
-            <select id="paperParseStatusFilter"></select>
-            <select id="paperExtractionStatusFilter"></select>
-          </div>
-          <div id="paperSetBatchActions" class="paper-set-batch-actions" hidden>
-            <span id="paperSelectionCount" class="meta">未选择</span>
-            <button id="selectAllPaperSetPapersBtn" type="button">全选</button>
-            <select id="batchAddPaperSetSelect"></select>
-            <button id="batchAddPapersToSetBtn" type="button">加入集合</button>
-            <select id="libraryBatchTemplateSelect"></select>
-            <button id="batchRunExtractionBtn" type="button">发起抽取</button>
-            <button id="batchDeletePapersBtn" type="button">删除</button>
-            <button id="batchReparsePapersBtn" type="button">重新解析</button>
-            <button id="batchExportPapersBtn" type="button">导出</button>
+          <div id="paperLibraryToolbar" class="paper-library-toolbar">
+            <div id="paperLibraryFilters" class="paper-library-toolbar-row paper-library-filter-row">
+              <input id="paperSearchInput" type="search" placeholder="搜索标题、作者、摘要或正文" />
+              <select id="paperYearFilter"></select>
+              <select id="paperCollectionFilter"></select>
+              <select id="paperParseStatusFilter"></select>
+              <select id="paperExtractionStatusFilter"></select>
+              <div class="paper-selection-tools">
+                <span id="paperSelectionCount" class="meta">未选择</span>
+                <button id="selectAllPaperSetPapersBtn" type="button">全选</button>
+              </div>
+            </div>
+            <div id="paperSetBatchActions" class="paper-library-toolbar-row paper-library-collection-row" hidden>
+              <span class="toolbar-label">选择集合</span>
+              <select id="batchAddPaperSetSelect"></select>
+              <button id="batchAddPapersToSetBtn" type="button">加入集合</button>
+              <span class="toolbar-label">移动到</span>
+              <select id="batchMovePaperSetSelect"></select>
+              <button id="batchMovePapersBtn" type="button">移动</button>
+            </div>
+            <div id="paperParseExtractActions" class="paper-library-toolbar-row paper-library-processing-row" hidden>
+              <span class="toolbar-label">抽取对象</span>
+              <select id="libraryBatchTemplateSelect"></select>
+              <button id="batchRunExtractionBtn" type="button">发起抽取</button>
+              <button id="batchReparsePapersBtn" type="button">重新解析</button>
+              <button id="batchDeletePapersBtn" type="button">删除论文</button>
+              <button id="batchExportPapersBtn" type="button">导出结果</button>
+            </div>
           </div>
           <div id="paperSetCreatePanel" class="paper-set-create-panel" hidden>
             <input id="paperSetNameInput" placeholder="论文集名称" />
@@ -817,7 +828,7 @@
           <p id="paperModalMeta" class="meta"></p>
         </div>
         <div class="modal-actions">
-          <button id="paperReparseBtn">重新抽取</button>
+          <button id="paperReparseBtn">重新解析</button>
           <button id="paperVerifyBtn">校验通过</button>
           <button id="paperModalClose" aria-label="关闭">关闭</button>
         </div>
@@ -912,6 +923,6 @@
   </div>
 
   <div id="toast" class="toast"></div>
-  <script src="/app.js?v=paper-library-tabs-20260601"></script>
+  <script src="/app.js?v=paper-management-extraction-20260602"></script>
 </body>
 </html>
