@@ -1074,8 +1074,19 @@ button:disabled:hover {
 }
 .object-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   flex: 0 0 auto;
+}
+.object-actions .danger-lite {
+  border-color: #fecaca;
+  background: #fff5f5;
+  color: #b91c1c;
+}
+.object-actions .danger-lite:hover:not(:disabled) {
+  border-color: #b91c1c;
+  background: #b91c1c;
+  color: white;
 }
 .object-summary-card,
 .object-config-tabs,

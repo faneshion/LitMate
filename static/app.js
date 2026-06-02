@@ -989,7 +989,22 @@ function renderObjectConfigPanel() {
   }
   const id = state.objectConfig.object_definition.profile_id;
   $('objectTemplateSelect').value = state.templates.some(t => t.id === id) ? id : '__new__';
+  updateObjectDeleteButton();
   renderObjectConfigForm();
+}
+
+function extractionReadyTemplates() {
+  return state.templates.filter(template => template.modeling?.publish_state !== 'draft');
+}
+
+function updateObjectDeleteButton() {
+  const btn = $('deleteObjectTemplateBtn');
+  const select = $('objectTemplateSelect');
+  if (!btn || !select) return;
+  const selectedId = select.value;
+  const template = state.templates.find(item => item.id === selectedId);
+  btn.disabled = !template;
+  btn.title = template ? `删除 ${template.name}` : '请先选择一个已保存对象';
 }
 
 function resetObjectAdvisorSuggestions() {
@@ -1014,6 +1029,7 @@ function handleObjectTemplateChange() {
     state.objectPromptDirty = false;
     state.selectedPromptProfileId = null;
   }
+  updateObjectDeleteButton();
   renderObjectConfigForm();
 }
 
@@ -2435,10 +2451,17 @@ function renderObjectHealthCheck(cfg) {
   `).join('');
 }
 
-function objectConfigToTemplate(cfg) {
+function objectConfigToTemplate(cfg, options = {}) {
   ensurePromptManagerState(cfg);
   ensureModelingState(cfg);
   const activePrompt = activePromptProfile(cfg);
+  const now = new Date().toISOString();
+  const modeling = {
+    ...(cfg.modeling || defaultModelingState()),
+    publish_state: options.publish ? 'published' : 'draft',
+    draft_saved_at: now,
+  };
+  if (options.publish) modeling.published_at = now;
   return {
     id: cfg.object_definition.profile_id,
     name: cfg.object_definition.display_name,
@@ -2450,10 +2473,10 @@ function objectConfigToTemplate(cfg) {
       name: item.name,
       content: item.content || '',
       created_at: item.created_at || new Date().toISOString(),
-      updated_at: item.updated_at || new Date().toISOString(),
+      updated_at: item.updated_at || now,
     })),
     active_prompt_id: cfg.prompts.active_id,
-    modeling: cfg.modeling || defaultModelingState(),
+    modeling,
     dimensions: (cfg.dimensions || []).map(d => ({
       name: d.dimension_id,
       label: d.name,
@@ -2547,26 +2570,59 @@ ${dimensions}
 }`;
 }
 
-async function saveResearchObjectConfig() {
+function validateObjectTemplateForPublish(template) {
+  const issues = [];
+  if (!template.id) issues.push('对象模板 ID');
+  if (!template.name) issues.push('显示名称');
+  if (!(template.dimensions || []).length) issues.push('至少 1 个抽取维度');
+  if (!String(template.system_prompt || '').trim()) issues.push('激活 Prompt 内容');
+  return issues;
+}
+
+async function saveResearchObjectConfig(options = {}) {
   collectObjectConfigFromForm();
   if (state.objectPromptDirty && $('objectPromptPreview')?.value.trim()) {
     saveSelectedPromptDraft();
     state.objectPromptDirty = false;
   }
-  const template = objectConfigToTemplate(state.objectConfig);
-  await api('/api/templates', {
+  const template = objectConfigToTemplate(state.objectConfig, {publish: Boolean(options.publish)});
+  if (options.requirePublishReady) {
+    const issues = validateObjectTemplateForPublish(template);
+    if (issues.length) throw new Error(`发布前请补全：${issues.join('、')}`);
+  }
+  const saved = await api('/api/templates', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(template),
   });
-  toast('对象建模配置已保存');
+  if (!options.silent) toast('对象建模配置已保存');
   await refreshAll();
-  openObjectConfigModal();
+  renderObjectConfigPanel();
+  return saved;
 }
 
 async function publishObjectTemplate() {
-  await saveResearchObjectConfig();
-    toast('模板已发布，可在论文管理中发起抽取');
+  await saveResearchObjectConfig({silent: true, requirePublishReady: true, publish: true});
+  toast('模板已发布，可在论文管理中发起抽取');
+}
+
+async function deleteCurrentObjectTemplate() {
+  const select = $('objectTemplateSelect');
+  const templateId = select?.value || '';
+  const template = state.templates.find(item => item.id === templateId);
+  if (!template) return toast('请先选择一个已保存对象');
+  const confirmed = confirm(`确定删除“${template.name}”吗？这会从研究对象库移除该对象模板，不会删除已经产生的抽取结果。`);
+  if (!confirmed) return;
+  await api(`/api/templates/${encodeURIComponent(template.id)}`, {method: 'DELETE'});
+  state.objectConfig = defaultResearchObjectConfig(null);
+  state.objectDimensionIndex = 0;
+  state.objectPromptDirty = false;
+  state.selectedPromptProfileId = null;
+  state.selectedSimulationPromptId = null;
+  resetObjectAdvisorSuggestions();
+  toast(`已删除对象：${template.name}`);
+  await refreshAll();
+  renderObjectConfigPanel();
 }
 
 async function importResearchObjectConfig() {
@@ -2592,7 +2648,7 @@ async function importResearchObjectConfig() {
     resetObjectAdvisorSuggestions();
     $('objectTemplateSelect').value = '__new__';
     renderObjectConfigForm();
-    const template = objectConfigToTemplate(state.objectConfig);
+    const template = objectConfigToTemplate(state.objectConfig, {publish: false});
     await api('/api/templates', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -3305,11 +3361,12 @@ function renderPaperSetBatchActions(papers) {
   $('batchMovePapersBtn').disabled = !paperSets.length || !selected.length || busy;
   const templateSelect = $('libraryBatchTemplateSelect');
   const templateValue = templateSelect?.value || '';
-  applySelectOptions(templateSelect, state.templates.length
-    ? state.templates.map(item => ({value: item.id, label: `${item.name} (${item.version})`}))
-    : [{value: '', label: '暂无抽取模板'}], templateValue);
-  templateSelect.disabled = !state.templates.length || !selected.length || busy;
-  $('batchRunExtractionBtn').disabled = !state.templates.length || !selected.length || busy;
+  const readyTemplates = extractionReadyTemplates();
+  applySelectOptions(templateSelect, readyTemplates.length
+    ? readyTemplates.map(item => ({value: item.id, label: `${item.name} (${item.version})`}))
+    : [{value: '', label: '暂无已发布模板'}], templateValue);
+  templateSelect.disabled = !readyTemplates.length || !selected.length || busy;
+  $('batchRunExtractionBtn').disabled = !readyTemplates.length || !selected.length || busy;
   $('batchRunExtractionBtn').textContent = busy ? '抽取中' : '发起抽取';
   $('batchDeletePapersBtn').disabled = !selected.length || busy;
   $('batchReparsePapersBtn').disabled = !selected.length || busy;
@@ -3441,9 +3498,9 @@ async function moveSelectedPapersToSet() {
 async function runLibraryBatchExtraction() {
   const ids = uniqueIds(state.selectedPaperIds);
   const templateId = $('libraryBatchTemplateSelect').value;
-  const template = state.templates.find(item => item.id === templateId);
+  const template = extractionReadyTemplates().find(item => item.id === templateId);
   if (!ids.length) return toast('请先选择论文');
-  if (!template) return toast('请选择抽取模板');
+  if (!template) return toast('请选择已发布抽取模板');
   const dims = (template.dimensions || []).map(dim => dim.name || dim.dimension_id || dim.label).filter(Boolean);
   if (!dims.length) return toast('当前模板没有可用维度');
   state.libraryBatchExtractionBusy = true;
@@ -3801,8 +3858,9 @@ function renderExtractionPanel() {
   state.extractDraftPaperIds = state.extractDraftPaperIds.filter(id => verifiedIds.has(id));
   if (!state.confirmedExtractPaperIds.length) state.extractSelectionMode = 'selecting';
   $('verifiedPaperCount').textContent = verified.length ? `${verified.length} 篇已校验` : '暂无已校验论文';
-  $('templateSelect').innerHTML = state.templates.map(t => `<option value="${t.id}">${escapeHtml(t.name)} (${t.version})</option>`).join('');
-  if (selectedTemplateId && state.templates.some(t => t.id === selectedTemplateId)) {
+  const readyTemplates = extractionReadyTemplates();
+  $('templateSelect').innerHTML = readyTemplates.map(t => `<option value="${t.id}">${escapeHtml(t.name)} (${t.version})</option>`).join('');
+  if (selectedTemplateId && readyTemplates.some(t => t.id === selectedTemplateId)) {
     $('templateSelect').value = selectedTemplateId;
   }
   renderExtractPaperChecks();
@@ -3883,9 +3941,10 @@ function renderExtractPaperChecks() {
 }
 
 function renderTemplateSummary() {
-  const t = state.templates.find(x => x.id === $('templateSelect').value) || state.templates[0];
+  const readyTemplates = extractionReadyTemplates();
+  const t = readyTemplates.find(x => x.id === $('templateSelect').value) || readyTemplates[0];
   if (!t) {
-    $('templateSummary').textContent = '暂无抽取模板。请先在“对象建模工作台”中保存或发布模板。';
+    $('templateSummary').textContent = '暂无已发布抽取模板。请先在“对象建模工作台”中发布模板。';
     return;
   }
   $('templateSummary').innerHTML = `
@@ -3896,7 +3955,8 @@ function renderTemplateSummary() {
 }
 
 function renderDimensionChecks() {
-  const t = state.templates.find(x => x.id === $('templateSelect').value) || state.templates[0];
+  const readyTemplates = extractionReadyTemplates();
+  const t = readyTemplates.find(x => x.id === $('templateSelect').value) || readyTemplates[0];
   $('dimensionChecks').innerHTML = t ? t.dimensions.map(d => `
     <label><input type="checkbox" class="dimCheck" value="${d.name}" checked /> ${escapeHtml(d.label)} <span class="muted">${escapeHtml(d.name)}</span></label>
   `).join('') : '<p class="muted">暂无模板。</p>';
@@ -4978,9 +5038,10 @@ async function bindEvents() {
     });
   });
   $('objectTemplateSelect').onchange = handleObjectTemplateChange;
-  $('saveObjectConfigBtn').onclick = saveResearchObjectConfig;
-  $('publishObjectTemplateBtn').onclick = publishObjectTemplate;
-  $('publishObjectTemplateInlineBtn').onclick = publishObjectTemplate;
+  $('saveObjectConfigBtn').onclick = () => saveResearchObjectConfig().catch(err => toast(err.message));
+  $('publishObjectTemplateBtn').onclick = () => publishObjectTemplate().catch(err => toast(err.message));
+  $('publishObjectTemplateInlineBtn').onclick = () => publishObjectTemplate().catch(err => toast(err.message));
+  $('deleteObjectTemplateBtn').onclick = () => deleteCurrentObjectTemplate().catch(err => toast(err.message));
   $('generateObjectAdviceBtn').onclick = () => generateObjectAdvisorSuggestions();
   $('applyIntentToDefinitionBtn').onclick = applyIntentToDefinition;
   $('loadStrategyExperienceIntentBtn').onclick = loadStrategyExperienceIntent;
