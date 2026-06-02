@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Literature Research Assistant V2</title>
-  <link rel="stylesheet" href="/styles.css?v=paper-set-batch-move-20260601" />
+  <link rel="stylesheet" href="/styles.css?v=paper-library-tabs-20260601" />
 </head>
 <body>
   <header class="topbar">
@@ -39,9 +39,6 @@
               <option value="doi">DOI / Crossref</option>
               <option value="bibtex">BibTeX 元数据</option>
             </select>
-            <label>添加到</label>
-            <select id="importPaperSetSelect"></select>
-
             <div class="import-panel active" data-import-mode="upload">
               <label>上传 PDF / TXT / MD</label>
               <input type="file" id="paperFile" />
@@ -81,31 +78,51 @@
                 <div id="importProgressBar" class="progress-bar"></div>
               </div>
             </div>
+
+            <hr class="import-divider" />
+            <section class="recent-imports" aria-label="最近导入">
+              <div class="recent-imports-heading">
+                <b>最近导入</b>
+                <span id="recentImportCount" class="meta">暂无记录</span>
+              </div>
+              <div id="recentImportList" class="recent-import-list"></div>
+            </section>
           </div>
         </aside>
 
         <section class="card paper-library-card">
           <div class="card-heading paper-library-heading">
             <div>
-              <h2 id="paperLibraryTitle">论文集</h2>
+              <h2 id="paperLibraryTitle">论文库</h2>
               <p id="paperLibrarySubtitle" class="meta"></p>
             </div>
             <div class="paper-library-actions">
               <span id="paperCount" class="meta"></span>
-              <button id="backToPaperSetsBtn" type="button" hidden>返回论文集</button>
               <button id="createPaperSetBtn" type="button">新建论文集</button>
-              <button id="managePaperSetBtn" type="button" hidden>管理论文</button>
             </div>
           </div>
-            <div id="paperSetBatchActions" class="paper-set-batch-actions" hidden>
-              <span id="paperSelectionCount" class="meta">未选择</span>
-              <button id="selectAllPaperSetPapersBtn" type="button">全选</button>
-              <button id="batchMovePapersBtn" type="button">移动到</button>
-              <select id="batchMovePaperSetSelect"></select>
-              <button id="batchDeletePapersBtn" type="button">删除</button>
-              <button id="batchReparsePapersBtn" type="button">重新抽取</button>
-              <button id="batchExportPapersBtn" type="button">导出</button>
-            </div>
+          <div class="paper-library-tabs" role="tablist" aria-label="论文库视图">
+            <button class="paper-library-tab active" type="button" data-paper-library-tab="all">全部论文</button>
+            <button class="paper-library-tab" type="button" data-paper-library-tab="sets">论文集合</button>
+          </div>
+          <div id="paperLibraryFilters" class="paper-library-filters">
+            <input id="paperSearchInput" type="search" placeholder="搜索标题、作者、摘要或正文" />
+            <select id="paperYearFilter"></select>
+            <select id="paperCollectionFilter"></select>
+            <select id="paperParseStatusFilter"></select>
+            <select id="paperExtractionStatusFilter"></select>
+          </div>
+          <div id="paperSetBatchActions" class="paper-set-batch-actions" hidden>
+            <span id="paperSelectionCount" class="meta">未选择</span>
+            <button id="selectAllPaperSetPapersBtn" type="button">全选</button>
+            <select id="batchAddPaperSetSelect"></select>
+            <button id="batchAddPapersToSetBtn" type="button">加入集合</button>
+            <select id="libraryBatchTemplateSelect"></select>
+            <button id="batchRunExtractionBtn" type="button">发起抽取</button>
+            <button id="batchDeletePapersBtn" type="button">删除</button>
+            <button id="batchReparsePapersBtn" type="button">重新解析</button>
+            <button id="batchExportPapersBtn" type="button">导出</button>
+          </div>
           <div id="paperSetCreatePanel" class="paper-set-create-panel" hidden>
             <input id="paperSetNameInput" placeholder="论文集名称" />
             <input id="paperSetDetailInput" placeholder="详情，例如研究主题、筛选条件或用途" />
@@ -118,28 +135,6 @@
         </section>
       </div>
     </section>
-
-    <div id="paperSetQuickModal" class="modal" hidden>
-      <div class="modal-backdrop" data-close-modal="paperSetQuickModal"></div>
-      <div class="prompt-modal paper-set-quick-modal">
-        <header class="modal-header">
-          <div>
-            <h2>新建论文集</h2>
-            <p class="meta">创建后会自动选中为本次导入的目标论文集。</p>
-          </div>
-          <div class="modal-actions">
-            <button id="paperSetQuickClose" aria-label="关闭">关闭</button>
-          </div>
-        </header>
-        <label>论文集名称</label>
-        <input id="quickPaperSetName" placeholder="例如 Agent 经验学习论文" />
-        <label>详情</label>
-        <textarea id="quickPaperSetDetail" rows="4" placeholder="研究主题、筛选条件或用途"></textarea>
-        <div class="modal-actions import-config-actions">
-          <button id="quickPaperSetCreateBtn" type="button">创建并选择</button>
-        </div>
-      </div>
-    </div>
 
     <div id="objectConfigModal" class="modal" hidden>
       <div class="modal-backdrop" data-close-modal="objectConfigModal"></div>
@@ -917,6 +912,6 @@
   </div>
 
   <div id="toast" class="toast"></div>
-  <script src="/app.js?v=paper-set-batch-move-20260601"></script>
+  <script src="/app.js?v=paper-library-tabs-20260601"></script>
 </body>
 </html>

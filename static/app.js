@@ -12,11 +12,11 @@ const state = {
   paperJobs: [],
   paperOps: {},
   paperPage: 1,
-  paperSetView: 'sets',
-  selectedPaperSetId: null,
+  paperLibraryTab: 'all',
+  paperFilters: {query: '', year: 'all', paperSet: 'all', parseStatus: 'all', extractionStatus: 'all'},
+  recentImportPaperIds: [],
+  libraryBatchExtractionBusy: false,
   paperSetCreateOpen: false,
-  paperSetManageOpen: false,
-  importTargetPaperSetId: '',
   selectedPaperIds: [],
   selectedPaperId: null,
   objectPromptDirty: false,
@@ -2641,7 +2641,6 @@ function setImportBusy(isBusy) {
   document.querySelectorAll('.import-card button, .import-card input, .import-card textarea, #importMode').forEach(el => {
     el.disabled = isBusy;
   });
-  if ($('importPaperSetSelect')) $('importPaperSetSelect').disabled = isBusy;
 }
 
 function startImportProgress(initialLabel, onProgress) {
@@ -2767,7 +2766,7 @@ async function runPaperImport(label, pendingTitle, source, action) {
   try {
     const result = await action();
     const papers = Array.isArray(result) ? result : (result?.id ? [result] : []);
-    await addImportedPapersToTarget(papers.map(paper => paper.id));
+    rememberRecentImports(papers.map(paper => paper.id));
     updatePaperJob(jobId, {percent: 100, status: '解析完成'});
     finishImportProgress(timer);
     toast('导入完成');
@@ -2813,14 +2812,14 @@ async function runArxivBatchImport(values) {
       setImportProgressValue(completed, completedLabel);
       updatePaperJob(jobId, {percent: completed, status: completedLabel});
     }
-    await addImportedPapersToTarget(importedPapers.map(paper => paper.id));
+    rememberRecentImports(importedPapers.map(paper => paper.id));
     $('importProgress').classList.add('done');
     toast(`批量导入完成：${total} 篇`);
     state.paperPage = 1;
     await refreshAll();
     setTimeout(() => { $('importProgress').hidden = true; }, 900);
   } catch (err) {
-    if (importedPapers.length) await addImportedPapersToTarget(importedPapers.map(paper => paper.id));
+    if (importedPapers.length) rememberRecentImports(importedPapers.map(paper => paper.id));
     $('importProgress').classList.add('error');
     $('importProgressLabel').textContent = err.message;
     $('importProgressPercent').textContent = '失败';
@@ -2864,27 +2863,39 @@ async function createPaperSetRecord(name, detail = '', paperIds = []) {
   return paperSet;
 }
 
-async function addImportedPapersToTarget(paperIds) {
+function rememberRecentImports(paperIds) {
   const ids = uniqueIds(paperIds);
-  const targetId = state.importTargetPaperSetId;
-  if (!ids.length || !targetId) return;
-  const paperSet = state.paperSets.find(item => item.id === targetId);
-  if (!paperSet) return;
-  await savePaperSetRecord(paperSet, [...(paperSet.paper_ids || []), ...ids]);
+  if (!ids.length) return;
+  state.recentImportPaperIds = uniqueIds([...ids, ...state.recentImportPaperIds]).slice(0, 5);
+  renderRecentImports();
 }
 
-function renderImportPaperSetSelect() {
-  const select = $('importPaperSetSelect');
-  if (!select) return;
-  const previous = state.importTargetPaperSetId || select.value || '';
-  const sets = validCustomPaperSets();
-  select.innerHTML = [
-    '<option value="">不添加到论文集</option>',
-    ...sets.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`),
-    '<option value="__new__">+ 新建论文集</option>',
-  ].join('');
-  state.importTargetPaperSetId = sets.some(item => item.id === previous) ? previous : '';
-  select.value = state.importTargetPaperSetId;
+function recentImportPapers() {
+  const byId = new Map(state.papers.map(paper => [paper.id, paper]));
+  const remembered = state.recentImportPaperIds.map(id => byId.get(id)).filter(Boolean);
+  if (remembered.length) return remembered.slice(0, 5);
+  return [...state.papers]
+    .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+    .slice(0, 5);
+}
+
+function renderRecentImports() {
+  const list = $('recentImportList');
+  if (!list) return;
+  const papers = recentImportPapers();
+  $('recentImportCount').textContent = papers.length ? `${papers.length} 篇` : '暂无记录';
+  list.innerHTML = papers.map(paper => {
+    const status = paperStatus(paper);
+    return `
+      <article class="recent-import-item">
+        <div>
+          <b title="${escapeHtml(paper.metadata?.title || paper.id)}">${escapeHtml(fmt(paper.metadata?.title || paper.id, 58))}</b>
+          <span>${escapeHtml(fmtTime(paper.created_at))}</span>
+        </div>
+        <button type="button" onclick="openPaperDetail('${escapeHtml(paper.id)}')">${escapeHtml(status.label)}</button>
+      </article>
+    `;
+  }).join('') || '<p class="muted">完成导入后会在这里显示最近 5 篇论文。</p>';
 }
 
 function latestPaperTime() {
@@ -2895,17 +2906,8 @@ function latestPaperTime() {
   return times[times.length - 1] || '';
 }
 
-function assignedPaperIds() {
-  return new Set((state.paperSets || []).flatMap(item => item.paper_ids || []));
-}
-
 function paperSetPapers(paperSet) {
   if (!paperSet) return [];
-  if (paperSet.id === '__all__') return state.papers;
-  if (paperSet.id === '__uncategorized__') {
-    const assigned = assignedPaperIds();
-    return state.papers.filter(paper => !assigned.has(paper.id));
-  }
   const ids = new Set(paperSet.paper_ids || []);
   return state.papers.filter(paper => ids.has(paper.id));
 }
@@ -2914,35 +2916,56 @@ function verifiedPaperCount(papers) {
   return (papers || []).filter(paper => paper.metadata?.extra?.review_status === 'verified').length;
 }
 
-function paperSetCards() {
-  const ungrouped = paperSetPapers({id: '__uncategorized__'});
-  return [
-    {
-      id: '__all__',
-      name: '全部论文',
-      detail: '系统自动汇总当前论文库中的所有论文。',
-      paper_ids: state.papers.map(paper => paper.id),
-      updated_at: latestPaperTime(),
-      virtual: true,
-    },
-    ...(state.paperSets || []).map(item => ({...item, virtual: false})),
-    {
-      id: '__uncategorized__',
-      name: '未归集论文',
-      detail: '尚未加入自定义论文集的论文。',
-      paper_ids: ungrouped.map(paper => paper.id),
-      updated_at: latestPaperTime(),
-      virtual: true,
-    },
-  ];
+function paperCollectionNames(paperId) {
+  return validCustomPaperSets()
+    .filter(item => (item.paper_ids || []).includes(paperId))
+    .map(item => item.name);
 }
 
-function currentPaperSet() {
-  const cards = paperSetCards();
-  if (state.paperSetView === 'papers' && state.selectedPaperSetId) {
-    return cards.find(item => item.id === state.selectedPaperSetId) || null;
-  }
-  return cards.find(item => item.id === state.selectedPaperSetId) || cards[0];
+function paperParseFilterKey(paper) {
+  if (state.paperOps[paper.id]) return 'pending';
+  if (paper.metadata?.extra?.review_status === 'verified') return 'verified';
+  if ((paper.chunks || []).length) return 'needs_revision';
+  if (paper.full_text) return 'parsed';
+  return 'metadata_only';
+}
+
+function paperHasExtraction(paperId) {
+  return state.runs.some(run => run.paper_id === paperId);
+}
+
+function paperSearchText(paper) {
+  const meta = paper.metadata || {};
+  return [
+    paper.id,
+    meta.title,
+    (meta.authors || []).join(' '),
+    meta.abstract,
+    meta.doi,
+    meta.arxiv_id,
+    meta.venue,
+    meta.year,
+    paperCollectionNames(paper.id).join(' '),
+    paper.full_text ? paper.full_text.slice(0, 60000) : '',
+  ].filter(Boolean).join('\n').toLowerCase();
+}
+
+function filteredLibraryPapers() {
+  const filters = state.paperFilters;
+  const assigned = new Set(validCustomPaperSets().flatMap(item => item.paper_ids || []));
+  const targetSet = validCustomPaperSets().find(item => item.id === filters.paperSet);
+  const targetIds = new Set(targetSet?.paper_ids || []);
+  const query = (filters.query || '').trim().toLowerCase();
+  return state.papers.filter(paper => {
+    if (query && !paperSearchText(paper).includes(query)) return false;
+    if (filters.year !== 'all' && String(paper.metadata?.year || '') !== filters.year) return false;
+    if (filters.paperSet === 'none' && assigned.has(paper.id)) return false;
+    if (filters.paperSet !== 'all' && filters.paperSet !== 'none' && !targetIds.has(paper.id)) return false;
+    if (filters.parseStatus !== 'all' && paperParseFilterKey(paper) !== filters.parseStatus) return false;
+    if (filters.extractionStatus === 'extracted' && !paperHasExtraction(paper.id)) return false;
+    if (filters.extractionStatus === 'not_extracted' && paperHasExtraction(paper.id)) return false;
+    return true;
+  });
 }
 
 function renderPaperJobRow(job) {
@@ -3018,59 +3041,99 @@ function renderPaperRow(p, selectable = false) {
 }
 
 function renderPaperSetCreatePanel() {
-  $('paperSetCreatePanel').hidden = !state.paperSetCreateOpen;
+  const panel = $('paperSetCreatePanel');
+  if (!panel) return;
+  panel.hidden = state.paperLibraryTab !== 'sets' || !state.paperSetCreateOpen;
 }
 
-function renderPaperSetManagePanel(paperSet) {
-  const panel = $('paperSetManagePanel');
-  if (!state.paperSetManageOpen || !paperSet || paperSet.virtual) {
-    panel.hidden = true;
-    panel.innerHTML = '';
-    return;
-  }
-  const selected = new Set(paperSet.paper_ids || []);
-  panel.hidden = false;
-  panel.innerHTML = `
-    <div class="paper-set-manage-heading">
-      <div>
-        <b>管理集合论文</b>
-        <span>${escapeHtml(paperSet.name)} · ${selected.size} 篇已选</span>
-      </div>
-      <div class="paper-set-manage-actions">
-        <button type="button" onclick="savePaperSetMembership('${escapeHtml(paperSet.id)}')">保存</button>
-        <button type="button" onclick="closePaperSetManage()">取消</button>
-      </div>
-    </div>
-    <div class="paper-set-checks">
-      ${state.papers.map(paper => `
-        <label>
-          <input type="checkbox" class="paperSetManageCheck" value="${escapeHtml(paper.id)}" ${selected.has(paper.id) ? 'checked' : ''} />
-          <span>${escapeHtml(fmt(paper.metadata?.title || paper.id, 92))}</span>
-        </label>
-      `).join('') || '<p class="muted">暂无可加入的论文。</p>'}
-    </div>
-  `;
+function renderPaperLibraryHeader(filteredCount = state.papers.length) {
+  const total = state.papers.length;
+  const setCount = validCustomPaperSets().length;
+  const verified = verifiedPaperCount(state.papers);
+  $('paperLibraryTitle').textContent = '论文库';
+  $('paperLibrarySubtitle').textContent = `共 ${total} 篇论文，${setCount} 个集合，${verified} 篇已审核`;
+  $('paperCount').textContent = state.paperLibraryTab === 'all'
+    ? `当前 ${filteredCount} 篇`
+    : `${setCount} 个集合`;
+  $('createPaperSetBtn').hidden = state.paperLibraryTab !== 'sets';
+}
+
+function renderPaperLibraryTabs() {
+  document.querySelectorAll('[data-paper-library-tab]').forEach(button => {
+    button.classList.toggle('active', button.dataset.paperLibraryTab === state.paperLibraryTab);
+  });
+}
+
+function applySelectOptions(select, options, value) {
+  if (!select) return value;
+  select.innerHTML = options.map(option => `
+    <option value="${escapeHtml(option.value)}" title="${escapeHtml(option.label)}">${escapeHtml(option.label)}</option>
+  `).join('');
+  const values = new Set(options.map(option => option.value));
+  const nextValue = values.has(value) ? value : (options[0]?.value || '');
+  select.value = nextValue;
+  select.title = select.selectedOptions[0]?.textContent || '';
+  return nextValue;
+}
+
+function renderPaperLibraryFilters() {
+  const panel = $('paperLibraryFilters');
+  if (!panel) return;
+  panel.hidden = state.paperLibraryTab !== 'all';
+  if (panel.hidden) return;
+  const years = [...new Set(state.papers.map(paper => paper.metadata?.year).filter(Boolean).map(String))]
+    .sort((a, b) => b.localeCompare(a));
+  const queryInput = $('paperSearchInput');
+  if (queryInput && document.activeElement !== queryInput) queryInput.value = state.paperFilters.query || '';
+  state.paperFilters.year = applySelectOptions($('paperYearFilter'), [
+    {value: 'all', label: '全部年份'},
+    ...years.map(year => ({value: year, label: year})),
+  ], state.paperFilters.year);
+  state.paperFilters.paperSet = applySelectOptions($('paperCollectionFilter'), [
+    {value: 'all', label: '全部集合'},
+    {value: 'none', label: '未加入集合'},
+    ...validCustomPaperSets().map(item => ({value: item.id, label: item.name})),
+  ], state.paperFilters.paperSet);
+  state.paperFilters.parseStatus = applySelectOptions($('paperParseStatusFilter'), [
+    {value: 'all', label: '全部解析状态'},
+    {value: 'verified', label: '已校验'},
+    {value: 'needs_revision', label: '待校验'},
+    {value: 'parsed', label: '有正文'},
+    {value: 'metadata_only', label: '仅元数据'},
+    {value: 'pending', label: '解析中'},
+  ], state.paperFilters.parseStatus);
+  state.paperFilters.extractionStatus = applySelectOptions($('paperExtractionStatusFilter'), [
+    {value: 'all', label: '全部抽取状态'},
+    {value: 'extracted', label: '已抽取'},
+    {value: 'not_extracted', label: '未抽取'},
+  ], state.paperFilters.extractionStatus);
+}
+
+function paperFiltersAreDefault() {
+  const filters = state.paperFilters;
+  return !filters.query
+    && filters.year === 'all'
+    && filters.paperSet === 'all'
+    && filters.parseStatus === 'all'
+    && filters.extractionStatus === 'all';
 }
 
 function renderPaperSetCards() {
   const list = $('paperList');
-  const cards = paperSetCards();
-  $('paperLibraryTitle').textContent = '论文集';
-  $('paperLibrarySubtitle').textContent = '按研究主题、项目或任务组织论文。';
-  $('paperCount').textContent = `${cards.length} 个集合 · ${state.papers.length} 篇论文`;
-  $('backToPaperSetsBtn').hidden = true;
-  $('createPaperSetBtn').hidden = false;
-  $('managePaperSetBtn').hidden = true;
-  $('paperSetManagePanel').hidden = true;
-  $('paperSetManagePanel').innerHTML = '';
+  const cards = validCustomPaperSets();
   $('paperSetBatchActions').hidden = true;
+  $('paperLibraryFilters').hidden = true;
+  const managePanel = $('paperSetManagePanel');
+  if (managePanel) {
+    managePanel.hidden = true;
+    managePanel.innerHTML = '';
+  }
   renderPaperSetCreatePanel();
   list.className = 'paper-set-grid';
   list.innerHTML = cards.map(item => {
     const papers = paperSetPapers(item);
-    const isVirtual = Boolean(item.virtual);
     return `
-      <article class="paper-set-card ${isVirtual ? 'virtual' : ''}">
+      <article class="paper-set-card">
         <div class="paper-set-card-main">
           <div class="paper-set-folder" aria-hidden="true"><span></span></div>
           <div>
@@ -3084,8 +3147,8 @@ function renderPaperSetCards() {
         </div>
         <div class="paper-set-updated"><span>更新时间</span><b>${escapeHtml(fmtTime(item.updated_at || item.created_at))}</b></div>
         <div class="paper-set-card-actions">
-          <button type="button" onclick="enterPaperSet('${escapeHtml(item.id)}')">详情</button>
-          ${isVirtual ? '' : `<button type="button" onclick="deletePaperSet('${escapeHtml(item.id)}')">删除</button>`}
+          <button type="button" onclick="viewPaperSetPapers('${escapeHtml(item.id)}')">详情</button>
+          <button type="button" onclick="deletePaperSet('${escapeHtml(item.id)}')">删除</button>
         </div>
       </article>
     `;
@@ -3099,36 +3162,55 @@ function selectedPaperIdsInPapers(papers) {
   return state.selectedPaperIds;
 }
 
-function updateBatchMoveTargetTitle() {
-  const select = $('batchMovePaperSetSelect');
+function updateBatchAddTargetTitle() {
+  const select = $('batchAddPaperSetSelect');
   if (!select) return;
-  select.title = select.selectedOptions[0]?.textContent || '暂无其他论文集';
+  select.title = select.selectedOptions[0]?.textContent || '暂无论文集';
 }
 
-function renderPaperSetBatchActions(paperSet, papers) {
+function updateLibraryBatchTemplateTitle() {
+  const select = $('libraryBatchTemplateSelect');
+  if (!select) return;
+  select.title = select.selectedOptions[0]?.textContent || '暂无模板';
+}
+
+function renderPaperSetBatchActions(papers) {
   const actions = $('paperSetBatchActions');
   if (!actions) return;
   const selected = selectedPaperIdsInPapers(papers);
-  const targetSets = validCustomPaperSets().filter(item => item.id !== paperSet?.id);
+  const busy = state.libraryBatchExtractionBusy;
   actions.hidden = false;
   $('paperSelectionCount').textContent = selected.length ? `已选 ${selected.length} 篇` : '未选择';
   $('selectAllPaperSetPapersBtn').textContent = selected.length && selected.length === papers.length ? '取消全选' : '全选';
-  $('selectAllPaperSetPapersBtn').disabled = !papers.length;
-  $('batchMovePaperSetSelect').innerHTML = targetSets.map(item => `<option value="${escapeHtml(item.id)}" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</option>`).join('')
-    || '<option value="" title="暂无其他论文集">暂无其他论文集</option>';
-  $('batchMovePaperSetSelect').disabled = !targetSets.length || !selected.length;
-  $('batchMovePapersBtn').disabled = !targetSets.length || !selected.length;
-  $('batchDeletePapersBtn').disabled = !selected.length;
-  $('batchReparsePapersBtn').disabled = !selected.length;
-  $('batchExportPapersBtn').disabled = !selected.length;
-  updateBatchMoveTargetTitle();
+  $('selectAllPaperSetPapersBtn').disabled = !papers.length || busy;
+  const paperSets = validCustomPaperSets();
+  const addSelect = $('batchAddPaperSetSelect');
+  const addValue = addSelect?.value || '';
+  applySelectOptions(addSelect, paperSets.length
+    ? paperSets.map(item => ({value: item.id, label: item.name}))
+    : [{value: '', label: '暂无论文集'}], addValue);
+  addSelect.disabled = !paperSets.length || !selected.length || busy;
+  $('batchAddPapersToSetBtn').disabled = !paperSets.length || !selected.length || busy;
+  const templateSelect = $('libraryBatchTemplateSelect');
+  const templateValue = templateSelect?.value || '';
+  applySelectOptions(templateSelect, state.templates.length
+    ? state.templates.map(item => ({value: item.id, label: `${item.name} (${item.version})`}))
+    : [{value: '', label: '暂无抽取模板'}], templateValue);
+  templateSelect.disabled = !state.templates.length || !selected.length || busy;
+  $('batchRunExtractionBtn').disabled = !state.templates.length || !selected.length || busy;
+  $('batchRunExtractionBtn').textContent = busy ? '抽取中' : '发起抽取';
+  $('batchDeletePapersBtn').disabled = !selected.length || busy;
+  $('batchReparsePapersBtn').disabled = !selected.length || busy;
+  $('batchExportPapersBtn').disabled = !selected.length || busy;
+  updateBatchAddTargetTitle();
+  updateLibraryBatchTemplateTitle();
 }
 
-function renderPaperSetDetail() {
+function renderPaperLibraryAll() {
   const list = $('paperList');
-  const paperSet = currentPaperSet();
-  const papers = paperSetPapers(paperSet);
-  const includeJobs = paperSet.id === '__all__';
+  renderPaperLibraryFilters();
+  const papers = filteredLibraryPapers();
+  const includeJobs = paperFiltersAreDefault();
   const items = [
     ...(includeJobs ? state.paperJobs.map(job => ({type: 'job', job})) : []),
     ...papers.map(paper => ({type: 'paper', paper}))
@@ -3137,38 +3219,38 @@ function renderPaperSetDetail() {
   const pageCount = Math.max(1, Math.ceil(total / PAPER_PAGE_SIZE));
   if (state.paperPage > pageCount) state.paperPage = pageCount;
   if (state.paperPage < 1) state.paperPage = 1;
-
-  $('paperLibraryTitle').textContent = paperSet.name;
-  $('paperLibrarySubtitle').textContent = paperSet.detail || '暂无详情。';
-  $('paperCount').textContent = `${papers.length} 篇论文`;
-  $('backToPaperSetsBtn').hidden = false;
-  $('createPaperSetBtn').hidden = true;
-  $('managePaperSetBtn').hidden = Boolean(paperSet.virtual);
   renderPaperSetCreatePanel();
-  renderPaperSetManagePanel(paperSet);
+  const managePanel = $('paperSetManagePanel');
+  if (managePanel) {
+    managePanel.hidden = true;
+    managePanel.innerHTML = '';
+  }
 
   list.className = 'paper-table';
   const start = (state.paperPage - 1) * PAPER_PAGE_SIZE;
   const pageItems = items.slice(start, start + PAPER_PAGE_SIZE);
   list.innerHTML = pageItems.map(item => item.type === 'job' ? renderPaperJobRow(item.job) : renderPaperRow(item.paper, true)).join('')
-    || '<p class="muted">这个论文集还没有论文。</p>';
+    || '<p class="muted">暂无符合条件的论文。</p>';
 
   $('paperPagination').innerHTML = total > PAPER_PAGE_SIZE ? `
     <button ${state.paperPage === 1 ? 'disabled' : ''} onclick="goPaperPage(${state.paperPage - 1})">上一页</button>
     <span class="meta">第 ${state.paperPage} / ${pageCount} 页</span>
     <button ${state.paperPage === pageCount ? 'disabled' : ''} onclick="goPaperPage(${state.paperPage + 1})">下一页</button>
   ` : '';
-  renderPaperSetBatchActions(paperSet, papers);
+  renderPaperSetBatchActions(papers);
+  return papers.length;
 }
 
 function renderPapers() {
-  renderImportPaperSetSelect();
-  if (state.paperSetView === 'papers' && !currentPaperSet()) {
-    state.paperSetView = 'sets';
-    state.selectedPaperSetId = null;
+  renderRecentImports();
+  renderPaperLibraryTabs();
+  let filteredCount = state.papers.length;
+  if (state.paperLibraryTab === 'sets') {
+    renderPaperSetCards();
+  } else {
+    filteredCount = renderPaperLibraryAll();
   }
-  if (state.paperSetView === 'sets') renderPaperSetCards();
-  else renderPaperSetDetail();
+  renderPaperLibraryHeader(filteredCount);
 
   if (state.selectedPaperId && !state.papers.some(p => p.id === state.selectedPaperId)) {
     state.selectedPaperId = null;
@@ -3181,22 +3263,24 @@ window.goPaperPage = function(page) {
   renderPapers();
 };
 
-window.enterPaperSet = function(id) {
-  state.paperSetView = 'papers';
-  state.selectedPaperSetId = id;
+window.viewPaperSetPapers = function(id) {
+  state.paperLibraryTab = 'all';
+  state.paperFilters.paperSet = id;
   state.paperPage = 1;
   state.paperSetCreateOpen = false;
-  state.paperSetManageOpen = false;
   state.selectedPaperIds = [];
   renderPapers();
 };
 
-function backToPaperSets() {
-  state.paperSetView = 'sets';
-  state.selectedPaperSetId = null;
+function updatePaperFiltersFromInputs() {
+  state.paperFilters = {
+    query: $('paperSearchInput')?.value.trim() || '',
+    year: $('paperYearFilter')?.value || 'all',
+    paperSet: $('paperCollectionFilter')?.value || 'all',
+    parseStatus: $('paperParseStatusFilter')?.value || 'all',
+    extractionStatus: $('paperExtractionStatusFilter')?.value || 'all',
+  };
   state.paperPage = 1;
-  state.paperSetManageOpen = false;
-  state.selectedPaperIds = [];
   renderPapers();
 }
 
@@ -3205,13 +3289,11 @@ window.togglePaperSelection = function(id, checked) {
   if (checked) selected.add(id);
   else selected.delete(id);
   state.selectedPaperIds = [...selected];
-  const paperSet = currentPaperSet();
-  renderPaperSetBatchActions(paperSet, paperSetPapers(paperSet));
+  renderPaperSetBatchActions(filteredLibraryPapers());
 };
 
 function toggleSelectAllPaperSetPapers() {
-  const paperSet = currentPaperSet();
-  const papers = paperSetPapers(paperSet);
+  const papers = filteredLibraryPapers();
   const selected = selectedPaperIdsInPapers(papers);
   state.selectedPaperIds = selected.length === papers.length ? [] : papers.map(paper => paper.id);
   renderPapers();
@@ -3222,20 +3304,51 @@ function selectedPaperObjects() {
   return state.papers.filter(paper => selected.has(paper.id));
 }
 
-async function moveSelectedPapers() {
-  const targetId = $('batchMovePaperSetSelect').value;
+async function addSelectedPapersToSet() {
+  const targetId = $('batchAddPaperSetSelect').value;
   const ids = uniqueIds(state.selectedPaperIds);
   if (!targetId || !ids.length) return;
   const target = state.paperSets.find(item => item.id === targetId);
   if (!target) return toast('请选择目标论文集');
   await savePaperSetRecord(target, [...(target.paper_ids || []), ...ids]);
-  const source = currentPaperSet();
-  if (source && !source.virtual && source.id !== target.id) {
-    const latestSource = state.paperSets.find(item => item.id === source.id) || source;
-    await savePaperSetRecord(latestSource, (latestSource.paper_ids || []).filter(id => !ids.includes(id)));
+  state.selectedPaperIds = [];
+  toast(`已加入 ${ids.length} 篇论文`);
+  await refreshAll();
+}
+
+async function runLibraryBatchExtraction() {
+  const ids = uniqueIds(state.selectedPaperIds);
+  const templateId = $('libraryBatchTemplateSelect').value;
+  const template = state.templates.find(item => item.id === templateId);
+  if (!ids.length) return toast('请先选择论文');
+  if (!template) return toast('请选择抽取模板');
+  const dims = (template.dimensions || []).map(dim => dim.name || dim.dimension_id || dim.label).filter(Boolean);
+  if (!dims.length) return toast('当前模板没有可用维度');
+  state.libraryBatchExtractionBusy = true;
+  renderPapers();
+  let completed = 0;
+  try {
+    for (const paperId of ids) {
+      const key = jobKey(paperId, templateId);
+      state.extractionJobs[key] = {status: 'running', message: '论文库批量抽取中'};
+      try {
+        const run = await api('/api/extractions/run', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({paper_id: paperId, template_id: templateId, dimension_names: dims}),
+        });
+        state.runs = [run, ...state.runs.filter(item => item.id !== run.id)];
+        state.extractionJobs[key] = {status: 'completed', message: `${run.items.length} 条结果，${run.errors.length} 个错误`, run};
+        completed += 1;
+      } catch (err) {
+        state.extractionJobs[key] = {status: 'failed', message: err.message};
+      }
+    }
+  } finally {
+    state.libraryBatchExtractionBusy = false;
   }
   state.selectedPaperIds = [];
-  toast(`已移动 ${ids.length} 篇论文`);
+  toast(`批量抽取完成：${completed}/${ids.length} 篇成功`);
   await refreshAll();
 }
 
@@ -3261,9 +3374,9 @@ async function reparseSelectedPapers() {
   if (!ids.length) return;
   let success = 0;
   const failures = [];
-  toast(`开始重新抽取 ${ids.length} 篇论文`);
+  toast(`开始重新解析 ${ids.length} 篇论文`);
   for (const id of ids) {
-    const timer = startPaperOpProgress(id, '重新抽取中');
+    const timer = startPaperOpProgress(id, '重新解析中');
     try {
       const paper = await api(`/api/papers/${id}/reparse`, {method: 'POST'});
       upsertPaperInState(paper);
@@ -3279,7 +3392,7 @@ async function reparseSelectedPapers() {
   }
   state.selectedPaperIds = [];
   await refreshAll();
-  toast(failures.length ? `重新抽取完成：${success} 篇成功，${failures.length} 篇失败` : `重新抽取完成：${success} 篇成功`);
+  toast(failures.length ? `重新解析完成：${success} 篇成功，${failures.length} 篇失败` : `重新解析完成：${success} 篇成功`);
 }
 
 function exportSelectedPapers() {
@@ -3323,61 +3436,14 @@ async function createPaperSet() {
   renderPapers();
 }
 
-function openQuickPaperSetModal() {
-  $('paperSetQuickModal').hidden = false;
-  document.body.classList.add('modal-open');
-  setValue('quickPaperSetName', '');
-  setValue('quickPaperSetDetail', '');
-  setTimeout(() => $('quickPaperSetName')?.focus(), 0);
-}
-
-function closeQuickPaperSetModal() {
-  $('paperSetQuickModal').hidden = true;
-  syncModalLock();
-  if ($('importPaperSetSelect')) $('importPaperSetSelect').value = state.importTargetPaperSetId || '';
-}
-
-async function createQuickPaperSet() {
-  const name = $('quickPaperSetName').value.trim();
-  const detail = $('quickPaperSetDetail').value.trim();
-  if (!name) return toast('请先填写论文集名称');
-  const paperSet = await createPaperSetRecord(name, detail, []);
-  state.importTargetPaperSetId = paperSet.id;
-  closeQuickPaperSetModal();
-  renderImportPaperSetSelect();
-  toast('论文集已创建，并设为导入目标');
-}
-
-function openPaperSetManage() {
-  const paperSet = currentPaperSet();
-  if (!paperSet || paperSet.virtual) return;
-  state.paperSetManageOpen = true;
-  renderPapers();
-}
-
-window.closePaperSetManage = function() {
-  state.paperSetManageOpen = false;
-  renderPapers();
-};
-
-window.savePaperSetMembership = async function(id) {
-  const paperSet = (state.paperSets || []).find(item => item.id === id);
-  if (!paperSet) return toast('未找到论文集');
-  const paperIds = [...document.querySelectorAll('.paperSetManageCheck:checked')].map(input => input.value);
-  await savePaperSetRecord(paperSet, paperIds);
-  state.paperSetManageOpen = false;
-  toast('论文集已更新');
-  renderPapers();
-};
-
 window.deletePaperSet = async function(id) {
   const paperSet = (state.paperSets || []).find(item => item.id === id);
   if (!paperSet) return;
   if (!confirm(`确定删除论文集「${paperSet.name}」吗？论文文件不会被删除。`)) return;
   await api(`/api/paper-sets/${id}`, {method: 'DELETE'});
   state.paperSets = state.paperSets.filter(item => item.id !== id);
-  if (state.selectedPaperSetId === id) backToPaperSets();
-  else renderPapers();
+  if (state.paperFilters.paperSet === id) state.paperFilters.paperSet = 'all';
+  renderPapers();
   toast('论文集已删除');
 };
 
@@ -4756,26 +4822,26 @@ async function bindEvents() {
   $('simulationRawJsonBtn').onclick = openSimulationRawModal;
   $('simulationRawClose').onclick = closeSimulationRawModal;
   $('extractionResultClose').onclick = closeExtractionResultModal;
-  $('importPaperSetSelect').onchange = () => {
-    if ($('importPaperSetSelect').value === '__new__') {
-      openQuickPaperSetModal();
-      return;
-    }
-    state.importTargetPaperSetId = $('importPaperSetSelect').value;
-  };
-  $('paperSetQuickClose').onclick = closeQuickPaperSetModal;
-  $('quickPaperSetCreateBtn').onclick = () => createQuickPaperSet().catch(err => toast(err.message));
-  $('quickPaperSetName').addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') createQuickPaperSet().catch(err => toast(err.message));
+  document.querySelectorAll('[data-paper-library-tab]').forEach(button => {
+    button.onclick = () => {
+      state.paperLibraryTab = button.dataset.paperLibraryTab;
+      state.paperPage = 1;
+      state.selectedPaperIds = [];
+      renderPapers();
+    };
   });
-  $('backToPaperSetsBtn').onclick = backToPaperSets;
+  $('paperSearchInput').addEventListener('input', updatePaperFiltersFromInputs);
+  ['paperYearFilter', 'paperCollectionFilter', 'paperParseStatusFilter', 'paperExtractionStatusFilter'].forEach(id => {
+    $(id).onchange = updatePaperFiltersFromInputs;
+  });
   $('createPaperSetBtn').onclick = () => togglePaperSetCreate(true);
   $('confirmCreatePaperSetBtn').onclick = () => createPaperSet().catch(err => toast(err.message));
   $('cancelCreatePaperSetBtn').onclick = () => togglePaperSetCreate(false);
-  $('managePaperSetBtn').onclick = openPaperSetManage;
   $('selectAllPaperSetPapersBtn').onclick = toggleSelectAllPaperSetPapers;
-  $('batchMovePaperSetSelect').onchange = updateBatchMoveTargetTitle;
-  $('batchMovePapersBtn').onclick = () => moveSelectedPapers().catch(err => toast(err.message));
+  $('batchAddPaperSetSelect').onchange = updateBatchAddTargetTitle;
+  $('batchAddPapersToSetBtn').onclick = () => addSelectedPapersToSet().catch(err => toast(err.message));
+  $('libraryBatchTemplateSelect').onchange = updateLibraryBatchTemplateTitle;
+  $('batchRunExtractionBtn').onclick = () => runLibraryBatchExtraction().catch(err => toast(err.message));
   $('batchDeletePapersBtn').onclick = () => deleteSelectedPapers().catch(err => toast(err.message));
   $('batchReparsePapersBtn').onclick = () => reparseSelectedPapers().catch(err => toast(err.message));
   $('batchExportPapersBtn').onclick = exportSelectedPapers;
@@ -4829,7 +4895,6 @@ async function bindEvents() {
     el.onclick = () => {
       if (el.dataset.closeModal === 'promptPreviewModal') closePromptPreviewModal();
       else if (el.dataset.closeModal === 'objectImportModal') closeObjectImportModal();
-      else if (el.dataset.closeModal === 'paperSetQuickModal') closeQuickPaperSetModal();
       else if (el.dataset.closeModal === 'simulationRawModal') closeSimulationRawModal();
       else if (el.dataset.closeModal === 'extractionResultModal') closeExtractionResultModal();
       else if (el.dataset.closeModal === 'objectConfigModal') closeObjectConfigModal();
@@ -4840,7 +4905,6 @@ async function bindEvents() {
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return;
     if (!$('promptPickerMenu')?.hidden) closePromptPicker();
-    else if (!$('paperSetQuickModal').hidden) closeQuickPaperSetModal();
     else if (!$('objectImportModal').hidden) closeObjectImportModal();
     else if (!$('simulationRawModal').hidden) closeSimulationRawModal();
     else if (!$('extractionResultModal').hidden) closeExtractionResultModal();
