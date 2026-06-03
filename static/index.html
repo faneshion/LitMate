@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Literature Research Assistant V2</title>
-  <link rel="stylesheet" href="/styles.css?v=section-policy-tags-20260603" />
+  <link rel="stylesheet" href="/styles.css?v=materials-workbench-20260603" />
 </head>
 <body>
   <header class="topbar">
@@ -668,40 +668,189 @@
     </section>
 
     <section id="materials" class="panel">
-      <div class="grid two">
-        <div class="card">
-          <h2>素材检索</h2>
-          <input id="materialQuery" placeholder="搜索 claim / 经验定义 / 使用方式 / 证据..." />
-          <div class="row">
-            <select id="materialDimension"></select>
-            <select id="materialStatus">
-              <option value="">全部状态</option>
-              <option value="pending">待审查</option>
-              <option value="confirm">确认正确</option>
-              <option value="revise">修改后接受</option>
-              <option value="reject">驳回</option>
-              <option value="mark_not_reported">应为未报告</option>
-              <option value="mark_evidence_insufficient">证据不足</option>
-              <option value="mark_over_inferred">过度推断</option>
-              <option value="mark_wrong_dimension">维度归类错误</option>
-              <option value="mark_wrong_object">对象判断错误</option>
-            </select>
+      <div class="materials-workbench">
+        <header class="materials-topbar">
+          <div class="materials-title-block">
+            <span class="kicker">研究素材分析工作台</span>
+            <h2 id="materialsProjectName">当前分析项目</h2>
+            <p id="materialsScopeSummary">默认使用已审查且有证据的素材进行分析。</p>
           </div>
-          <button id="searchMaterialsBtn">检索素材</button>
-          <div id="materialResults" class="list"></div>
+          <div class="materials-context-grid">
+            <div><span>当前论文集合</span><b id="materialsPaperSetName">-</b></div>
+            <div><span>当前科研对象</span><b id="materialsObjectName">-</b></div>
+            <div><span>模板版本</span><b id="materialsTemplateVersion">-</b></div>
+            <div><span>已纳入论文</span><b id="materialsPaperCount">0 篇</b></div>
+            <div><span>已审查素材</span><b id="materialsReviewedCount">0 条</b></div>
+            <div><span>证据覆盖率</span><b id="materialsEvidenceCoverage">0%</b></div>
+          </div>
+          <div class="materials-top-actions">
+            <button id="refreshMaterialsBtn" type="button">刷新数据</button>
+            <button id="saveAnalysisViewBtn" type="button">保存分析视图</button>
+            <button id="exportAnalysisReportBtn" type="button">导出报告</button>
+            <button id="generateReviewPackageBtn" type="button" class="primary">生成综述素材包</button>
+          </div>
+        </header>
+
+        <div id="materialsLayout" class="materials-layout">
+          <aside class="materials-sidebar">
+            <section class="materials-side-section">
+              <div class="materials-section-heading">
+                <h3>分析类型</h3>
+                <span id="materialAnalysisTypeHint">选择一种科研任务视角</span>
+              </div>
+              <nav id="materialAnalysisNav" class="materials-analysis-nav"></nav>
+            </section>
+
+            <section class="materials-side-section">
+              <div class="materials-section-heading">
+                <h3>数据范围</h3>
+                <span>默认优先使用可靠素材</span>
+              </div>
+              <label>
+                <span>论文集合</span>
+                <select id="materialPaperSetSelect"></select>
+              </label>
+              <label>
+                <span>科研对象</span>
+                <select id="materialObjectSelect"></select>
+              </label>
+              <label>
+                <span>模板版本</span>
+                <select id="materialTemplateVersionSelect"></select>
+              </label>
+              <div class="materials-check-group">
+                <b>审查状态</b>
+                <div id="materialReviewStatusChecks" class="materials-check-list"></div>
+              </div>
+              <div class="materials-check-group">
+                <b>证据要求</b>
+                <div id="materialEvidenceRequirementChecks" class="materials-check-list"></div>
+              </div>
+            </section>
+
+            <section class="materials-side-section">
+              <div class="materials-section-heading">
+                <h3>维度选择</h3>
+                <span>控制参与分析的对象维度</span>
+              </div>
+              <div class="materials-quick-actions">
+                <button id="materialDimAllBtn" type="button">全选</button>
+                <button id="materialDimMethodBtn" type="button">只看方法机制</button>
+                <button id="materialDimEvaluationBtn" type="button">只看效果验证</button>
+                <button id="materialDimLimitBtn" type="button">只看局限</button>
+              </div>
+              <div id="materialDimensionChecks" class="materials-dimension-list"></div>
+              <select id="materialDimension" hidden></select>
+              <select id="materialStatus" hidden>
+                <option value="">全部状态</option>
+              </select>
+            </section>
+
+            <section class="materials-side-section">
+              <div class="materials-section-heading">
+                <h3>筛选条件</h3>
+                <span>缩小分析范围</span>
+              </div>
+              <div class="materials-year-row">
+                <label>
+                  <span>年份起</span>
+                  <input id="materialYearStart" type="number" min="1900" max="2100" value="2020" />
+                </label>
+                <label>
+                  <span>年份止</span>
+                  <input id="materialYearEnd" type="number" min="1900" max="2100" value="2026" />
+                </label>
+              </div>
+              <div class="materials-check-group">
+                <b>论文来源</b>
+                <div id="materialSourceChecks" class="materials-check-list compact"></div>
+              </div>
+              <div class="materials-check-group">
+                <b>证据强度</b>
+                <div id="materialEvidenceStrengthChecks" class="materials-check-list compact"></div>
+              </div>
+              <div class="materials-check-group">
+                <b>对象角色</b>
+                <div id="materialObjectRoleChecks" class="materials-check-list compact"></div>
+              </div>
+              <label>
+                <span>关键词</span>
+                <input id="materialQuery" placeholder="reflection, memory, planning" />
+              </label>
+              <button id="searchMaterialsBtn" type="button" class="primary">更新分析范围</button>
+            </section>
+
+            <section class="materials-side-section">
+              <div class="materials-section-heading">
+                <h3>分析参数</h3>
+                <span>随分析类型切换</span>
+              </div>
+              <div id="materialAnalysisParams" class="materials-param-panel"></div>
+            </section>
+          </aside>
+
+          <div id="materialsSidebarResizeHandle" class="materials-sidebar-resize" title="拖拽调整左侧面板宽度">
+            <button id="materialsSidebarToggleBtn" class="materials-sidebar-toggle" type="button" title="收起/展开左侧面板">‹</button>
+          </div>
+
+          <main class="materials-main-pane">
+            <section class="materials-result-header">
+              <div>
+                <h3 id="materialMainTitle">素材总览</h3>
+                <p id="materialMainSubtitle">查看当前范围内可用于比较、综述和方案设计的素材。</p>
+              </div>
+              <div class="materials-result-actions">
+                <button id="compareBtn" type="button">生成对比矩阵</button>
+                <button id="gapBtn" type="button">生成空白分析</button>
+                <button id="graphBtn" type="button">生成证据图</button>
+              </div>
+            </section>
+            <section class="materials-paper-picker">
+              <div class="materials-section-heading inline">
+                <h3>纳入论文</h3>
+                <span>勾选后用于对比矩阵、空白分析和证据图</span>
+              </div>
+              <div id="comparePaperChecks" class="materials-paper-checks"></div>
+            </section>
+            <section class="materials-output-card">
+              <div class="materials-section-heading inline">
+                <h3>当前分析结果</h3>
+                <span id="materialResultHint">暂无运行结果时先展示素材列表。</span>
+              </div>
+              <div id="analysisOutput" class="detail muted">暂无分析结果。</div>
+              <div id="materialResults" class="materials-result-list"></div>
+            </section>
+          </main>
+
+          <aside class="materials-insight-pane">
+            <section class="materials-insight-card">
+              <div class="materials-section-heading">
+                <h3>洞察建议</h3>
+                <span>从当前分析范围自动总结</span>
+              </div>
+              <div id="materialInsightPanel" class="materials-insight-list"></div>
+            </section>
+            <section class="materials-insight-card">
+              <div class="materials-section-heading">
+                <h3>分析解释</h3>
+                <span>说明结果如何被生成</span>
+              </div>
+              <div id="materialExplanationPanel" class="materials-explain-list"></div>
+            </section>
+            <section class="materials-insight-card">
+              <div class="materials-section-heading">
+                <h3>一键生成素材</h3>
+                <span>沉淀下一步科研材料</span>
+              </div>
+              <div class="materials-generate-actions">
+                <button id="materialGenerateOutlineBtn" type="button">综述大纲</button>
+                <button id="materialGenerateCitationBtn" type="button">观点-引用表</button>
+                <button id="materialGenerateQuestionBtn" type="button">研究问题清单</button>
+                <button id="materialGeneratePlanBtn" type="button">新方案草案</button>
+              </div>
+            </section>
+          </aside>
         </div>
-        <div class="card">
-          <h2>跨论文对比与空白分析</h2>
-          <p class="muted">勾选论文后生成维度对比矩阵。</p>
-          <div id="comparePaperChecks" class="checks"></div>
-          <button id="compareBtn">生成对比矩阵</button>
-          <button id="gapBtn">生成空白分析</button>
-          <button id="graphBtn">生成证据图</button>
-        </div>
-      </div>
-      <div class="card">
-        <h2>分析结果</h2>
-        <div id="analysisOutput" class="detail muted">暂无分析结果。</div>
       </div>
     </section>
 
@@ -955,6 +1104,6 @@
   </div>
 
   <div id="toast" class="toast"></div>
-  <script src="/app.js?v=section-policy-tags-20260603"></script>
+  <script src="/app.js?v=materials-workbench-20260603"></script>
 </body>
 </html>

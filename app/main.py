@@ -845,9 +845,15 @@ def compare_papers(
 
 
 @app.get("/api/analysis/gaps")
-def gap_analysis(template_id: str = "tmpl_experience_v2") -> dict:
+def gap_analysis(template_id: str = "tmpl_experience_v2", paper_ids: Optional[str] = None) -> dict:
     template = get_template(template_id)
-    return build_gap_summary(paper_store.list(), run_store.list(), template)
+    selected_ids = {pid.strip() for pid in (paper_ids or "").split(",") if pid.strip()}
+    papers = paper_store.list()
+    runs = [run for run in run_store.list() if run.template_id == template_id]
+    if selected_ids:
+        papers = [paper for paper in papers if paper.id in selected_ids]
+        runs = [run for run in runs if run.paper_id in selected_ids]
+    return build_gap_summary(papers, runs, template)
 
 
 @app.get("/api/analysis/evidence-graph")
