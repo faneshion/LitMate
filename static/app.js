@@ -54,6 +54,7 @@ const state = {
   materialsSidebarWidth: 320,
   materialsSidebarCollapsed: false,
   materialsSidebarResizing: false,
+  materialScopePanelOpen: true,
   materialAnalysisType: 'overview',
   materialCurrentItems: [],
   reviewItemIndex: 0,
@@ -5862,20 +5863,27 @@ function materialContextSummary(items) {
 }
 
 function updateMaterialsContext(items = filteredMaterialItems()) {
-  const ctx = materialContextSummary(items);
   const config = materialAnalysisConfig();
   if ($('materialsProjectName')) $('materialsProjectName').textContent = config.label;
-  if ($('materialsScopeSummary')) $('materialsScopeSummary').textContent = `${ctx.paperSetLabel} · ${ctx.papers.length} 篇论文 · ${items.length} 条候选素材`;
-  if ($('materialsPaperSetName')) $('materialsPaperSetName').textContent = ctx.paperSetLabel;
-  if ($('materialsObjectName')) $('materialsObjectName').textContent = ctx.template?.name || '未选择';
-  if ($('materialsTemplateVersion')) $('materialsTemplateVersion').textContent = ctx.template?.version || '-';
-  if ($('materialsPaperCount')) $('materialsPaperCount').textContent = `${ctx.papers.length} 篇`;
-  if ($('materialsReviewedCount')) $('materialsReviewedCount').textContent = `${ctx.reviewedCount} 条`;
-  if ($('materialsEvidenceCoverage')) $('materialsEvidenceCoverage').textContent = `${ctx.evidenceCoverage}%`;
+  if ($('materialsScopeSummary')) $('materialsScopeSummary').textContent = '默认使用已审查且有证据的素材进行分析，可在顶部数据范围中调整。';
   if ($('materialMainTitle')) $('materialMainTitle').textContent = config.label;
   if ($('materialMainSubtitle')) $('materialMainSubtitle').textContent = config.description;
   if ($('materialAnalysisTypeHint')) $('materialAnalysisTypeHint').textContent = `当前：${config.label}`;
 }
+
+function renderMaterialScopePanel() {
+  const body = $('materialsScopeBody');
+  const text = $('materialsScopeToggleText');
+  const toggle = $('materialsScopeToggleBtn');
+  if (body) body.hidden = !state.materialScopePanelOpen;
+  if (text) text.textContent = state.materialScopePanelOpen ? '收起' : '展开';
+  if (toggle) toggle.setAttribute('aria-expanded', state.materialScopePanelOpen ? 'true' : 'false');
+}
+
+window.toggleMaterialScopePanel = function() {
+  state.materialScopePanelOpen = !state.materialScopePanelOpen;
+  renderMaterialScopePanel();
+};
 
 function renderMaterialOverview(items) {
   const dimensions = selectedMaterialDimensions();
@@ -6006,6 +6014,7 @@ function renderMaterialsPanel() {
   renderMaterialChecks('materialObjectRoleChecks', 'materialObjectRoleCheck', MATERIAL_OBJECT_ROLE_OPTIONS);
   renderMaterialDimensionChecks();
   renderComparePaperChecks();
+  renderMaterialScopePanel();
   renderMaterialsLayout();
   refreshMaterialDerivedViews(filteredMaterialItems());
 }
@@ -6716,6 +6725,7 @@ async function bindEvents() {
     await runPaperImport('正在导入 BibTeX...', 'BibTeX 元数据', 'bibtex', () => api('/api/papers/import/bibtex', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({bibtex_text: v})}));
   };
   $('runExtractionBtn').onclick = runSelectedExtractions;
+  $('materialsScopeToggleBtn').onclick = window.toggleMaterialScopePanel;
   $('materialsSidebarToggleBtn').onpointerdown = (event) => event.stopPropagation();
   $('materialsSidebarToggleBtn').onclick = window.toggleMaterialsSidebar;
   $('materialsSidebarResizeHandle').onpointerdown = startMaterialsSidebarResize;
