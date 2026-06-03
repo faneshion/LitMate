@@ -3,17 +3,40 @@ from __future__ import annotations
 import json
 import math
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .config import settings
 from .llm_client import LLMClient
 from .models import DimensionConfig, Evidence, ExtractedItem, ExtractionRun, ExtractionTemplate, Paper, ReviewStatus
+from .section_policy import (
+    default_section_policy_for_dimension,
+    normalize_section_policy,
+    section_label,
+    section_type_names,
+    classify_section_title,
+)
 
 STOPWORDS = set("the a an of in on to for and or with by from is are was were be this that these those it as into about we our their its using use used can may not".split())
 EXTRACTION_MAX_OUTPUT_TOKENS = 1024
 MAX_SYSTEM_PROMPT_CHARS = 1000
 MAX_CONTEXT_CHARS = 3000
 MAX_CHUNK_CONTEXT_CHARS = 750
+MAX_RANKED_CHUNKS = 12
+GROUP_QUOTA_RATIO = {
+    "prefer": 0.65,
+    "allow": 0.25,
+    "demote": 0.10,
+}
+DIMENSION_CONTEXT_BUDGETS = {
+    "definition": {"max_context_chars": 2600, "max_chunks": 5, "per_chunk_chars": 650},
+    "source": {"max_context_chars": 3200, "max_chunks": 6, "per_chunk_chars": 750},
+    "method": {"max_context_chars": 3600, "max_chunks": 7, "per_chunk_chars": 800},
+    "representation": {"max_context_chars": 3200, "max_chunks": 6, "per_chunk_chars": 750},
+    "usage": {"max_context_chars": 3600, "max_chunks": 7, "per_chunk_chars": 800},
+    "update": {"max_context_chars": 3200, "max_chunks": 6, "per_chunk_chars": 750},
+    "experiment": {"max_context_chars": 3600, "max_chunks": 7, "per_chunk_chars": 800},
+    "limitation": {"max_context_chars": 2800, "max_chunks": 5, "per_chunk_chars": 700},
+}
 
 
 def tokenize(text: str) -> List[str]:
@@ -32,16 +55,160 @@ def score_chunk(query_terms: List[str], text: str) -> float:
     return score
 
 
+def classify_section_type(value: str | None) -> str:
+    return classify_section_title(value)
+
+
+def resolve_section_policy(dimension: Optional[DimensionConfig]) -> Dict[str, Any]:
+    if dimension is None:
+        policy = normalize_section_policy(None)
+        policy.update({"max_context_chars": MAX_CONTEXT_CHARS, "max_chunks": settings.extraction_top_k_chunks, "per_chunk_chars": MAX_CHUNK_CONTEXT_CHARS})
+        return policy
+    base = default_section_policy_for_dimension(dimension.name, dimension.label, dimension.description)
+    merged = {**base, **(dimension.section_policy or {})}
+    policy = normalize_section_policy(merged)
+    budget = dimension_context_budget(dimension)
+    policy.update({**budget, **{key: merged[key] for key in ("max_context_chars", "max_chunks", "per_chunk_chars") if key in merged and merged[key]}})
+    return policy
+
+
+def dimension_context_budget(dimension: DimensionConfig) -> Dict[str, int]:
+    text = " ".join([dimension.name or "", dimension.label or "", dimension.description or ""]).lower()
+    checks = [
+        ("definition", r"definition|定义|identity|元信息"),
+        ("source", r"source|来源|collection|data"),
+        ("method", r"method|extraction|extract|抽取|方法|步骤|algorithm|流程|pipeline"),
+        ("representation", r"representation|表示|storage|存储"),
+        ("usage", r"usage|use|使用|planning|decision|应用"),
+        ("update", r"update|更新|adapt|refine|迭代|transfer"),
+        ("experiment", r"experiment|evaluation|evidence|effect|result|效果|实验|验证"),
+        ("limitation", r"limitation|局限|risk|failure|future"),
+    ]
+    for key, pattern in checks:
+        if re.search(pattern, text, re.I):
+            return DIMENSION_CONTEXT_BUDGETS[key]
+    return {"max_context_chars": MAX_CONTEXT_CHARS, "max_chunks": settings.extraction_top_k_chunks, "per_chunk_chars": MAX_CHUNK_CONTEXT_CHARS}
+
+
+def section_weight(section_type: str, policy: Dict[str, Any]) -> float:
+    if section_type in policy["prefer"]:
+        return 6.0
+    if section_type in policy["allow"]:
+        return 2.0
+    if section_type in {"conclusion", "appendix"}:
+        return -1.0
+    if section_type == "related_work":
+        return -5.0
+    return 0.0
+
+
+def section_priority(section_type: str, policy: Dict[str, Any]) -> int:
+    if section_type in policy["prefer"]:
+        return 3
+    if section_type in policy["allow"]:
+        return 2
+    if section_type in {"conclusion", "appendix", "related_work"}:
+        return 0
+    return 1
+
+
+def extra_chunk_score(text: str, dimension: DimensionConfig, section_type: str) -> float:
+    text_l = text.lower()
+    score = 0.0
+    object_terms = ["experience", "memory", "reflection", "lesson", "feedback", "trajectory", "strategy", "policy", "经验", "记忆", "反思", "反馈", "轨迹", "策略"]
+    field_terms = tokenize(" ".join(dimension.fields or []))
+    score += min(4.0, sum(0.35 for term in object_terms if term in text_l))
+    score += min(3.0, sum(0.4 for term in field_terms if term and term in text_l))
+    score -= citation_density_penalty(text)
+    if section_type == "related_work":
+        score -= 3.0
+    return score
+
+
+def citation_density_penalty(text: str) -> float:
+    if not text:
+        return 0.0
+    citation_count = len(re.findall(r"\[[0-9,;\-\s]+\]|\([A-Z][A-Za-z]+(?: et al\.)?,?\s+(?:19|20)\d{2}\)", text))
+    density = citation_count / max(1, len(text) / 1000)
+    return min(4.0, density * 0.8)
+
+
+def select_ranked_chunks(scored: List[Tuple[float, Any, str]], policy: Dict[str, Any], top_k: int) -> List[Any]:
+    max_chunks = int(policy.get("max_chunks") or top_k or settings.extraction_top_k_chunks)
+    candidate_limit = max(MAX_RANKED_CHUNKS, max_chunks * 2)
+    prefer_limit = max(2, math.ceil(max_chunks * GROUP_QUOTA_RATIO["prefer"]))
+    allow_limit = max(1, math.floor(max_chunks * GROUP_QUOTA_RATIO["allow"]))
+    demote_limit = max(1, math.ceil(max_chunks * GROUP_QUOTA_RATIO["demote"]))
+    selected: List[Any] = []
+    counters = {"prefer": 0, "allow": 0, "demote": 0, "other": 0}
+    seen = set()
+    for _, chunk, section_type in scored[:candidate_limit]:
+        if chunk.id in seen:
+            continue
+        group = chunk_group(section_type, policy)
+        if not quota_ok(group, counters, prefer_limit, allow_limit, demote_limit):
+            continue
+        selected.append(chunk)
+        seen.add(chunk.id)
+        counters[group] = counters.get(group, 0) + 1
+        if len(selected) >= max_chunks:
+            break
+    if selected:
+        return selected
+    return [chunk for _, chunk, _ in scored[:max_chunks]]
+
+
+def chunk_group(section_type: str, policy: Dict[str, Any]) -> str:
+    if section_type in policy["prefer"]:
+        return "prefer"
+    if section_type in policy["allow"]:
+        return "allow"
+    if section_type in {"conclusion", "appendix", "related_work"}:
+        return "demote"
+    return "other"
+
+
+def quota_ok(group: str, counters: Dict[str, int], prefer_limit: int, allow_limit: int, demote_limit: int) -> bool:
+    if group == "prefer":
+        return counters.get(group, 0) < prefer_limit
+    if group == "allow":
+        return counters.get(group, 0) < allow_limit
+    if group == "demote":
+        return counters.get(group, 0) < demote_limit
+    return counters.get(group, 0) < 1
+
+
 def retrieve_chunks(paper: Paper, dimension: DimensionConfig, top_k: Optional[int] = None) -> List[Any]:
-    top_k = top_k or settings.extraction_top_k_chunks
-    query_text = " ".join([dimension.name, dimension.label, dimension.description] + dimension.retrieval_keywords)
+    policy = resolve_section_policy(dimension)
+    query_text = " ".join(
+        [dimension.name, dimension.label, dimension.description]
+        + list(dimension.retrieval_keywords or [])
+        + list(dimension.fields or [])
+    )
     terms = tokenize(query_text)
-    scored = []
+    scored: List[Tuple[float, Any, str]] = []
     for chunk in paper.chunks:
-        scored.append((score_chunk(terms, chunk.text), chunk))
-    scored.sort(key=lambda x: x[0], reverse=True)
-    positive = [chunk for score, chunk in scored if score > 0]
-    return (positive or [chunk for _, chunk in scored])[:top_k]
+        section_type = classify_section_type(getattr(chunk, "section_type", None) or getattr(chunk, "section_title", None))
+        if section_type in set(policy["exclude"]):
+            continue
+        text = chunk.text or ""
+        base_score = score_chunk(terms, text)
+        section_score = section_weight(section_type, policy)
+        content_score = extra_chunk_score(text, dimension, section_type)
+        score = base_score + section_score + content_score
+        if score <= 0 and section_type not in policy["prefer"]:
+            continue
+        scored.append((score, chunk, section_type))
+    if not scored:
+        for chunk in paper.chunks:
+            section_type = classify_section_type(getattr(chunk, "section_type", None) or getattr(chunk, "section_title", None))
+            if section_type in set(policy["exclude"]):
+                continue
+            text = chunk.text or ""
+            score = score_chunk(terms, text) + section_weight(section_type, policy)
+            scored.append((score, chunk, section_type))
+    scored.sort(key=lambda item: (item[0], section_priority(item[2], policy)), reverse=True)
+    return select_ranked_chunks(scored, policy, top_k or settings.extraction_top_k_chunks)
 
 
 class ExperienceExtractor:
@@ -65,7 +232,7 @@ class ExperienceExtractor:
 
     async def extract_dimension(self, paper: Paper, template: ExtractionTemplate, dimension: DimensionConfig) -> List[ExtractedItem]:
         chunks = retrieve_chunks(paper, dimension)
-        context = build_context(chunks)
+        context = build_context(chunks, dimension)
         messages = [
             {
                 "role": "system",
@@ -107,18 +274,38 @@ class ExperienceExtractor:
         return items
 
 
-def build_context(chunks: List[Any]) -> str:
+def build_context(chunks: List[Any], dimension: Optional[DimensionConfig] = None) -> str:
+    policy = resolve_section_policy(dimension)
+    max_context_chars = int(policy.get("max_context_chars") or MAX_CONTEXT_CHARS)
+    per_chunk_chars = int(policy.get("per_chunk_chars") or MAX_CHUNK_CONTEXT_CHARS)
+    prefer_limit = int(policy.get("prefer_limit") or max(2, math.ceil((policy.get("max_chunks") or settings.extraction_top_k_chunks) * GROUP_QUOTA_RATIO["prefer"])))
+    allow_limit = int(policy.get("allow_limit") or max(1, math.floor((policy.get("max_chunks") or settings.extraction_top_k_chunks) * GROUP_QUOTA_RATIO["allow"])))
+    demote_limit = int(policy.get("demote_limit") or max(1, math.ceil((policy.get("max_chunks") or settings.extraction_top_k_chunks) * GROUP_QUOTA_RATIO["demote"])))
+    counters = {"prefer": 0, "allow": 0, "demote": 0, "other": 0}
     blocks = []
     total_chars = 0
+    header = (
+        f"[CONTEXT_POLICY] prefer={section_type_names(policy['prefer'])}; "
+        f"allow={section_type_names(policy['allow'])}; "
+        f"exclude={section_type_names(policy['exclude'])}; "
+        f"max_context_chars={max_context_chars}; per_chunk_chars={per_chunk_chars}"
+    )
+    blocks.append(header)
+    total_chars += len(header)
     for idx, chunk in enumerate(chunks, start=1):
         loc = f"section={chunk.section_title or 'Unknown'}, pages={chunk.page_start or '?'}-{chunk.page_end or '?'}"
         text = re.sub(r"\s+", " ", chunk.text).strip()
-        remaining = MAX_CONTEXT_CHARS - total_chars
+        remaining = max_context_chars - total_chars
         if remaining <= 0:
             break
-        text = text[: min(MAX_CHUNK_CONTEXT_CHARS, remaining)]
+        section_type = classify_section_type(getattr(chunk, "section_type", None) or getattr(chunk, "section_title", None))
+        group = chunk_group(section_type, policy)
+        if not quota_ok(group, counters, prefer_limit, allow_limit, demote_limit):
+            continue
+        text = text[: min(per_chunk_chars, remaining)]
         total_chars += len(text)
-        blocks.append(f"[CHUNK {idx}] chunk_id={chunk.id}; {loc}\n{text}")
+        counters[group] = counters.get(group, 0) + 1
+        blocks.append(f"[CHUNK {idx}] chunk_id={chunk.id}; section_type={section_type}; section_label={section_label(section_type)}; {loc}\n{text}")
     return "\n\n".join(blocks)
 
 

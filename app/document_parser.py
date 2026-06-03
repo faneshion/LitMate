@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Tuple
 from .config import settings
 from .mineru_parser import parse_pdf_with_mineru
 from .models import DocumentChunk, FigureInfo, Paper, PaperMetadata, ReferenceInfo, Section, new_id
+from .section_policy import classify_section_title, section_label
 
 SECTION_PATTERNS = [
     r"^\s*(abstract)\s*$",
@@ -349,10 +350,13 @@ def chunk_paper(paper: Paper) -> List[DocumentChunk]:
             end = min(len(text), start + max_chars)
             chunk_text = text[start:end].strip()
             if chunk_text:
+                section_type = classify_section_title(section.title)
                 chunks.append(
                     DocumentChunk(
                         paper_id=paper.id,
                         section_title=section.title,
+                        section_type=section_type,
+                        section_label=section_label(section_type),
                         page_start=section.start_page,
                         page_end=section.end_page,
                         text=chunk_text,
