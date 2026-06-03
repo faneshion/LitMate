@@ -85,6 +85,8 @@ class DocumentChunk(BaseModel):
     id: str = Field(default_factory=lambda: new_id("chunk"))
     paper_id: str
     section_title: Optional[str] = None
+    section_type: str = "other"
+    section_label: str = "其他"
     page_start: Optional[int] = None
     page_end: Optional[int] = None
     text: str
@@ -126,6 +128,7 @@ class DimensionConfig(BaseModel):
     examples: List[str] = Field(default_factory=list)
     negative_examples: List[str] = Field(default_factory=list)
     retrieval_keywords: List[str] = Field(default_factory=list)
+    section_policy: Dict[str, Any] = Field(default_factory=dict)
 
 
 class PromptProfile(BaseModel):

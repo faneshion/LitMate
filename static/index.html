@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Literature Research Assistant V2</title>
-  <link rel="stylesheet" href="/styles.css?v=paper-review-dividers-20260603" />
+  <link rel="stylesheet" href="/styles.css?v=section-policy-20260603" />
 </head>
 <body>
   <header class="topbar">
@@ -414,6 +414,11 @@
                       <label>检索关键词，每行一个</label>
                       <textarea id="dimKeywords" rows="4"></textarea>
                     </div>
+                  </div>
+                  <div class="section-policy-editor">
+                    <label>章节筛选策略</label>
+                    <p class="meta">用于控制该维度抽取时优先读取、允许读取或排除的论文章节。</p>
+                    <div id="dimSectionPolicy" class="section-policy-grid"></div>
                   </div>
                   <div class="checkbox-group">
                     <label class="inline"><input type="checkbox" id="dimRequired" /> 必填维度</label>
@@ -950,6 +955,6 @@
   </div>
 
   <div id="toast" class="toast"></div>
-  <script src="/app.js?v=paper-review-dividers-20260603"></script>
+  <script src="/app.js?v=section-policy-20260603"></script>
 </body>
 </html>

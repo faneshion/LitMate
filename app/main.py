@@ -42,6 +42,7 @@ from .models import (
     UserNote,
     now_iso,
 )
+from .section_policy import SECTION_TYPE_OPTIONS
 from .source_importers import fetch_arxiv_metadata, import_arxiv, import_bibtex, import_doi, safe_filename
 
 app = FastAPI(title=settings.app_name, version="0.2.0")
@@ -632,6 +633,11 @@ def _delete_paper_artifacts(paper: Paper) -> None:
 @app.get("/api/templates", response_model=List[ExtractionTemplate])
 def list_templates() -> List[ExtractionTemplate]:
     return template_store.list()
+
+
+@app.get("/api/section-types")
+def list_section_types() -> List[Dict[str, str]]:
+    return SECTION_TYPE_OPTIONS
 
 
 @app.post("/api/templates", response_model=ExtractionTemplate)
