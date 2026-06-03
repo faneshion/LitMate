@@ -3013,6 +3013,19 @@ button:disabled:hover {
   display: grid;
   gap: 5px;
 }
+.review-selector-stack select[multiple] {
+  min-height: 116px;
+  line-height: 1.35;
+}
+.review-selection-summary {
+  padding: 7px 9px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 750;
+}
 .review-sidebar select,
 .review-sidebar input {
   min-height: 34px;

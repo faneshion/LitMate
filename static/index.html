@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Literature Research Assistant V2</title>
-  <link rel="stylesheet" href="/styles.css?v=review-split-selectors-20260602" />
+  <link rel="stylesheet" href="/styles.css?v=review-multi-paper-scope-20260603" />
 </head>
 <body>
   <header class="topbar">
@@ -591,8 +591,13 @@
               </label>
               <label>
                 <span>论文</span>
-                <select id="reviewPaperSelect"></select>
+                <select id="reviewPaperSelect" multiple size="5"></select>
               </label>
+              <label>
+                <span>论文集合</span>
+                <select id="reviewPaperSetSelect" multiple size="4"></select>
+              </label>
+              <div id="reviewSelectionSummary" class="review-selection-summary"></div>
             </div>
             <div class="review-sidebar-heading">筛选策略</div>
             <div class="review-filter-grid">
@@ -928,6 +933,6 @@
   </div>
 
   <div id="toast" class="toast"></div>
-  <script src="/app.js?v=review-split-selectors-20260602"></script>
+  <script src="/app.js?v=review-multi-paper-scope-20260603"></script>
 </body>
 </html>
