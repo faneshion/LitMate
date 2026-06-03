@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Literature Research Assistant V2</title>
-  <link rel="stylesheet" href="/styles.css?v=review-scope-confirm-20260603" />
+  <link rel="stylesheet" href="/styles.css?v=paper-review-dividers-20260603" />
 </head>
 <body>
   <header class="topbar">
@@ -27,7 +27,7 @@
 
   <main>
     <section id="papers" class="panel active">
-      <div class="paper-home-layout">
+      <div id="paperHomeLayout" class="paper-home-layout">
         <aside class="paper-import-pane">
           <div class="card import-card">
             <h2>导入论文</h2>
@@ -88,6 +88,9 @@
             </section>
           </div>
         </aside>
+        <div id="paperImportResizeHandle" class="paper-sidebar-resize" title="拖拽调整导入面板宽度">
+          <button id="paperImportToggleBtn" class="paper-sidebar-toggle" type="button" title="收起/展开导入面板">‹</button>
+        </div>
 
         <section class="card paper-library-card">
           <div class="card-heading paper-library-heading">
@@ -578,7 +581,7 @@
           </div>
         </header>
 
-        <div class="review-layout">
+        <div id="reviewLayout" class="review-layout">
           <aside class="review-sidebar">
             <div>
               <h3>审查队列</h3>
@@ -648,6 +651,9 @@
             <div class="review-sidebar-heading">过滤结果</div>
             <div id="reviewQueueList" class="review-queue-list"></div>
           </aside>
+          <div id="reviewSidebarResizeHandle" class="review-sidebar-resize" title="拖拽调整左侧面板宽度">
+            <button id="reviewSidebarToggleBtn" class="review-sidebar-toggle" type="button" title="收起/展开左侧面板">‹</button>
+          </div>
 
           <main id="reviewMainPane" class="review-main-pane"></main>
 
@@ -944,6 +950,6 @@
   </div>
 
   <div id="toast" class="toast"></div>
-  <script src="/app.js?v=review-scope-confirm-20260603"></script>
+  <script src="/app.js?v=paper-review-dividers-20260603"></script>
 </body>
 </html>
