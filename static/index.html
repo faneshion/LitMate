@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Literature Research Assistant V2</title>
-  <link rel="stylesheet" href="/styles.css?v=evidence-graph-layered-20260602" />
+  <link rel="stylesheet" href="/styles.css?v=review-split-selectors-20260602" />
 </head>
 <body>
   <header class="topbar">
@@ -584,8 +584,16 @@
               <h3>审查队列</h3>
               <span id="reviewQueueCount" class="meta">0 条</span>
             </div>
-            <label>抽取结果</label>
-            <select id="reviewRunSelect"></select>
+            <div class="review-selector-stack">
+              <label>
+                <span>抽取对象</span>
+                <select id="reviewTemplateSelect"></select>
+              </label>
+              <label>
+                <span>论文</span>
+                <select id="reviewPaperSelect"></select>
+              </label>
+            </div>
             <div class="review-sidebar-heading">筛选策略</div>
             <div class="review-filter-grid">
               <label>
@@ -920,6 +928,6 @@
   </div>
 
   <div id="toast" class="toast"></div>
-  <script src="/app.js?v=evidence-graph-layered-20260602"></script>
+  <script src="/app.js?v=review-split-selectors-20260602"></script>
 </body>
 </html>
