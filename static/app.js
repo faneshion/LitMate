@@ -878,26 +878,59 @@ function renderSectionPolicyEditor(dim) {
     ['allow', '可用章节'],
     ['exclude', '排除章节'],
   ];
+  const selectedValues = new Set([...policy.prefer, ...policy.allow, ...policy.exclude]);
   holder.innerHTML = groups.map(([key, title]) => `
-    <section class="section-policy-column">
-      <h4>${title}</h4>
-      ${SECTION_TYPE_OPTIONS.map(option => `
-        <label class="section-policy-option" title="${escapeHtml(option.value)}">
-          <input type="checkbox" data-section-policy="${key}" value="${escapeHtml(option.value)}" ${policy[key].includes(option.value) ? 'checked' : ''} ${disabled ? 'disabled' : ''} />
-          <span>${escapeHtml(option.label)}</span>
-          <small>${escapeHtml(option.value)}</small>
-        </label>
-      `).join('')}
+    <section class="section-policy-column" data-section-policy-column="${key}">
+      <div class="section-policy-column-head">
+        <h4>${title}</h4>
+        <select data-section-policy-select="${key}" ${disabled ? 'disabled' : ''}>
+          <option value="">添加章节</option>
+          ${SECTION_TYPE_OPTIONS
+            .filter(option => !selectedValues.has(option.value))
+            .map(option => `<option value="${escapeHtml(option.value)}" title="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`)
+            .join('')}
+        </select>
+      </div>
+      <div class="section-policy-tags">
+        ${policy[key].map(value => {
+          const option = SECTION_TYPE_OPTIONS.find(item => item.value === value) || {label: value, value};
+          return `
+            <span class="section-policy-tag" data-section-policy-tag="${key}" data-value="${escapeHtml(value)}" title="${escapeHtml(value)}">
+              <span>${escapeHtml(option.label)}</span>
+              <button type="button" data-section-policy-remove="${key}" data-value="${escapeHtml(value)}" aria-label="移除${escapeHtml(option.label)}" ${disabled ? 'disabled' : ''}>&times;</button>
+            </span>
+          `;
+        }).join('') || '<span class="section-policy-empty">未选择</span>'}
+      </div>
     </section>
   `).join('');
+  holder.querySelectorAll('select[data-section-policy-select]').forEach(select => {
+    select.onchange = () => {
+      if (!dim || !select.value) return;
+      const current = readSectionPolicyEditor(dim);
+      current[select.dataset.sectionPolicySelect].push(select.value);
+      dim.section_policy = normalizeSectionPolicy(current, dim);
+      renderSectionPolicyEditor(dim);
+    };
+  });
+  holder.querySelectorAll('button[data-section-policy-remove]').forEach(button => {
+    button.onclick = () => {
+      if (!dim) return;
+      const current = readSectionPolicyEditor(dim);
+      const key = button.dataset.sectionPolicyRemove;
+      current[key] = current[key].filter(value => value !== button.dataset.value);
+      dim.section_policy = normalizeSectionPolicy(current, dim);
+      renderSectionPolicyEditor(dim);
+    };
+  });
 }
 
 function readSectionPolicyEditor(dim) {
   const holder = $('dimSectionPolicy');
   if (!holder) return normalizeSectionPolicy(dim?.section_policy, dim);
   const picked = {prefer: [], allow: [], exclude: []};
-  holder.querySelectorAll('input[data-section-policy]:checked').forEach(input => {
-    picked[input.dataset.sectionPolicy].push(input.value);
+  holder.querySelectorAll('[data-section-policy-tag]').forEach(tag => {
+    picked[tag.dataset.sectionPolicyTag].push(tag.dataset.value);
   });
   return normalizeSectionPolicy(picked, dim);
 }
