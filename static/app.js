@@ -44,12 +44,10 @@ const state = {
   reviewExpandedEvidence: {},
   reviewSaving: false,
   reviewScrollTimer: null,
-  evidenceGraphData: null,
-  evidenceGraphCy: null
+  evidenceGraphData: null
 };
 const PAPER_PAGE_SIZE = 6;
-const CYTOSCAPE_CDN = 'https://cdn.jsdelivr.net/npm/cytoscape@3.28.1/dist/cytoscape.min.js';
-let cytoscapeLoadPromise = null;
+const EVIDENCE_GRAPH_MAX_EVIDENCE_NODES = 120;
 const SIMULATION_SAMPLE_TEXTS = [
   `Title: Reflective Memory Policies for Long-Horizon Scientific Agents
 
@@ -5039,39 +5037,128 @@ function evidenceGraphNodeCounts(data) {
   }, {});
 }
 
-function loadCytoscape() {
-  if (window.cytoscape) return Promise.resolve(window.cytoscape);
-  if (cytoscapeLoadPromise) return cytoscapeLoadPromise;
-  cytoscapeLoadPromise = new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = CYTOSCAPE_CDN;
-    script.async = true;
-    script.onload = () => window.cytoscape ? resolve(window.cytoscape) : reject(new Error('Cytoscape.js 加载失败'));
-    script.onerror = () => reject(new Error('无法加载 Cytoscape.js，可先查看原始数据'));
-    document.head.appendChild(script);
-  });
-  return cytoscapeLoadPromise;
+function truncateGraphLabel(label, limit = 24) {
+  const text = String(label || '').replace(/\s+/g, ' ').trim();
+  return text.length > limit ? `${text.slice(0, limit - 1)}...` : text;
 }
 
-function evidenceGraphElements(data) {
-  const nodes = (data.nodes || []).map(node => ({
-    data: {
-      id: node.id,
-      label: node.label || node.id,
-      type: node.type || 'unknown',
-      fullLabel: node.label || node.id,
-    },
-  }));
-  const edges = (data.links || []).map((link, index) => ({
-    data: {
-      id: `edge:${index}:${link.source}->${link.target}`,
-      source: link.source,
-      target: link.target,
-      label: link.type || '',
-      type: link.type || '',
-    },
-  }));
-  return [...nodes, ...edges];
+function visibleEvidenceGraphData(data) {
+  const nodes = data.nodes || [];
+  const evidenceNodes = nodes.filter(node => node.type === 'evidence');
+  const keptEvidenceIds = new Set(evidenceNodes.slice(0, EVIDENCE_GRAPH_MAX_EVIDENCE_NODES).map(node => node.id));
+  const visibleNodes = nodes.filter(node => node.type !== 'evidence' || keptEvidenceIds.has(node.id));
+  const visibleIds = new Set(visibleNodes.map(node => node.id));
+  return {
+    nodes: visibleNodes,
+    links: (data.links || []).filter(link => visibleIds.has(link.source) && visibleIds.has(link.target)),
+    omitted_visible_evidence_count: Math.max(0, evidenceNodes.length - keptEvidenceIds.size),
+    omitted_server_evidence_count: Math.max(0, Number(data.omitted_evidence_count || 0)),
+  };
+}
+
+function evidenceGraphLayerOrder(type) {
+  return {paper: 0, material: 1, dimension: 2, evidence: 3}[type] ?? 4;
+}
+
+function evidenceGraphLayout(data) {
+  const layerTypes = ['paper', 'material', 'dimension', 'evidence'];
+  const layers = Object.fromEntries(layerTypes.map(type => [type, []]));
+  const other = [];
+  (data.nodes || []).forEach(node => {
+    if (layers[node.type]) layers[node.type].push(node);
+    else other.push(node);
+  });
+  if (other.length) layers.evidence.push(...other);
+  const maxLayerSize = Math.max(1, ...Object.values(layers).map(items => items.length));
+  const width = 1120;
+  const height = Math.max(560, maxLayerSize * 38 + 120);
+  const columns = {
+    paper: {x: 110, label: '论文'},
+    material: {x: 400, label: '抽取结果'},
+    dimension: {x: 700, label: '维度'},
+    evidence: {x: 990, label: '证据'},
+  };
+  const positions = new Map();
+  Object.entries(layers).forEach(([type, items]) => {
+    const sorted = [...items].sort((a, b) => {
+      const order = evidenceGraphLayerOrder(a.type) - evidenceGraphLayerOrder(b.type);
+      if (order) return order;
+      return String(a.label || a.id).localeCompare(String(b.label || b.id), 'zh-Hans-CN');
+    });
+    const top = 84;
+    const available = Math.max(1, height - 150);
+    sorted.forEach((node, index) => {
+      const y = sorted.length <= 1 ? Math.round(height / 2) : Math.round(top + index * (available / (sorted.length - 1)));
+      positions.set(node.id, {x: columns[type]?.x || columns.evidence.x, y, type});
+    });
+    layers[type] = sorted;
+  });
+  return {width, height, layers, positions, columns};
+}
+
+function evidenceGraphNodeShape(node, position) {
+  const label = truncateGraphLabel(node.label || node.id, node.type === 'evidence' ? 18 : 24);
+  const fullLabel = escapeHtml(node.label || node.id);
+  const safeId = escapeHtml(node.id);
+  if (node.type === 'evidence') {
+    return `
+      <g class="evidence-svg-node evidence-node-${escapeHtml(node.type || 'unknown')}" data-graph-node="${safeId}" transform="translate(${position.x},${position.y})">
+        <title>${fullLabel}</title>
+        <circle r="12"></circle>
+        <text x="18" y="4">${escapeHtml(label)}</text>
+      </g>
+    `;
+  }
+  const width = node.type === 'paper' ? 170 : node.type === 'dimension' ? 150 : 180;
+  const height = 34;
+  return `
+    <g class="evidence-svg-node evidence-node-${escapeHtml(node.type || 'unknown')}" data-graph-node="${safeId}" transform="translate(${position.x},${position.y})">
+      <title>${fullLabel}</title>
+      <rect x="${-width / 2}" y="${-height / 2}" width="${width}" height="${height}" rx="8"></rect>
+      <text y="4">${escapeHtml(label)}</text>
+    </g>
+  `;
+}
+
+function renderEvidenceGraphSvg(data) {
+  const visible = visibleEvidenceGraphData(data);
+  const layout = evidenceGraphLayout(visible);
+  const edgePaths = (visible.links || []).map(link => {
+    const source = layout.positions.get(link.source);
+    const target = layout.positions.get(link.target);
+    if (!source || !target) return '';
+    const startX = source.x + 86;
+    const endX = target.x - (target.type === 'evidence' ? 16 : 86);
+    const midX = Math.round((startX + endX) / 2);
+    return `<path class="evidence-svg-edge evidence-edge-${escapeHtml(link.type || 'unknown')}" d="M ${startX} ${source.y} C ${midX} ${source.y}, ${midX} ${target.y}, ${endX} ${target.y}"><title>${escapeHtml(link.type || '')}</title></path>`;
+  }).join('');
+  const layerLabels = Object.entries(layout.columns).map(([type, col]) => `
+    <text class="evidence-svg-layer-label" x="${col.x}" y="32">${escapeHtml(col.label)} · ${layout.layers[type]?.length || 0}</text>
+  `).join('');
+  const nodes = Object.values(layout.layers)
+    .flat()
+    .map(node => evidenceGraphNodeShape(node, layout.positions.get(node.id)))
+    .join('');
+  const omittedNotes = [
+    visible.omitted_visible_evidence_count ? `另有 ${visible.omitted_visible_evidence_count} 个证据节点保留在“原始数据”中。` : '',
+    visible.omitted_server_evidence_count ? `接口本次省略 ${visible.omitted_server_evidence_count} 个证据节点。` : '',
+  ].filter(Boolean).join(' ');
+  const omitted = omittedNotes ? `
+    <div class="evidence-graph-note">为保持浏览器流畅，图中最多展开 ${EVIDENCE_GRAPH_MAX_EVIDENCE_NODES} 个证据节点。${escapeHtml(omittedNotes)}</div>
+  ` : '';
+  return `
+    ${omitted}
+    <svg class="evidence-graph-svg" viewBox="0 0 ${layout.width} ${layout.height}" width="${layout.width}" height="${layout.height}" role="img" aria-label="证据图">
+      <defs>
+        <marker id="evidenceGraphArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+          <path d="M 0 0 L 8 4 L 0 8 z"></path>
+        </marker>
+      </defs>
+      ${layerLabels}
+      <g class="evidence-svg-edges">${edgePaths}</g>
+      <g class="evidence-svg-nodes">${nodes}</g>
+    </svg>
+  `;
 }
 
 function renderEvidenceGraphShell(data, paperIds) {
@@ -5083,7 +5170,7 @@ function renderEvidenceGraphShell(data, paperIds) {
       <header class="evidence-graph-header">
         <div>
           <h3>证据图</h3>
-          <p>使用 Cytoscape.js 可视化 ${paperIds.length} 篇论文的抽取结果证据网络。</p>
+          <p>使用轻量分层图展示 ${paperIds.length} 篇论文的抽取结果证据网络，适合较多节点时快速浏览。</p>
         </div>
         <div class="evidence-graph-actions">
           <button type="button" onclick="fitEvidenceGraph()">适配视图</button>
@@ -5104,9 +5191,9 @@ function renderEvidenceGraphShell(data, paperIds) {
         <span><i class="evidence"></i>证据</span>
       </div>
       <div id="evidenceGraphCanvas" class="evidence-graph-canvas">
-        <div class="graph-loading">正在加载 Cytoscape.js...</div>
+        <div class="graph-loading">正在生成证据图...</div>
       </div>
-      <pre id="evidenceGraphRaw" class="evidence-graph-raw" hidden>${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+      <pre id="evidenceGraphRaw" class="evidence-graph-raw" hidden></pre>
     </section>
   `;
 }
@@ -5117,81 +5204,26 @@ function renderEvidenceGraphFallback(message) {
   canvas.innerHTML = `<div class="graph-empty">${escapeHtml(message)}</div>`;
 }
 
-async function renderEvidenceGraphVisualization(data) {
+function bindEvidenceGraphNodeEvents(data) {
+  const byId = new Map((data.nodes || []).map(node => [node.id, node]));
+  document.querySelectorAll('[data-graph-node]').forEach(nodeEl => {
+    nodeEl.onclick = () => {
+      const node = byId.get(nodeEl.dataset.graphNode);
+      if (!node) return;
+      toast(`${evidenceGraphTypeLabel(node.type)}：${node.label || node.id}`);
+    };
+  });
+}
+
+function renderEvidenceGraphVisualization(data) {
   const canvas = $('evidenceGraphCanvas');
   if (!canvas) return;
   if (!(data.nodes || []).length) {
     renderEvidenceGraphFallback('没有可视化节点。请确认所选论文已有抽取结果和证据。');
     return;
   }
-  try {
-    const cytoscape = await loadCytoscape();
-    state.evidenceGraphCy?.destroy?.();
-    state.evidenceGraphCy = cytoscape({
-      container: canvas,
-      elements: evidenceGraphElements(data),
-      minZoom: 0.25,
-      maxZoom: 2.5,
-      wheelSensitivity: 0.18,
-      style: [
-        {
-          selector: 'node',
-          style: {
-            'label': 'data(label)',
-            'font-size': 10,
-            'text-wrap': 'wrap',
-            'text-max-width': 96,
-            'text-valign': 'center',
-            'text-halign': 'center',
-            'color': '#0f172a',
-            'background-color': '#94a3b8',
-            'border-width': 1,
-            'border-color': '#ffffff',
-            'width': 34,
-            'height': 34,
-          },
-        },
-        {selector: 'node[type = "paper"]', style: {'shape': 'round-rectangle', 'background-color': '#2563eb', 'color': '#ffffff', 'width': 64, 'height': 34}},
-        {selector: 'node[type = "material"]', style: {'shape': 'ellipse', 'background-color': '#f59e0b', 'width': 46, 'height': 46}},
-        {selector: 'node[type = "dimension"]', style: {'shape': 'diamond', 'background-color': '#7c3aed', 'color': '#ffffff', 'width': 44, 'height': 44}},
-        {selector: 'node[type = "evidence"]', style: {'shape': 'round-tag', 'background-color': '#10b981', 'color': '#052e1b', 'width': 54, 'height': 30}},
-        {
-          selector: 'edge',
-          style: {
-            'curve-style': 'bezier',
-            'width': 1.4,
-            'line-color': '#cbd5e1',
-            'target-arrow-shape': 'triangle',
-            'target-arrow-color': '#cbd5e1',
-            'arrow-scale': 0.65,
-            'label': 'data(label)',
-            'font-size': 8,
-            'text-rotation': 'autorotate',
-            'text-margin-y': -6,
-            'color': '#64748b',
-          },
-        },
-      ],
-      layout: {
-        name: 'cose',
-        animate: true,
-        animationDuration: 650,
-        fit: true,
-        padding: 38,
-        nodeRepulsion: 9000,
-        idealEdgeLength: 118,
-        edgeElasticity: 80,
-        gravity: 0.25,
-        numIter: 900,
-      },
-    });
-    state.evidenceGraphCy.on('tap', 'node', event => {
-      const node = event.target.data();
-      toast(`${evidenceGraphTypeLabel(node.type)}：${node.fullLabel || node.label || node.id}`);
-    });
-  } catch (err) {
-    renderEvidenceGraphFallback(err.message);
-  }
+  canvas.innerHTML = renderEvidenceGraphSvg(data);
+  bindEvidenceGraphNodeEvents(data);
 }
 
 async function evidenceGraph() {
@@ -5199,22 +5231,25 @@ async function evidenceGraph() {
   if (!ids.length) { toast('请至少选择一篇论文'); return; }
   const data = await api('/api/analysis/evidence-graph?paper_ids=' + encodeURIComponent(ids.join(',')));
   renderEvidenceGraphShell(data, ids);
-  await renderEvidenceGraphVisualization(data);
+  renderEvidenceGraphVisualization(data);
 }
 
 window.toggleEvidenceGraphRaw = function() {
   const raw = $('evidenceGraphRaw');
   if (!raw) return;
+  if (!raw.textContent && state.evidenceGraphData) {
+    raw.textContent = JSON.stringify(state.evidenceGraphData, null, 2);
+  }
   raw.hidden = !raw.hidden;
 };
 
 window.fitEvidenceGraph = function() {
-  if (!state.evidenceGraphCy) {
-    toast('证据图尚未加载完成');
+  const canvas = $('evidenceGraphCanvas');
+  if (!canvas) {
+    toast('证据图尚未生成');
     return;
   }
-  state.evidenceGraphCy.fit(undefined, 36);
-  state.evidenceGraphCy.center();
+  canvas.scrollTo({left: 0, top: 0, behavior: 'smooth'});
 };
 
 async function bindEvents() {

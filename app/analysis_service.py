@@ -123,11 +123,13 @@ def build_gap_summary(papers: List[Paper], runs: List[ExtractionRun], template: 
     }
 
 
-def build_evidence_graph(materials: List[MaterialItem], papers: List[Paper]) -> Dict[str, Any]:
+def build_evidence_graph(materials: List[MaterialItem], papers: List[Paper], max_evidence_nodes: int = 1000) -> Dict[str, Any]:
     nodes = []
     links = []
     paper_titles = {p.id: p.metadata.title for p in papers}
     added = set()
+    evidence_added = 0
+    omitted_evidence = 0
     for mat in materials:
         pid = f"paper:{mat.paper_id}"
         did = f"dim:{mat.dimension_name}"
@@ -139,9 +141,13 @@ def build_evidence_graph(materials: List[MaterialItem], papers: List[Paper]) -> 
         links.append({"source": pid, "target": mid, "type": "has_material"})
         links.append({"source": mid, "target": did, "type": "belongs_to_dimension"})
         for ev in mat.evidence[:3]:
+            if evidence_added >= max_evidence_nodes:
+                omitted_evidence += 1
+                continue
             eid = f"ev:{ev.id}"
             if eid not in added:
                 nodes.append({"id": eid, "label": (ev.quote[:80] + "...") if len(ev.quote) > 80 else ev.quote, "type": "evidence"})
                 added.add(eid)
+                evidence_added += 1
             links.append({"source": mid, "target": eid, "type": "supported_by"})
-    return {"nodes": nodes, "links": links}
+    return {"nodes": nodes, "links": links, "omitted_evidence_count": omitted_evidence}
