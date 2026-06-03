@@ -51,6 +51,11 @@ const state = {
   reviewSidebarWidth: 300,
   reviewSidebarCollapsed: false,
   reviewSidebarResizing: false,
+  materialsSidebarWidth: 320,
+  materialsSidebarCollapsed: false,
+  materialsSidebarResizing: false,
+  materialAnalysisType: 'overview',
+  materialCurrentItems: [],
   reviewItemIndex: 0,
   reviewFilters: {dimension: 'all', status: 'all', risk: 'all', query: ''},
   reviewActionMode: null,
@@ -123,6 +128,90 @@ On a benchmark of 250 API-use tasks, adding the heuristic library raises task su
 Limitations
 The approach can overfit to frequent failure patterns and may not help when the tool environment changes substantially.`
 ];
+
+const MATERIAL_ANALYSIS_TYPES = [
+  {id: 'overview', index: '1', icon: '览', label: '素材总览', description: '快速查看素材覆盖、证据质量与待处理信号。'},
+  {id: 'compare', index: '2', icon: '矩', label: '跨论文对比矩阵', description: '按维度比较不同论文的共同点与差异。'},
+  {id: 'gap', index: '3', icon: '空', label: '研究空白分析', description: '定位未报告、证据薄弱和覆盖不足的方向。'},
+  {id: 'claim_evidence', index: '4', icon: '证', label: 'Claim-Evidence 分析', description: '检查观点、证据片段和章节来源是否匹配。'},
+  {id: 'review_pack', index: '5', icon: '综', label: '综述素材包', description: '组织综述大纲、Related Work 和引用表。'},
+  {id: 'design', index: '6', icon: '案', label: '方案设计辅助', description: '从局限、空白和机制差异生成新方案线索。'},
+];
+
+const MATERIAL_REVIEW_STATUS_OPTIONS = [
+  {value: 'confirm', label: '已确认', defaultChecked: true},
+  {value: 'revise', label: '修改后确认', defaultChecked: true},
+  {value: 'pending', label: '未审查', defaultChecked: false},
+  {value: 'reject', label: '已驳回', defaultChecked: false},
+  {value: 'mark_not_reported', label: '应为未报告', defaultChecked: false},
+  {value: 'mark_evidence_insufficient', label: '证据不足', defaultChecked: false},
+];
+
+const MATERIAL_EVIDENCE_REQUIREMENT_OPTIONS = [
+  {value: 'evidence_required', label: '仅包含有证据素材', defaultChecked: true},
+  {value: 'include_model_inferred', label: '包含模型推断', defaultChecked: false},
+  {value: 'include_evidence_issues', label: '包含证据不足素材', defaultChecked: false},
+];
+
+const MATERIAL_SOURCE_OPTIONS = [
+  {value: 'arxiv', label: 'arXiv', defaultChecked: true},
+  {value: 'acl', label: 'ACL', defaultChecked: true},
+  {value: 'neurips', label: 'NeurIPS', defaultChecked: true},
+  {value: 'iclr', label: 'ICLR', defaultChecked: true},
+  {value: 'icml', label: 'ICML', defaultChecked: true},
+  {value: 'other', label: '其他', defaultChecked: true},
+];
+
+const MATERIAL_EVIDENCE_STRENGTH_OPTIONS = [
+  {value: 'strong', label: 'strong', defaultChecked: true},
+  {value: 'medium', label: 'medium', defaultChecked: true},
+  {value: 'weak', label: 'weak', defaultChecked: false},
+];
+
+const MATERIAL_OBJECT_ROLE_OPTIONS = [
+  {value: 'core_contribution', label: 'core_contribution', defaultChecked: true},
+  {value: 'method_component', label: 'method_component', defaultChecked: true},
+  {value: 'auxiliary_component', label: 'auxiliary_component', defaultChecked: true},
+  {value: 'evaluation_object', label: 'evaluation_object', defaultChecked: true},
+  {value: 'discussion_only', label: 'discussion_only', defaultChecked: false},
+];
+
+const MATERIAL_ANALYSIS_PARAMS = {
+  overview: [
+    {value: 'coverage', label: '显示维度覆盖'},
+    {value: 'risk', label: '突出风险素材'},
+    {value: 'recent', label: '优先最近更新'},
+  ],
+  compare: [
+    {value: 'accepted_only', label: '仅对比已接受素材'},
+    {value: 'show_gaps', label: '矩阵中显示缺口'},
+    {value: 'compact_cells', label: '单元格紧凑显示'},
+  ],
+  gap: [
+    {value: 'not_reported', label: '高频 not_reported'},
+    {value: 'evidence_issue', label: '证据不足'},
+    {value: 'missing_ablation', label: '缺少消融实验'},
+    {value: 'limitations', label: '局限性聚合'},
+    {value: 'coverage', label: '维度覆盖不完整'},
+  ],
+  claim_evidence: [
+    {value: 'method_first', label: '优先检查 Method / Results 证据'},
+    {value: 'flag_conclusion', label: '标记 Conclusion 支撑不足'},
+    {value: 'show_context', label: '显示证据上下文线索'},
+  ],
+  review_pack: [
+    {value: 'outline', label: '综述大纲'},
+    {value: 'related_work', label: 'Related Work 素材'},
+    {value: 'citation_table', label: '观点-引用表'},
+    {value: 'questions', label: '研究问题清单'},
+  ],
+  design: [
+    {value: 'mechanism_gap', label: '机制差异'},
+    {value: 'evaluation_gap', label: '评估缺口'},
+    {value: 'risk_boundary', label: '边界与风险'},
+    {value: 'prototype_plan', label: '方案草案'},
+  ],
+};
 
 const $ = (id) => document.getElementById(id);
 const api = async (url, opts = {}) => {
@@ -5527,42 +5616,663 @@ async function exportReviewRecords() {
   URL.revokeObjectURL(url);
 }
 
+function materialAnalysisConfig() {
+  return MATERIAL_ANALYSIS_TYPES.find(item => item.id === state.materialAnalysisType) || MATERIAL_ANALYSIS_TYPES[0];
+}
+
+function materialReadyTemplates() {
+  const ready = extractionReadyTemplates();
+  return ready.length ? ready : (state.templates || []);
+}
+
+function materialCurrentTemplate() {
+  const selectedId = $('materialObjectSelect')?.value || $('materialTemplateVersionSelect')?.value || '';
+  const templates = materialReadyTemplates();
+  return templates.find(item => item.id === selectedId) || templates[0] || null;
+}
+
+function materialTemplateDimensions(template = materialCurrentTemplate()) {
+  const dims = (template?.dimensions || []).map(dim => ({
+    value: dim.name,
+    label: dim.label || dim.name,
+    question: dim.question || dim.description || '',
+  }));
+  if (dims.length) return dims;
+  const byName = new Map();
+  (state.materials || []).forEach(item => {
+    if (!item.dimension_name) return;
+    byName.set(item.dimension_name, {
+      value: item.dimension_name,
+      label: item.dimension_label || item.dimension_name,
+      question: '',
+    });
+  });
+  return [...byName.values()].sort((a, b) => a.label.localeCompare(b.label, 'zh-Hans-CN'));
+}
+
+function selectedCheckboxValues(selector) {
+  return [...document.querySelectorAll(selector)]
+    .filter(input => input.checked)
+    .map(input => input.value);
+}
+
+function renderMaterialChecks(containerId, inputClass, options) {
+  const container = $(containerId);
+  if (!container) return;
+  const previous = new Map([...container.querySelectorAll('input')].map(input => [input.value, input.checked]));
+  const hasPrevious = previous.size > 0;
+  container.innerHTML = options.map(option => {
+    const checked = hasPrevious ? previous.get(option.value) !== false : Boolean(option.defaultChecked);
+    return `<label class="materials-check" title="${escapeHtml(option.label)}">
+      <input type="checkbox" class="${escapeHtml(inputClass)}" value="${escapeHtml(option.value)}" ${checked ? 'checked' : ''} />
+      <span>${escapeHtml(option.label)}</span>
+    </label>`;
+  }).join('');
+}
+
+function renderMaterialDimensionChecks() {
+  const dims = materialTemplateDimensions();
+  const container = $('materialDimensionChecks');
+  const hiddenSelect = $('materialDimension');
+  if (hiddenSelect) {
+    hiddenSelect.innerHTML = '<option value="">全部维度</option>' + dims.map(dim => `<option value="${escapeHtml(dim.value)}">${escapeHtml(dim.label)}</option>`).join('');
+  }
+  if (!container) return;
+  const previous = new Map([...container.querySelectorAll('input')].map(input => [input.value, input.checked]));
+  const hasPrevious = previous.size > 0;
+  container.innerHTML = dims.map(dim => {
+    const checked = hasPrevious ? previous.get(dim.value) !== false : true;
+    return `<label class="materials-dimension-check" title="${escapeHtml(dim.question || dim.value)}">
+      <input type="checkbox" class="materialDimCheck" value="${escapeHtml(dim.value)}" ${checked ? 'checked' : ''} />
+      <span>${escapeHtml(dim.label)}</span>
+    </label>`;
+  }).join('') || '<div class="materials-empty">暂无可用维度。请先发布对象模板或完成抽取。</div>';
+}
+
+function selectedMaterialDimensions() {
+  const selected = selectedCheckboxValues('.materialDimCheck');
+  if (selected.length) return selected;
+  return materialTemplateDimensions().map(dim => dim.value);
+}
+
+function materialDimensionLabel(value) {
+  return materialTemplateDimensions().find(dim => dim.value === value)?.label || value || '-';
+}
+
+function materialPaperSetOptions() {
+  return [
+    {value: 'all', label: '全部论文'},
+    ...validCustomPaperSets().map(item => ({value: item.id, label: item.name || item.id})),
+  ];
+}
+
+function materialScopedPapers() {
+  const selectedSetId = $('materialPaperSetSelect')?.value || 'all';
+  if (selectedSetId === 'all') return state.papers || [];
+  const paperSet = (state.paperSets || []).find(item => item.id === selectedSetId);
+  const ids = new Set(paperSet?.paper_ids || []);
+  return (state.papers || []).filter(paper => ids.has(paper.id));
+}
+
+function materialScopedPaperIds() {
+  return new Set(materialScopedPapers().map(paper => paper.id));
+}
+
+function paperById(id) {
+  return (state.papers || []).find(paper => paper.id === id);
+}
+
+function materialSelectedStatuses() {
+  return selectedCheckboxValues('.materialReviewStatusCheck');
+}
+
+function materialEvidenceRequirements() {
+  return new Set(selectedCheckboxValues('.materialEvidenceRequirementCheck'));
+}
+
+function paperSourceBucket(paper) {
+  const meta = paper?.metadata || {};
+  const extra = meta.extra || {};
+  const text = [
+    paper?.source,
+    meta.venue,
+    meta.publisher,
+    meta.journal,
+    meta.conference,
+    extra.venue,
+    extra.conference,
+    meta.title,
+  ].filter(Boolean).join(' ').toLowerCase();
+  if (/arxiv/.test(text)) return 'arxiv';
+  if (/\bacl\b|association for computational linguistics/.test(text)) return 'acl';
+  if (/neurips|nips/.test(text)) return 'neurips';
+  if (/\biclr\b/.test(text)) return 'iclr';
+  if (/\bicml\b/.test(text)) return 'icml';
+  return 'other';
+}
+
+function materialEvidenceStrength(item) {
+  const score = Number(item.confidence || 0);
+  if (score >= 0.75) return 'strong';
+  if (score >= 0.45 || (item.evidence || []).length) return 'medium';
+  return 'weak';
+}
+
+function materialObjectRole(item) {
+  const value = item.normalized_value || item.raw || {};
+  const text = typeof value === 'string' ? value : JSON.stringify(value || {});
+  const roles = MATERIAL_OBJECT_ROLE_OPTIONS.map(option => option.value);
+  return roles.find(role => text.includes(role)) || '';
+}
+
+function materialMatchesEvidenceRequirements(item) {
+  const requirements = materialEvidenceRequirements();
+  const evidenceCount = (item.evidence || []).length;
+  if (requirements.has('evidence_required') && !evidenceCount) return false;
+  if (!requirements.has('include_model_inferred') && itemModelInferred(item)) return false;
+  if (!requirements.has('include_evidence_issues') && item.review_status === 'mark_evidence_insufficient') return false;
+  return true;
+}
+
+function filteredMaterialItems(items = state.materials || []) {
+  const paperIds = materialScopedPaperIds();
+  const dimensions = new Set(selectedMaterialDimensions());
+  const statuses = materialSelectedStatuses();
+  const statusSet = new Set(statuses);
+  const sourceSet = new Set(selectedCheckboxValues('.materialSourceCheck'));
+  const strengthSet = new Set(selectedCheckboxValues('.materialEvidenceStrengthCheck'));
+  const roleSet = new Set(selectedCheckboxValues('.materialObjectRoleCheck'));
+  const yearStart = Number($('materialYearStart')?.value || '');
+  const yearEnd = Number($('materialYearEnd')?.value || '');
+  return (items || []).filter(item => {
+    const paper = paperById(item.paper_id);
+    if (paperIds.size && !paperIds.has(item.paper_id)) return false;
+    if (dimensions.size && !dimensions.has(item.dimension_name)) return false;
+    if (statusSet.size && !statusSet.has(item.review_status || 'pending')) return false;
+    if (!materialMatchesEvidenceRequirements(item)) return false;
+    const year = Number(paper?.metadata?.year || 0);
+    if (Number.isFinite(yearStart) && yearStart && year && year < yearStart) return false;
+    if (Number.isFinite(yearEnd) && yearEnd && year && year > yearEnd) return false;
+    if (sourceSet.size && !sourceSet.has(paperSourceBucket(paper))) return false;
+    if (strengthSet.size && !strengthSet.has(materialEvidenceStrength(item))) return false;
+    const role = materialObjectRole(item);
+    if (role && roleSet.size && !roleSet.has(role)) return false;
+    return true;
+  });
+}
+
+function renderMaterialAnalysisNav() {
+  const nav = $('materialAnalysisNav');
+  if (!nav) return;
+  nav.innerHTML = MATERIAL_ANALYSIS_TYPES.map(item => `
+    <button type="button" class="materials-analysis-item ${item.id === state.materialAnalysisType ? 'active' : ''}" data-material-analysis="${escapeHtml(item.id)}">
+      <span class="materials-analysis-icon">${escapeHtml(item.icon)}</span>
+      <span class="materials-analysis-copy">
+        <b>${escapeHtml(item.index)}. ${escapeHtml(item.label)}</b>
+        <span>${escapeHtml(item.description)}</span>
+      </span>
+    </button>
+  `).join('');
+  nav.querySelectorAll('[data-material-analysis]').forEach(button => {
+    button.onclick = () => window.setMaterialAnalysisType(button.dataset.materialAnalysis);
+  });
+}
+
+function renderMaterialAnalysisParams() {
+  const options = MATERIAL_ANALYSIS_PARAMS[state.materialAnalysisType] || [];
+  const panel = $('materialAnalysisParams');
+  if (!panel) return;
+  panel.innerHTML = options.map(option => `
+    <label class="materials-param-option">
+      <input type="checkbox" value="${escapeHtml(option.value)}" checked />
+      <span>${escapeHtml(option.label)}</span>
+    </label>
+  `).join('') || '<div class="materials-empty">当前分析类型暂无额外参数。</div>';
+}
+
+function renderComparePaperChecks() {
+  const container = $('comparePaperChecks');
+  if (!container) return;
+  const papers = materialScopedPapers();
+  const previous = new Map([...container.querySelectorAll('input')].map(input => [input.value, input.checked]));
+  const hasPrevious = previous.size > 0;
+  container.innerHTML = papers.map(paper => {
+    const checked = hasPrevious ? previous.get(paper.id) !== false : true;
+    const title = paper.metadata?.title || paper.id;
+    return `<label class="materials-paper-check" title="${escapeHtml(title)}">
+      <input type="checkbox" class="comparePaper" value="${escapeHtml(paper.id)}" ${checked ? 'checked' : ''} />
+      <span>${escapeHtml(fmt(title, 96))}</span>
+    </label>`;
+  }).join('') || '<div class="materials-empty">当前论文集合中暂无论文。</div>';
+}
+
+function materialContextSummary(items) {
+  const papers = materialScopedPapers();
+  const template = materialCurrentTemplate();
+  const paperSetLabel = $('materialPaperSetSelect')?.selectedOptions?.[0]?.textContent || '全部论文';
+  const evidenceCount = items.filter(item => (item.evidence || []).length).length;
+  const coverage = items.length ? Math.round(evidenceCount / items.length * 100) : 0;
+  return {
+    papers,
+    template,
+    paperSetLabel,
+    reviewedCount: items.filter(item => reviewStatusGroup(item.review_status) === 'accepted').length,
+    evidenceCoverage: coverage,
+  };
+}
+
+function updateMaterialsContext(items = filteredMaterialItems()) {
+  const ctx = materialContextSummary(items);
+  const config = materialAnalysisConfig();
+  if ($('materialsProjectName')) $('materialsProjectName').textContent = config.label;
+  if ($('materialsScopeSummary')) $('materialsScopeSummary').textContent = `${ctx.paperSetLabel} · ${ctx.papers.length} 篇论文 · ${items.length} 条候选素材`;
+  if ($('materialsPaperSetName')) $('materialsPaperSetName').textContent = ctx.paperSetLabel;
+  if ($('materialsObjectName')) $('materialsObjectName').textContent = ctx.template?.name || '未选择';
+  if ($('materialsTemplateVersion')) $('materialsTemplateVersion').textContent = ctx.template?.version || '-';
+  if ($('materialsPaperCount')) $('materialsPaperCount').textContent = `${ctx.papers.length} 篇`;
+  if ($('materialsReviewedCount')) $('materialsReviewedCount').textContent = `${ctx.reviewedCount} 条`;
+  if ($('materialsEvidenceCoverage')) $('materialsEvidenceCoverage').textContent = `${ctx.evidenceCoverage}%`;
+  if ($('materialMainTitle')) $('materialMainTitle').textContent = config.label;
+  if ($('materialMainSubtitle')) $('materialMainSubtitle').textContent = config.description;
+  if ($('materialAnalysisTypeHint')) $('materialAnalysisTypeHint').textContent = `当前：${config.label}`;
+}
+
+function renderMaterialOverview(items) {
+  const dimensions = selectedMaterialDimensions();
+  const byDimension = new Map();
+  dimensions.forEach(dim => byDimension.set(dim, 0));
+  items.forEach(item => byDimension.set(item.dimension_name, (byDimension.get(item.dimension_name) || 0) + 1));
+  const accepted = items.filter(item => reviewStatusGroup(item.review_status) === 'accepted').length;
+  const evidenceCount = items.filter(item => (item.evidence || []).length).length;
+  const inferredCount = items.filter(item => itemModelInferred(item)).length;
+  $('analysisOutput').classList.remove('muted');
+  $('analysisOutput').innerHTML = `
+    <div class="materials-overview-grid">
+      <div><span>当前素材</span><b>${items.length}</b></div>
+      <div><span>已接受</span><b>${accepted}</b></div>
+      <div><span>有证据</span><b>${evidenceCount}</b></div>
+      <div><span>模型推断</span><b>${inferredCount}</b></div>
+    </div>
+    <div class="materials-coverage-list">
+      ${[...byDimension.entries()].map(([dim, count]) => `
+        <div>
+          <span>${escapeHtml(materialDimensionLabel(dim))}</span>
+          <b>${count} 条</b>
+        </div>
+      `).join('') || '<div><span>暂无维度</span><b>0 条</b></div>'}
+    </div>
+  `;
+}
+
+function renderMaterialResults(items) {
+  const list = $('materialResults');
+  if (!list) return;
+  const shown = items.slice(0, 30);
+  list.innerHTML = shown.map(item => {
+    const paper = paperById(item.paper_id);
+    const evidence = (item.evidence || []).slice(0, 2);
+    return `<article class="materials-result-item">
+      <h3>${escapeHtml(item.dimension_label || materialDimensionLabel(item.dimension_name))} · ${escapeHtml(fmt(item.title || paper?.metadata?.title || item.paper_id, 92))}
+        <span class="badge ${escapeHtml(item.review_status || 'pending')}">${escapeHtml(reviewStatusLabel(item.review_status || 'pending'))}</span>
+      </h3>
+      <p>${escapeHtml(fmt(item.edited_content || item.content || '无内容', 520))}</p>
+      ${evidence.map(ev => `<div class="evidence">${escapeHtml(fmt(ev.quote, 240))}</div>`).join('')}
+      <div class="materials-result-meta">
+        <span>${escapeHtml(fmt(paper?.metadata?.title || item.paper_id, 52))}</span>
+        <span>${escapeHtml(String(paper?.metadata?.year || '未知年份'))}</span>
+        <span>${escapeHtml(sourceLabel(paper?.source))}</span>
+        <span>confidence ${escapeHtml(confidenceText(item.confidence))}</span>
+      </div>
+      ${(item.tags || []).length ? `<div class="materials-result-tags">${(item.tags || []).slice(0, 6).map(tag => `<span>${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
+    </article>`;
+  }).join('') || '<div class="materials-empty">当前筛选条件下没有匹配素材。</div>';
+  if (items.length > shown.length) {
+    list.insertAdjacentHTML('beforeend', `<div class="materials-empty">已显示前 ${shown.length} 条，继续缩小筛选条件可查看更聚焦的结果。</div>`);
+  }
+}
+
+function renderMaterialInsights(items) {
+  const panel = $('materialInsightPanel');
+  if (!panel) return;
+  const dimensions = selectedMaterialDimensions();
+  const missingDims = dimensions.filter(dim => !items.some(item => item.dimension_name === dim));
+  const evidenceIssues = items.filter(item => item.review_status === 'mark_evidence_insufficient' || !(item.evidence || []).length).length;
+  const inferredCount = items.filter(item => itemModelInferred(item)).length;
+  const suggestions = [
+    missingDims.length ? {
+      title: '优先检查维度覆盖缺口',
+      text: `${missingDims.slice(0, 3).map(materialDimensionLabel).join('、')} 当前没有可用素材，适合作为空白分析或补抽候选。`,
+    } : {
+      title: '维度覆盖较完整',
+      text: '当前筛选范围下，各已选维度至少有一条素材，可直接进入对比或综述组织。',
+    },
+    evidenceIssues ? {
+      title: '证据质量需要核验',
+      text: `${evidenceIssues} 条素材存在无证据或证据不足风险，生成综述前建议先回到人机审查确认。`,
+    } : {
+      title: '证据过滤较严格',
+      text: '当前结果主要来自有证据素材，适合生成引用表和 Related Work 草稿。',
+    },
+    inferredCount ? {
+      title: '模型推断信号',
+      text: `${inferredCount} 条素材包含推断成分，建议在写作材料中标注为“待核验观点”。`,
+    } : {
+      title: '推断素材已收紧',
+      text: '当前范围基本不含模型推断，适合做事实性对比矩阵。',
+    },
+  ];
+  panel.innerHTML = suggestions.map(item => `<article class="materials-insight-item"><b>${escapeHtml(item.title)}</b><p>${escapeHtml(item.text)}</p></article>`).join('');
+}
+
+function renderMaterialExplanations(items) {
+  const panel = $('materialExplanationPanel');
+  if (!panel) return;
+  const config = materialAnalysisConfig();
+  const statuses = materialSelectedStatuses().map(reviewStatusLabel).join('、') || '全部状态';
+  const dims = selectedMaterialDimensions().map(materialDimensionLabel).join('、') || '全部维度';
+  panel.innerHTML = [
+    {title: '分析视角', text: `${config.label}：${config.description}`},
+    {title: '数据范围', text: `当前纳入 ${materialScopedPapers().length} 篇论文、${items.length} 条素材。`},
+    {title: '过滤规则', text: `状态：${statuses}；维度：${fmt(dims, 80)}。默认会优先保留有证据、已审查的素材。`},
+  ].map(item => `<article class="materials-explain-item"><b>${escapeHtml(item.title)}</b><p>${escapeHtml(item.text)}</p></article>`).join('');
+}
+
+function refreshMaterialDerivedViews(items = filteredMaterialItems()) {
+  state.materialCurrentItems = items;
+  updateMaterialsContext(items);
+  renderMaterialOverview(items);
+  renderMaterialResults(items);
+  renderMaterialInsights(items);
+  renderMaterialExplanations(items);
+}
+
 function renderMaterialsPanel() {
-  const dims = [...new Set(state.materials.map(m => m.dimension_name))].sort();
-  $('materialDimension').innerHTML = '<option value="">全部维度</option>' + dims.map(d => `<option value="${d}">${d}</option>`).join('');
-  $('comparePaperChecks').innerHTML = state.papers.map(p => `<label><input type="checkbox" class="comparePaper" value="${p.id}" /> ${escapeHtml(fmt(p.metadata.title, 90))}</label>`).join('') || '<p class="muted">暂无论文。</p>';
+  const paperSetValue = $('materialPaperSetSelect')?.value || (validCustomPaperSets()[0]?.id || 'all');
+  const templateValue = $('materialObjectSelect')?.value || materialReadyTemplates()[0]?.id || '';
+  applySelectOptions($('materialPaperSetSelect'), materialPaperSetOptions(), paperSetValue);
+  const templateOptions = materialReadyTemplates().map(template => ({value: template.id, label: template.name || template.id}));
+  applySelectOptions($('materialObjectSelect'), templateOptions.length ? templateOptions : [{value: '', label: '暂无对象模板'}], templateValue);
+  applySelectOptions($('materialTemplateVersionSelect'), materialReadyTemplates().map(template => ({
+    value: template.id,
+    label: `${template.version || '-'} · ${template.name || template.id}`,
+  })), $('materialObjectSelect')?.value || templateValue);
+  if ($('materialTemplateVersionSelect') && $('materialObjectSelect')) $('materialTemplateVersionSelect').value = $('materialObjectSelect').value;
+  renderMaterialAnalysisNav();
+  renderMaterialAnalysisParams();
+  renderMaterialChecks('materialReviewStatusChecks', 'materialReviewStatusCheck', MATERIAL_REVIEW_STATUS_OPTIONS);
+  renderMaterialChecks('materialEvidenceRequirementChecks', 'materialEvidenceRequirementCheck', MATERIAL_EVIDENCE_REQUIREMENT_OPTIONS);
+  renderMaterialChecks('materialSourceChecks', 'materialSourceCheck', MATERIAL_SOURCE_OPTIONS);
+  renderMaterialChecks('materialEvidenceStrengthChecks', 'materialEvidenceStrengthCheck', MATERIAL_EVIDENCE_STRENGTH_OPTIONS);
+  renderMaterialChecks('materialObjectRoleChecks', 'materialObjectRoleCheck', MATERIAL_OBJECT_ROLE_OPTIONS);
+  renderMaterialDimensionChecks();
+  renderComparePaperChecks();
+  renderMaterialsLayout();
+  refreshMaterialDerivedViews(filteredMaterialItems());
 }
 
 async function searchMaterials() {
   const params = new URLSearchParams();
-  if ($('materialQuery').value) params.set('q', $('materialQuery').value);
-  if ($('materialDimension').value) params.set('dimension_name', $('materialDimension').value);
-  if ($('materialStatus').value) params.set('status', $('materialStatus').value);
+  const query = $('materialQuery')?.value?.trim() || '';
+  if (query) params.set('q', query);
   const data = await api('/api/materials/search?' + params.toString());
-  $('materialResults').innerHTML = data.items.map(m => `
-    <div class="item">
-      <h3>${escapeHtml(m.dimension_label)} · ${escapeHtml(m.title)} <span class="badge ${m.review_status}">${escapeHtml(reviewStatusLabel(m.review_status))}</span></h3>
-      <p>${escapeHtml(fmt(m.content, 700))}</p>
-      ${(m.evidence || []).slice(0, 2).map(e => `<div class="evidence">${escapeHtml(fmt(e.quote, 260))}</div>`).join('')}
-      <div class="meta">paper ${m.paper_id} · tags ${(m.tags || []).join(', ')}</div>
-    </div>`).join('') || '<p class="muted">没有匹配素材。</p>';
+  const items = filteredMaterialItems(data.items || []);
+  refreshMaterialDerivedViews(items);
+  $('materialResultHint').textContent = `已按当前条件检索到 ${items.length} 条素材。`;
+  toast(`已更新分析范围：${items.length} 条素材`);
 }
 
 async function comparePapers() {
+  window.setMaterialAnalysisType('compare', {silent: true});
   const ids = selectedAnalysisPaperIds();
   if (!ids.length) { toast('请至少选择一篇论文'); return; }
-  const data = await api('/api/analysis/compare?paper_ids=' + encodeURIComponent(ids.join(',')) + '&template_id=tmpl_experience_v2');
-  const cols = ['title', 'year', ...data.dimensions];
-  $('analysisOutput').innerHTML = `<div class="table-wrap"><table><thead><tr>${cols.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead><tbody>${data.matrix.map(row => `<tr>${cols.map(c => `<td>${escapeHtml(fmt(row[c], 600))}</td>`).join('')}</tr>`).join('')}</tbody></table></div><h4>缺口</h4><pre>${escapeHtml(JSON.stringify(data.gaps, null, 2))}</pre>`;
+  const template = materialCurrentTemplate();
+  const params = new URLSearchParams({
+    paper_ids: ids.join(','),
+    template_id: template?.id || 'tmpl_experience_v2',
+    include_pending: String(materialSelectedStatuses().includes('pending')),
+  });
+  const data = await api('/api/analysis/compare?' + params.toString());
+  const selectedDims = new Set(selectedMaterialDimensions());
+  const dims = (data.dimensions || []).filter(dim => !selectedDims.size || selectedDims.has(dim));
+  const cols = ['title', 'year', ...dims];
+  $('analysisOutput').classList.remove('muted');
+  $('analysisOutput').innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead><tr>${cols.map(col => `<th>${escapeHtml(col === 'title' ? '论文' : col === 'year' ? '年份' : materialDimensionLabel(col))}</th>`).join('')}</tr></thead>
+        <tbody>${(data.matrix || []).map(row => `<tr>${cols.map(col => `<td>${escapeHtml(fmt(row[col], 600))}</td>`).join('')}</tr>`).join('')}</tbody>
+      </table>
+    </div>
+    <h4>缺口摘要</h4>
+    <pre>${escapeHtml(JSON.stringify((data.gaps || []).slice(0, 30), null, 2))}</pre>
+  `;
+  $('materialResultHint').textContent = `对比矩阵已生成：${ids.length} 篇论文，${dims.length} 个维度。`;
 }
 
 async function gapAnalysis() {
-  const data = await api('/api/analysis/gaps?template_id=tmpl_experience_v2');
-  $('analysisOutput').innerHTML = `<pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+  window.setMaterialAnalysisType('gap', {silent: true});
+  const ids = selectedAnalysisPaperIds();
+  const template = materialCurrentTemplate();
+  const params = new URLSearchParams({template_id: template?.id || 'tmpl_experience_v2'});
+  if (ids.length) params.set('paper_ids', ids.join(','));
+  const data = await api('/api/analysis/gaps?' + params.toString());
+  const selectedDims = new Set(selectedMaterialDimensions());
+  const filterByDim = item => !selectedDims.size || selectedDims.has(item.dimension);
+  const missing = (data.missing_dimension_items || []).filter(filterByDim);
+  const low = (data.low_confidence_items || []).filter(filterByDim);
+  const noEvidence = (data.items_without_evidence || []).filter(filterByDim);
+  const rejected = (data.rejected_items || []).filter(filterByDim);
+  $('analysisOutput').classList.remove('muted');
+  $('analysisOutput').innerHTML = `
+    <div class="materials-overview-grid">
+      <div><span>论文</span><b>${data.paper_count || ids.length}</b></div>
+      <div><span>缺失维度</span><b>${missing.length}</b></div>
+      <div><span>低置信</span><b>${low.length}</b></div>
+      <div><span>无证据</span><b>${noEvidence.length}</b></div>
+    </div>
+    <div class="materials-gap-columns">
+      ${renderMaterialGapColumn('维度缺失', missing)}
+      ${renderMaterialGapColumn('低置信素材', low)}
+      ${renderMaterialGapColumn('无证据素材', noEvidence)}
+      ${renderMaterialGapColumn('已驳回素材', rejected)}
+    </div>
+  `;
+  $('materialResultHint').textContent = `空白分析已生成：${ids.length || materialScopedPapers().length} 篇论文。`;
+}
+
+function renderMaterialGapColumn(title, items) {
+  return `<section class="materials-gap-column">
+    <h4>${escapeHtml(title)}</h4>
+    ${items.slice(0, 8).map(item => `<div><b>${escapeHtml(materialDimensionLabel(item.dimension))}</b><span>${escapeHtml(fmt(item.title || item.paper_id, 72))}</span></div>`).join('') || '<p class="muted">暂无明显信号。</p>'}
+  </section>`;
 }
 
 function selectedAnalysisPaperIds() {
-  return [...document.querySelectorAll('.comparePaper:checked')].map(x => x.value);
+  const checked = [...document.querySelectorAll('.comparePaper:checked')].map(input => input.value);
+  if (checked.length) return checked;
+  return [...materialScopedPaperIds()];
+}
+
+function clampMaterialsSidebarWidth(width) {
+  return Math.min(560, Math.max(280, Number(width) || 320));
+}
+
+function renderMaterialsLayout() {
+  const layout = $('materialsLayout');
+  if (!layout) return;
+  state.materialsSidebarWidth = clampMaterialsSidebarWidth(state.materialsSidebarWidth);
+  layout.style.setProperty('--materials-sidebar-width', `${state.materialsSidebarWidth}px`);
+  layout.classList.toggle('materials-sidebar-collapsed', Boolean(state.materialsSidebarCollapsed));
+  const toggle = $('materialsSidebarToggleBtn');
+  if (toggle) {
+    toggle.textContent = state.materialsSidebarCollapsed ? '›' : '‹';
+    toggle.title = state.materialsSidebarCollapsed ? '展开左侧面板' : '收起左侧面板';
+  }
+}
+
+window.toggleMaterialsSidebar = function() {
+  state.materialsSidebarCollapsed = !state.materialsSidebarCollapsed;
+  renderMaterialsLayout();
+};
+
+function startMaterialsSidebarResize(event) {
+  if (state.materialsSidebarCollapsed) return;
+  event.preventDefault();
+  const startX = event.clientX;
+  const startWidth = state.materialsSidebarWidth;
+  state.materialsSidebarResizing = true;
+  document.body.classList.add('materials-sidebar-resizing');
+  const move = (moveEvent) => {
+    if (!state.materialsSidebarResizing) return;
+    state.materialsSidebarWidth = clampMaterialsSidebarWidth(startWidth + moveEvent.clientX - startX);
+    renderMaterialsLayout();
+  };
+  const stop = () => {
+    state.materialsSidebarResizing = false;
+    document.body.classList.remove('materials-sidebar-resizing');
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', stop);
+    window.removeEventListener('pointercancel', stop);
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', stop);
+  window.addEventListener('pointercancel', stop);
+}
+
+window.setMaterialAnalysisType = function(type, options = {}) {
+  if (!MATERIAL_ANALYSIS_TYPES.some(item => item.id === type)) return;
+  state.materialAnalysisType = type;
+  renderMaterialAnalysisNav();
+  renderMaterialAnalysisParams();
+  refreshMaterialDerivedViews(state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems());
+  if (!options.silent) toast(`已切换到：${materialAnalysisConfig().label}`);
+};
+
+function setMaterialDimensionSelection(predicate) {
+  document.querySelectorAll('.materialDimCheck').forEach(input => {
+    const label = materialDimensionLabel(input.value);
+    input.checked = predicate(input.value, label);
+  });
+  refreshMaterialDerivedViews(filteredMaterialItems());
+}
+
+window.selectMaterialDimensionPreset = function(kind) {
+  if (kind === 'all') {
+    setMaterialDimensionSelection(() => true);
+    return;
+  }
+  const matchers = {
+    method: /(source|method|extraction|representation|usage|形成|来源|抽取|表示|使用|机制|方法|更新)/i,
+    evaluation: /(evaluation|effect|experiment|result|ablation|效果|验证|实验|评估|消融)/i,
+    limit: /(limitation|risk|boundary|condition|局限|风险|边界|适用)/i,
+  };
+  const matcher = matchers[kind] || /.*/;
+  setMaterialDimensionSelection((value, label) => matcher.test(`${value} ${label}`));
+};
+
+function currentMaterialReportPayload() {
+  const items = state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems();
+  const template = materialCurrentTemplate();
+  return {
+    exported_at: new Date().toISOString(),
+    analysis_type: state.materialAnalysisType,
+    paper_set: $('materialPaperSetSelect')?.selectedOptions?.[0]?.textContent || '全部论文',
+    template_id: template?.id || '',
+    template_name: template?.name || '',
+    template_version: template?.version || '',
+    paper_ids: selectedAnalysisPaperIds(),
+    dimensions: selectedMaterialDimensions(),
+    review_statuses: materialSelectedStatuses(),
+    evidence_requirements: [...materialEvidenceRequirements()],
+    item_count: items.length,
+    items,
+  };
+}
+
+function downloadJson(filename, payload) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function saveMaterialAnalysisView() {
+  const payload = currentMaterialReportPayload();
+  localStorage.setItem('litmate_material_analysis_view', JSON.stringify(payload));
+  toast('分析视图已保存到本地浏览器');
+}
+
+function exportMaterialReport() {
+  downloadJson(`litmate_material_analysis_${new Date().toISOString().slice(0, 10)}.json`, currentMaterialReportPayload());
+  toast('已导出当前分析报告');
+}
+
+function materialCitationRows(items) {
+  return items.slice(0, 18).map(item => {
+    const paper = paperById(item.paper_id);
+    const evidence = (item.evidence || [])[0];
+    return {
+      paper: paper?.metadata?.title || item.paper_id,
+      year: paper?.metadata?.year || '',
+      dimension: item.dimension_label || materialDimensionLabel(item.dimension_name),
+      claim: item.edited_content || item.content || '',
+      evidence: evidence?.quote || '',
+      section: evidence?.section_title || '',
+    };
+  });
+}
+
+function generateMaterialArtifact(kind = 'outline') {
+  const items = state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems();
+  window.setMaterialAnalysisType(kind === 'plan' ? 'design' : kind === 'question' ? 'gap' : 'review_pack', {silent: true});
+  const rows = materialCitationRows(items);
+  if (kind === 'citation') {
+    $('analysisOutput').classList.remove('muted');
+    $('analysisOutput').innerHTML = `
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>观点</th><th>论文</th><th>维度</th><th>证据</th><th>章节</th></tr></thead>
+          <tbody>${rows.map(row => `<tr>
+            <td>${escapeHtml(fmt(row.claim, 260))}</td>
+            <td>${escapeHtml(fmt(row.paper, 120))}</td>
+            <td>${escapeHtml(row.dimension)}</td>
+            <td>${escapeHtml(fmt(row.evidence, 260))}</td>
+            <td>${escapeHtml(row.section || '-')}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>
+    `;
+  } else {
+    const grouped = new Map();
+    rows.forEach(row => {
+      if (!grouped.has(row.dimension)) grouped.set(row.dimension, []);
+      grouped.get(row.dimension).push(row);
+    });
+    const title = {
+      outline: '综述大纲',
+      question: '研究问题清单',
+      plan: '新方案草案',
+      review_pack: '综述素材包',
+    }[kind] || '科研素材';
+    const sections = [...grouped.entries()].map(([dim, dimRows], index) => `
+      <section class="materials-artifact-section">
+        <h4>${index + 1}. ${escapeHtml(dim)}</h4>
+        ${dimRows.slice(0, 4).map(row => `<p><b>${escapeHtml(fmt(row.paper, 80))}</b>：${escapeHtml(fmt(row.claim, 280))}</p>`).join('')}
+      </section>
+    `).join('');
+    $('analysisOutput').classList.remove('muted');
+    $('analysisOutput').innerHTML = `
+      <article class="materials-artifact">
+        <h3>${escapeHtml(title)}</h3>
+        <p class="muted">基于当前 ${items.length} 条素材生成，可继续人工整理为写作段落或方案备忘。</p>
+        ${sections || '<p class="muted">当前筛选范围没有可生成的素材。</p>'}
+      </article>
+    `;
+  }
+  $('materialResultHint').textContent = `已生成：${kind === 'citation' ? '观点-引用表' : '科研素材草稿'}。`;
 }
 
 function evidenceGraphTypeLabel(type) {
@@ -5772,9 +6482,10 @@ function renderEvidenceGraphVisualization(data) {
 }
 
 async function evidenceGraph() {
+  window.setMaterialAnalysisType('claim_evidence', {silent: true});
   const ids = selectedAnalysisPaperIds();
   if (!ids.length) { toast('请至少选择一篇论文'); return; }
-  const data = await api('/api/analysis/evidence-graph?paper_ids=' + encodeURIComponent(ids.join(',')));
+  const data = await api('/api/analysis/evidence-graph?paper_ids=' + encodeURIComponent(ids.join(',')) + '&max_evidence_nodes=180');
   renderEvidenceGraphShell(data, ids);
   renderEvidenceGraphVisualization(data);
 }
@@ -6005,6 +6716,41 @@ async function bindEvents() {
     await runPaperImport('正在导入 BibTeX...', 'BibTeX 元数据', 'bibtex', () => api('/api/papers/import/bibtex', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({bibtex_text: v})}));
   };
   $('runExtractionBtn').onclick = runSelectedExtractions;
+  $('materialsSidebarToggleBtn').onpointerdown = (event) => event.stopPropagation();
+  $('materialsSidebarToggleBtn').onclick = window.toggleMaterialsSidebar;
+  $('materialsSidebarResizeHandle').onpointerdown = startMaterialsSidebarResize;
+  $('materialPaperSetSelect').onchange = () => {
+    renderComparePaperChecks();
+    refreshMaterialDerivedViews(filteredMaterialItems());
+  };
+  $('materialObjectSelect').onchange = () => {
+    if ($('materialTemplateVersionSelect')) $('materialTemplateVersionSelect').value = $('materialObjectSelect').value;
+    renderMaterialDimensionChecks();
+    renderComparePaperChecks();
+    refreshMaterialDerivedViews(filteredMaterialItems());
+  };
+  $('materialTemplateVersionSelect').onchange = () => {
+    if ($('materialObjectSelect')) $('materialObjectSelect').value = $('materialTemplateVersionSelect').value;
+    renderMaterialDimensionChecks();
+    refreshMaterialDerivedViews(filteredMaterialItems());
+  };
+  $('materialsLayout').addEventListener('change', (event) => {
+    if (event.target.matches('.materialDimCheck, .materialReviewStatusCheck, .materialEvidenceRequirementCheck, .materialSourceCheck, .materialEvidenceStrengthCheck, .materialObjectRoleCheck, #materialYearStart, #materialYearEnd')) {
+      refreshMaterialDerivedViews(filteredMaterialItems());
+    }
+  });
+  $('materialDimAllBtn').onclick = () => window.selectMaterialDimensionPreset('all');
+  $('materialDimMethodBtn').onclick = () => window.selectMaterialDimensionPreset('method');
+  $('materialDimEvaluationBtn').onclick = () => window.selectMaterialDimensionPreset('evaluation');
+  $('materialDimLimitBtn').onclick = () => window.selectMaterialDimensionPreset('limit');
+  $('refreshMaterialsBtn').onclick = () => refreshAll().then(() => toast('素材分析数据已刷新')).catch(err => toast(err.message));
+  $('saveAnalysisViewBtn').onclick = saveMaterialAnalysisView;
+  $('exportAnalysisReportBtn').onclick = exportMaterialReport;
+  $('generateReviewPackageBtn').onclick = () => generateMaterialArtifact('review_pack');
+  $('materialGenerateOutlineBtn').onclick = () => generateMaterialArtifact('outline');
+  $('materialGenerateCitationBtn').onclick = () => generateMaterialArtifact('citation');
+  $('materialGenerateQuestionBtn').onclick = () => generateMaterialArtifact('question');
+  $('materialGeneratePlanBtn').onclick = () => generateMaterialArtifact('plan');
   $('searchMaterialsBtn').onclick = searchMaterials;
   $('compareBtn').onclick = comparePapers;
   $('gapBtn').onclick = gapAnalysis;
