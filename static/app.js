@@ -34,6 +34,8 @@ const state = {
   objectAdvisorExpanded: {},
   objectAdvisorGeneratedAt: null,
   reviewRunId: null,
+  reviewSelectedPaperIds: [],
+  reviewSelectedPaperSetIds: [],
   reviewItemIndex: 0,
   reviewFilters: {dimension: 'all', status: 'all', risk: 'all', query: ''},
   reviewActionMode: null,
@@ -4050,7 +4052,10 @@ function renderRunList() {
 
 window.selectRunForReview = function(id) {
   if (!id) return;
+  const run = reviewableRuns().find(item => item.id === id) || state.runs.find(item => item.id === id);
   state.reviewRunId = id;
+  state.reviewSelectedPaperIds = run?.paper_id ? [run.paper_id] : [];
+  state.reviewSelectedPaperSetIds = [];
   state.reviewItemIndex = 0;
   resetReviewActionMode();
   document.querySelector('[data-tab="review"]').click();
@@ -4233,25 +4238,91 @@ function reviewableRuns() {
     });
 }
 
-function selectReviewRunForSelection(templateId, paperId = '') {
-  const runs = reviewableRuns();
+function selectedOptionValues(id) {
+  const select = $(id);
+  return select ? [...select.selectedOptions].map(option => option.value).filter(Boolean) : [];
+}
+
+function setMultiSelectValues(select, values) {
+  if (!select) return [];
+  const selected = new Set(values || []);
+  [...select.options].forEach(option => {
+    option.selected = selected.has(option.value);
+  });
+  return [...select.selectedOptions].map(option => option.value).filter(Boolean);
+}
+
+function latestReviewRunsByPaper(templateId) {
+  const runs = reviewableRuns().filter(run => !templateId || run.template_id === templateId);
+  const byPaper = new Map();
+  runs.forEach(run => {
+    if (!byPaper.has(run.paper_id)) byPaper.set(run.paper_id, run);
+  });
+  return [...byPaper.values()];
+}
+
+function reviewPaperIdsFromSets(setIds, validPaperIds = null) {
+  const allowed = validPaperIds ? new Set(validPaperIds) : null;
+  const ids = [];
+  (state.paperSets || []).forEach(paperSet => {
+    if (!setIds.includes(paperSet.id)) return;
+    (paperSet.paper_ids || []).forEach(paperId => {
+      if (!allowed || allowed.has(paperId)) ids.push(paperId);
+    });
+  });
+  return uniqueIds(ids);
+}
+
+function reviewSelectedPaperIds(templateId) {
+  const validPaperIds = latestReviewRunsByPaper(templateId).map(run => run.paper_id);
+  const selectedPapers = uniqueIds(state.reviewSelectedPaperIds).filter(id => validPaperIds.includes(id));
+  const selectedFromSets = reviewPaperIdsFromSets(state.reviewSelectedPaperSetIds || [], validPaperIds);
+  return uniqueIds([...selectedPapers, ...selectedFromSets]);
+}
+
+function selectedReviewTemplateId() {
+  const selectValue = $('reviewTemplateSelect')?.value;
+  if (selectValue) return selectValue;
+  const current = reviewableRuns().find(run => run.id === state.reviewRunId);
+  return current?.template_id || reviewableRuns()[0]?.template_id || '';
+}
+
+function reviewScopedRuns() {
+  const templateId = selectedReviewTemplateId();
+  const paperIds = new Set(reviewSelectedPaperIds(templateId));
+  if (!templateId || !paperIds.size) return [];
+  const scoped = latestReviewRunsByPaper(templateId).filter(run => paperIds.has(run.paper_id));
+  const current = reviewableRuns().find(run => run.id === state.reviewRunId);
+  if (current && current.template_id === templateId && paperIds.has(current.paper_id)) {
+    const currentIndex = scoped.findIndex(run => run.paper_id === current.paper_id);
+    if (currentIndex >= 0) scoped[currentIndex] = current;
+    else scoped.unshift(current);
+  }
+  return scoped;
+}
+
+function selectReviewRunForSelection(templateId, paperIds = []) {
+  const ids = Array.isArray(paperIds) ? paperIds : [paperIds].filter(Boolean);
+  const runs = latestReviewRunsByPaper(templateId);
   if (!runs.length) return null;
-  const templateRuns = templateId ? runs.filter(run => run.template_id === templateId) : runs;
-  const scopedRuns = templateRuns.length ? templateRuns : runs;
-  if (paperId) {
-    const paperRun = scopedRuns.find(run => run.paper_id === paperId);
+  if (ids.length) {
+    const paperRun = runs.find(run => ids.includes(run.paper_id));
     if (paperRun) return paperRun;
   }
-  return scopedRuns[0] || null;
+  return runs[0] || null;
 }
 
 function renderReviewPanel() {
   const runs = reviewableRuns();
   const templateSelect = $('reviewTemplateSelect');
   const paperSelect = $('reviewPaperSelect');
+  const paperSetSelect = $('reviewPaperSetSelect');
+  const summary = $('reviewSelectionSummary');
 
   if (!runs.length) {
     state.reviewRunId = null;
+    state.reviewSelectedPaperIds = [];
+    state.reviewSelectedPaperSetIds = [];
     if (templateSelect) {
       templateSelect.innerHTML = '<option value="">暂无可审查对象</option>';
       templateSelect.disabled = true;
@@ -4260,6 +4331,11 @@ function renderReviewPanel() {
       paperSelect.innerHTML = '<option value="">暂无可审查论文</option>';
       paperSelect.disabled = true;
     }
+    if (paperSetSelect) {
+      paperSetSelect.innerHTML = '<option value="">暂无可审查论文集合</option>';
+      paperSetSelect.disabled = true;
+    }
+    if (summary) summary.textContent = '暂无可审查结果';
     renderReviewFilters();
     renderReviewWorkbench();
     return;
@@ -4277,23 +4353,42 @@ function renderReviewPanel() {
     templateSelect.value = validRun.template_id;
   }
 
-  const templateRuns = runs.filter(run => run.template_id === validRun.template_id);
-  const paperRunMap = new Map();
-  templateRuns.forEach(run => {
-    if (!paperRunMap.has(run.paper_id)) paperRunMap.set(run.paper_id, run);
-  });
-  const paperRuns = [...paperRunMap.values()];
-  if (!paperRuns.some(run => run.paper_id === validRun.paper_id)) validRun = paperRuns[0] || validRun;
-  state.reviewRunId = validRun?.id || null;
+  const paperRuns = latestReviewRunsByPaper(validRun.template_id);
+  const validPaperIds = paperRuns.map(run => run.paper_id);
+  const paperSetOptions = validCustomPaperSets().filter(paperSet =>
+    (paperSet.paper_ids || []).some(paperId => validPaperIds.includes(paperId))
+  );
+  let selectedSetIds = uniqueIds(state.reviewSelectedPaperSetIds).filter(id => paperSetOptions.some(item => item.id === id));
+  let selectedPaperIds = uniqueIds(state.reviewSelectedPaperIds).filter(id => validPaperIds.includes(id));
+  if (!selectedPaperIds.length && !selectedSetIds.length && validRun?.paper_id) selectedPaperIds = [validRun.paper_id];
+  state.reviewSelectedPaperIds = selectedPaperIds;
+  state.reviewSelectedPaperSetIds = selectedSetIds;
 
   if (paperSelect) {
-    paperSelect.disabled = false;
+    paperSelect.disabled = !paperRuns.length;
     paperSelect.innerHTML = paperRuns.map(run => {
       const paper = state.papers.find(item => item.id === run.paper_id);
       const label = paper?.metadata?.title || run.paper_id;
-      return `<option value="${escapeHtml(run.paper_id)}" title="${escapeHtml(label)}">${escapeHtml(fmt(label, 34))}</option>`;
+      return `<option value="${escapeHtml(run.paper_id)}" title="${escapeHtml(label)}">${escapeHtml(fmt(label, 36))}</option>`;
     }).join('');
-    paperSelect.value = validRun?.paper_id || '';
+    selectedPaperIds = setMultiSelectValues(paperSelect, selectedPaperIds);
+    state.reviewSelectedPaperIds = selectedPaperIds;
+  }
+  if (paperSetSelect) {
+    paperSetSelect.disabled = !paperSetOptions.length;
+    paperSetSelect.innerHTML = paperSetOptions.length
+      ? paperSetOptions.map(item => `<option value="${escapeHtml(item.id)}" title="${escapeHtml(item.name)}">${escapeHtml(fmt(item.name, 30))}</option>`).join('')
+      : '<option value="">暂无可用论文集合</option>';
+    selectedSetIds = setMultiSelectValues(paperSetSelect, selectedSetIds);
+    state.reviewSelectedPaperSetIds = selectedSetIds;
+  }
+
+  const scopedRuns = reviewScopedRuns();
+  state.reviewRunId = (scopedRuns.find(run => run.id === state.reviewRunId) || scopedRuns[0])?.id || null;
+  if (summary) {
+    const selectedPaperCount = reviewSelectedPaperIds(validRun.template_id).length;
+    const resultCount = scopedRuns.reduce((total, run) => total + reviewableRunItems(run).length, 0);
+    summary.textContent = `${selectedPaperCount} 篇论文 · ${selectedSetIds.length} 个集合 · ${resultCount} 条结果`;
   }
 
   renderReviewFilters();
@@ -4381,7 +4476,7 @@ function reviewQualityHint(entry) {
 }
 
 function reviewRun() {
-  const runs = reviewableRuns();
+  const runs = reviewScopedRuns();
   return runs.find(r => r.id === state.reviewRunId) || runs[0];
 }
 
@@ -4413,11 +4508,15 @@ function riskLabel(risk) {
 }
 
 function reviewQueueItems() {
-  const run = reviewRun();
-  if (!run) return [];
-  const paper = reviewPaper(run);
-  const template = reviewTemplate(run);
-  return reviewableRunItems(run).map((item, index) => ({run, paper, template, item, index, risk: reviewRisk({item})}));
+  const entries = [];
+  reviewScopedRuns().forEach(run => {
+    const paper = reviewPaper(run);
+    const template = reviewTemplate(run);
+    reviewableRunItems(run).forEach((item, itemIndex) => {
+      entries.push({run, paper, template, item, index: entries.length, itemIndex, risk: reviewRisk({item})});
+    });
+  });
+  return entries;
 }
 
 function filteredReviewEntries() {
@@ -4490,8 +4589,7 @@ function reviewDimensionDefinition(entry) {
 }
 
 function renderReviewFilters() {
-  const run = reviewRun();
-  const dimensions = [...new Map(reviewableRunItems(run).map(item => [item.dimension_name, item.dimension_label || item.dimension_name])).entries()];
+  const dimensions = [...new Map(reviewQueueItems().map(entry => [entry.item.dimension_name, entry.item.dimension_label || entry.item.dimension_name])).entries()];
   $('reviewDimensionFilter').innerHTML = '<option value="all">全部维度</option>' + dimensions.map(([id, label]) => `<option value="${escapeHtml(id)}">${escapeHtml(label)}</option>`).join('');
   const dimensionValue = dimensions.some(([id]) => id === state.reviewFilters.dimension) ? state.reviewFilters.dimension : 'all';
   state.reviewFilters.dimension = dimensionValue;
@@ -5487,12 +5585,23 @@ async function bindEvents() {
   $('reviewTemplateSelect').onchange = () => {
     const run = selectReviewRunForSelection($('reviewTemplateSelect').value || '');
     state.reviewRunId = run?.id || null;
+    state.reviewSelectedPaperIds = run?.paper_id ? [run.paper_id] : [];
+    state.reviewSelectedPaperSetIds = [];
     state.reviewItemIndex = 0;
     resetReviewActionMode();
     renderReviewPanel();
   };
   $('reviewPaperSelect').onchange = () => {
-    const run = selectReviewRunForSelection($('reviewTemplateSelect').value || '', $('reviewPaperSelect').value || '');
+    state.reviewSelectedPaperIds = selectedOptionValues('reviewPaperSelect');
+    const run = selectReviewRunForSelection($('reviewTemplateSelect').value || '', reviewSelectedPaperIds($('reviewTemplateSelect').value || ''));
+    state.reviewRunId = run?.id || null;
+    state.reviewItemIndex = 0;
+    resetReviewActionMode();
+    renderReviewPanel();
+  };
+  $('reviewPaperSetSelect').onchange = () => {
+    state.reviewSelectedPaperSetIds = selectedOptionValues('reviewPaperSetSelect');
+    const run = selectReviewRunForSelection($('reviewTemplateSelect').value || '', reviewSelectedPaperIds($('reviewTemplateSelect').value || ''));
     state.reviewRunId = run?.id || null;
     state.reviewItemIndex = 0;
     resetReviewActionMode();
