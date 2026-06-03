@@ -17,6 +17,9 @@ const state = {
   recentImportPaperIds: [],
   libraryBatchExtractionBusy: false,
   paperSetCreateOpen: false,
+  paperImportWidth: 360,
+  paperImportCollapsed: false,
+  paperImportResizing: false,
   selectedPaperIds: [],
   selectedPaperId: null,
   objectPromptDirty: false,
@@ -45,6 +48,9 @@ const state = {
   reviewDraftFilters: null,
   reviewPaperDropdownOpen: false,
   reviewPaperSetDropdownOpen: false,
+  reviewSidebarWidth: 300,
+  reviewSidebarCollapsed: false,
+  reviewSidebarResizing: false,
   reviewItemIndex: 0,
   reviewFilters: {dimension: 'all', status: 'all', risk: 'all', query: ''},
   reviewActionMode: null,
@@ -3424,7 +3430,54 @@ function renderPaperLibraryAll() {
   return papers.length;
 }
 
+function clampPaperImportWidth(width) {
+  return Math.min(520, Math.max(280, Number(width) || 360));
+}
+
+function renderPaperImportLayout() {
+  const layout = $('paperHomeLayout');
+  if (!layout) return;
+  state.paperImportWidth = clampPaperImportWidth(state.paperImportWidth);
+  layout.style.setProperty('--paper-import-width', `${state.paperImportWidth}px`);
+  layout.classList.toggle('paper-import-collapsed', Boolean(state.paperImportCollapsed));
+  const toggle = $('paperImportToggleBtn');
+  if (toggle) {
+    toggle.textContent = state.paperImportCollapsed ? '›' : '‹';
+    toggle.title = state.paperImportCollapsed ? '展开导入面板' : '收起导入面板';
+  }
+}
+
+window.togglePaperImportPane = function() {
+  state.paperImportCollapsed = !state.paperImportCollapsed;
+  renderPaperImportLayout();
+};
+
+function startPaperImportResize(event) {
+  if (state.paperImportCollapsed) return;
+  event.preventDefault();
+  const startX = event.clientX;
+  const startWidth = state.paperImportWidth;
+  state.paperImportResizing = true;
+  document.body.classList.add('paper-sidebar-resizing');
+  const move = (moveEvent) => {
+    if (!state.paperImportResizing) return;
+    state.paperImportWidth = clampPaperImportWidth(startWidth + moveEvent.clientX - startX);
+    renderPaperImportLayout();
+  };
+  const stop = () => {
+    state.paperImportResizing = false;
+    document.body.classList.remove('paper-sidebar-resizing');
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', stop);
+    window.removeEventListener('pointercancel', stop);
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', stop);
+  window.addEventListener('pointercancel', stop);
+};
+
 function renderPapers() {
+  renderPaperImportLayout();
   renderRecentImports();
   renderPaperLibraryTabs();
   let filteredCount = state.papers.length;
@@ -4335,6 +4388,23 @@ function selectReviewRunForSelection(templateId, paperIds = []) {
   return runs[0] || null;
 }
 
+function clampReviewSidebarWidth(width) {
+  return Math.min(520, Math.max(260, Number(width) || 300));
+}
+
+function renderReviewSidebarLayout() {
+  const layout = $('reviewLayout');
+  if (!layout) return;
+  state.reviewSidebarWidth = clampReviewSidebarWidth(state.reviewSidebarWidth);
+  layout.style.setProperty('--review-sidebar-width', `${state.reviewSidebarWidth}px`);
+  layout.classList.toggle('review-sidebar-collapsed', Boolean(state.reviewSidebarCollapsed));
+  const toggle = $('reviewSidebarToggleBtn');
+  if (toggle) {
+    toggle.textContent = state.reviewSidebarCollapsed ? '›' : '‹';
+    toggle.title = state.reviewSidebarCollapsed ? '展开左侧面板' : '收起左侧面板';
+  }
+}
+
 function reviewDropdownLabel(selectedIds, options, emptyLabel) {
   const names = options.filter(option => selectedIds.includes(option.id)).map(option => option.label);
   if (!names.length) return emptyLabel;
@@ -4371,6 +4441,7 @@ function renderReviewCheckDropdown(kind, options, selectedIds, open, emptyLabel)
 }
 
 function renderReviewPanel() {
+  renderReviewSidebarLayout();
   const runs = reviewableRuns();
   const templateSelect = $('reviewTemplateSelect');
   const paperDropdown = $('reviewPaperDropdown');
@@ -5075,6 +5146,49 @@ window.toggleReviewScopePanel = function() {
   renderReviewPanel();
 };
 
+window.collapseReviewSidebar = function() {
+  state.reviewSidebarCollapsed = true;
+  state.reviewPaperDropdownOpen = false;
+  state.reviewPaperSetDropdownOpen = false;
+  renderReviewSidebarLayout();
+};
+
+window.expandReviewSidebar = function() {
+  state.reviewSidebarCollapsed = false;
+  renderReviewSidebarLayout();
+};
+
+window.toggleReviewSidebar = function() {
+  state.reviewSidebarCollapsed = !state.reviewSidebarCollapsed;
+  state.reviewPaperDropdownOpen = false;
+  state.reviewPaperSetDropdownOpen = false;
+  renderReviewSidebarLayout();
+};
+
+function startReviewSidebarResize(event) {
+  if (state.reviewSidebarCollapsed) return;
+  event.preventDefault();
+  const startX = event.clientX;
+  const startWidth = state.reviewSidebarWidth;
+  state.reviewSidebarResizing = true;
+  document.body.classList.add('review-sidebar-resizing');
+  const move = (moveEvent) => {
+    if (!state.reviewSidebarResizing) return;
+    state.reviewSidebarWidth = clampReviewSidebarWidth(startWidth + moveEvent.clientX - startX);
+    renderReviewSidebarLayout();
+  };
+  const stop = () => {
+    state.reviewSidebarResizing = false;
+    document.body.classList.remove('review-sidebar-resizing');
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', stop);
+    window.removeEventListener('pointercancel', stop);
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', stop);
+  window.addEventListener('pointercancel', stop);
+};
+
 window.toggleReviewPaperDropdown = function() {
   state.reviewPaperDropdownOpen = !state.reviewPaperDropdownOpen;
   state.reviewPaperSetDropdownOpen = false;
@@ -5603,6 +5717,9 @@ async function bindEvents() {
   ['paperYearFilter', 'paperCollectionFilter', 'paperParseStatusFilter', 'paperExtractionStatusFilter'].forEach(id => {
     $(id).onchange = updatePaperFiltersFromInputs;
   });
+  $('paperImportToggleBtn').onpointerdown = (event) => event.stopPropagation();
+  $('paperImportToggleBtn').onclick = window.togglePaperImportPane;
+  $('paperImportResizeHandle').onpointerdown = startPaperImportResize;
   $('createPaperSetBtn').onclick = () => togglePaperSetCreate(true);
   $('confirmCreatePaperSetBtn').onclick = () => createPaperSet().catch(err => toast(err.message));
   $('cancelCreatePaperSetBtn').onclick = () => togglePaperSetCreate(false);
@@ -5713,6 +5830,9 @@ async function bindEvents() {
   };
   $('reviewScopeToggleBtn').onclick = window.toggleReviewScopePanel;
   $('applyReviewScopeBtn').onclick = applyReviewScopeFromDraft;
+  $('reviewSidebarToggleBtn').onpointerdown = (event) => event.stopPropagation();
+  $('reviewSidebarToggleBtn').onclick = window.toggleReviewSidebar;
+  $('reviewSidebarResizeHandle').onpointerdown = startReviewSidebarResize;
   $('reviewTemplateSelect').onchange = () => {
     const templateId = $('reviewTemplateSelect').value || '';
     const run = selectReviewRunForSelection(templateId);
