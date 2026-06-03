@@ -3013,9 +3013,101 @@ button:disabled:hover {
   display: grid;
   gap: 5px;
 }
-.review-selector-stack select[multiple] {
-  min-height: 116px;
-  line-height: 1.35;
+.review-scope-panel {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  background: #f8fbff;
+}
+.review-scope-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: #fff;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 850;
+}
+.review-scope-toggle b {
+  color: #2563eb;
+  font-size: 12px;
+}
+.review-scope-body {
+  display: grid;
+  gap: 10px;
+}
+.review-check-dropdown {
+  position: relative;
+}
+.review-check-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: #334155;
+  font-size: 13px;
+  text-align: left;
+}
+.review-check-trigger span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.review-check-trigger b {
+  margin-left: 8px;
+  color: #2563eb;
+  font-size: 12px;
+}
+.review-check-menu {
+  position: absolute;
+  z-index: 12;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  display: grid;
+  max-height: 230px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 16px 28px rgba(15, 23, 42, 0.16);
+}
+.review-check-option {
+  display: grid !important;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px !important;
+  padding: 7px 6px;
+  border-radius: 7px;
+  color: #334155 !important;
+  font-size: 12px !important;
+  font-weight: 650 !important;
+}
+.review-check-option:hover {
+  background: #eff6ff;
+}
+.review-check-option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.review-check-empty {
+  padding: 8px;
+  color: #64748b;
+  font-size: 12px;
 }
 .review-selection-summary {
   padding: 7px 9px;
@@ -3025,6 +3117,10 @@ button:disabled:hover {
   color: #1d4ed8;
   font-size: 12px;
   font-weight: 750;
+}
+.review-scope-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 .review-sidebar select,
 .review-sidebar input {

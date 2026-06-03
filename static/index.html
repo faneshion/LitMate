@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Literature Research Assistant V2</title>
-  <link rel="stylesheet" href="/styles.css?v=review-multi-paper-scope-20260603" />
+  <link rel="stylesheet" href="/styles.css?v=review-scope-confirm-20260603" />
 </head>
 <body>
   <header class="topbar">
@@ -584,56 +584,67 @@
               <h3>审查队列</h3>
               <span id="reviewQueueCount" class="meta">0 条</span>
             </div>
-            <div class="review-selector-stack">
-              <label>
-                <span>抽取对象</span>
-                <select id="reviewTemplateSelect"></select>
-              </label>
-              <label>
-                <span>论文</span>
-                <select id="reviewPaperSelect" multiple size="5"></select>
-              </label>
-              <label>
-                <span>论文集合</span>
-                <select id="reviewPaperSetSelect" multiple size="4"></select>
-              </label>
-              <div id="reviewSelectionSummary" class="review-selection-summary"></div>
-            </div>
-            <div class="review-sidebar-heading">筛选策略</div>
-            <div class="review-filter-grid">
-              <label>
-                <span>维度</span>
-                <select id="reviewDimensionFilter"></select>
-              </label>
-              <label>
-                <span>状态</span>
-                <select id="reviewStatusFilter">
-                  <option value="all">全部</option>
-                  <option value="pending">待审查</option>
-                  <option value="accepted">已接受</option>
-                  <option value="issues">有问题</option>
-                  <option value="reject">驳回</option>
-                  <option value="mark_not_reported">应为未报告</option>
-                  <option value="mark_evidence_insufficient">证据不足</option>
-                  <option value="mark_over_inferred">过度推断</option>
-                  <option value="mark_wrong_dimension">维度错误</option>
-                  <option value="mark_wrong_object">对象错误</option>
-                </select>
-              </label>
-              <label>
-                <span>高风险优先</span>
-                <select id="reviewRiskFilter">
-                  <option value="all">全部</option>
-                  <option value="high">高风险</option>
-                  <option value="medium">中风险</option>
-                  <option value="low">低风险</option>
-                </select>
-              </label>
-              <label>
-                <span>检索</span>
-                <input id="reviewSearchInput" placeholder="论文 / 维度 / 结果内容" />
-              </label>
-            </div>
+            <section class="review-scope-panel">
+              <button id="reviewScopeToggleBtn" class="review-scope-toggle" type="button">
+                <span>审查范围与筛选</span>
+                <b id="reviewScopeToggleIcon">收起</b>
+              </button>
+              <div id="reviewScopeBody" class="review-scope-body">
+                <div class="review-selector-stack">
+                  <label>
+                    <span>抽取对象</span>
+                    <select id="reviewTemplateSelect"></select>
+                  </label>
+                  <label>
+                    <span>论文</span>
+                    <div id="reviewPaperDropdown"></div>
+                  </label>
+                  <label>
+                    <span>论文集合</span>
+                    <div id="reviewPaperSetDropdown"></div>
+                  </label>
+                  <div id="reviewSelectionSummary" class="review-selection-summary"></div>
+                </div>
+                <div class="review-sidebar-heading">筛选策略</div>
+                <div class="review-filter-grid">
+                  <label>
+                    <span>维度</span>
+                    <select id="reviewDimensionFilter"></select>
+                  </label>
+                  <label>
+                    <span>状态</span>
+                    <select id="reviewStatusFilter">
+                      <option value="all">全部</option>
+                      <option value="pending">待审查</option>
+                      <option value="accepted">已接受</option>
+                      <option value="issues">有问题</option>
+                      <option value="reject">驳回</option>
+                      <option value="mark_not_reported">应为未报告</option>
+                      <option value="mark_evidence_insufficient">证据不足</option>
+                      <option value="mark_over_inferred">过度推断</option>
+                      <option value="mark_wrong_dimension">维度错误</option>
+                      <option value="mark_wrong_object">对象错误</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>高风险优先</span>
+                    <select id="reviewRiskFilter">
+                      <option value="all">全部</option>
+                      <option value="high">高风险</option>
+                      <option value="medium">中风险</option>
+                      <option value="low">低风险</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>检索</span>
+                    <input id="reviewSearchInput" placeholder="论文 / 维度 / 结果内容" />
+                  </label>
+                </div>
+                <div class="review-scope-actions">
+                  <button id="applyReviewScopeBtn" class="primary" type="button">确定</button>
+                </div>
+              </div>
+            </section>
             <div class="review-sidebar-heading">过滤结果</div>
             <div id="reviewQueueList" class="review-queue-list"></div>
           </aside>
@@ -933,6 +944,6 @@
   </div>
 
   <div id="toast" class="toast"></div>
-  <script src="/app.js?v=review-multi-paper-scope-20260603"></script>
+  <script src="/app.js?v=review-scope-confirm-20260603"></script>
 </body>
 </html>
