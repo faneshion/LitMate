@@ -66,21 +66,21 @@ const state = {
 const PAPER_PAGE_SIZE = 6;
 const EVIDENCE_GRAPH_MAX_EVIDENCE_NODES = 120;
 const SECTION_TYPE_OPTIONS = [
-  {value: 'abstract', label: '鎽樿'},
-  {value: 'introduction', label: '寮曡█/鐮旂┒鑳屾櫙'},
-  {value: 'related_work', label: '鐩稿叧宸ヤ綔'},
-  {value: 'method', label: '鏂规硶/妗嗘灦'},
-  {value: 'system', label: '绯荤粺/瀹炵幇'},
-  {value: 'algorithm', label: '绠楁硶/娴佺▼'},
-  {value: 'experiment', label: '瀹為獙璁剧疆'},
-  {value: 'results', label: '瀹為獙缁撴灉'},
-  {value: 'ablation', label: '娑堣瀺/鍒嗘瀽'},
-  {value: 'discussion', label: '璁ㄨ'},
-  {value: 'limitations', label: '灞€闄愭€?},
-  {value: 'conclusion', label: '缁撹/鏈潵宸ヤ綔'},
-  {value: 'appendix', label: '闄勫綍'},
-  {value: 'references', label: '鍙傝€冩枃鐚?},
-  {value: 'other', label: '鍏朵粬'},
+  {value: 'abstract', label: '摘要'},
+  {value: 'introduction', label: '引言/研究背景'},
+  {value: 'related_work', label: '相关工作'},
+  {value: 'method', label: '方法/框架'},
+  {value: 'system', label: '系统/实现'},
+  {value: 'algorithm', label: '算法/流程'},
+  {value: 'experiment', label: '实验设置'},
+  {value: 'results', label: '实验结果'},
+  {value: 'ablation', label: '消融/分析'},
+  {value: 'discussion', label: '讨论'},
+  {value: 'limitations', label: '局限性'},
+  {value: 'conclusion', label: '结论/未来工作'},
+  {value: 'appendix', label: '附录'},
+  {value: 'references', label: '参考文献'},
+  {value: 'other', label: '其他'},
 ];
 const SIMULATION_SAMPLE_TEXTS = [
   `Title: Reflective Memory Policies for Long-Horizon Scientific Agents
@@ -141,21 +141,21 @@ const toast = (msg) => {
   setTimeout(() => el.classList.remove('show'), 3500);
 };
 const escapeHtml = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const fmt = (s, n=180) => s && s.length > n ? s.slice(0, n) + '鈥? : (s || '');
+const fmt = (s, n=180) => s && s.length > n ? s.slice(0, n) + '…' : (s || '');
 const fmtTime = (s) => s ? new Date(s).toLocaleString() : '-';
 const fmtDuration = (seconds) => {
   const value = Number(seconds);
   if (!Number.isFinite(value)) return '-';
-  if (value < 60) return `${value.toFixed(value < 10 ? 1 : 0)} 绉抈;
-  return `${Math.floor(value / 60)} 鍒?${Math.round(value % 60)} 绉抈;
+  if (value < 60) return `${value.toFixed(value < 10 ? 1 : 0)} 秒`;
+  return `${Math.floor(value / 60)} 分 ${Math.round(value % 60)} 秒`;
 };
 const sourceLabel = (source) => ({
-  upload: '鏈湴涓婁紶',
+  upload: '本地上传',
   arxiv: 'arXiv',
   doi: 'DOI / Crossref',
   bibtex: 'BibTeX',
-  manual: '鎵嬪姩褰曞叆'
-}[source] || source || '鏈煡鏉ユ簮');
+  manual: '手动录入'
+}[source] || source || '未知来源');
 
 function paperMetric(label, value) {
   return `<div class="paper-metric"><span>${label}</span><b>${value}</b></div>`;
@@ -228,7 +228,7 @@ function closeObjectConfigModal() {
 function openObjectImportModal() {
   $('objectImportJson').value = '';
   $('objectImportStatus').className = 'test-result muted';
-  $('objectImportStatus').textContent = '绛夊緟瀵煎叆銆?;
+  $('objectImportStatus').textContent = '等待导入。';
   $('objectImportModal').hidden = false;
   document.body.classList.add('modal-open');
 }
@@ -240,7 +240,7 @@ function closeObjectImportModal() {
 
 function openSimulationRawModal() {
   const raw = state.simulationRawResult || '';
-  let display = raw || '鏆傛棤鍘熷缁撴灉銆?;
+  let display = raw || '暂无原始结果。';
   try {
     display = JSON.stringify(parseSimulationJson(raw), null, 2);
   } catch (_) {}
@@ -280,7 +280,7 @@ function numberValue(id) {
 function normalizeLlmProfile(profile = {}, index = 0) {
   return {
     id: String(profile.id || `llm_${index + 1}`).trim(),
-    name: String(profile.name || profile.id || `澶фā鍨嬮厤缃?${index + 1}`).trim(),
+    name: String(profile.name || profile.id || `大模型配置 ${index + 1}`).trim(),
     active: Boolean(profile.active),
     openai_api_key: profile.openai_api_key || 'EMPTY',
     openai_api_base: profile.openai_api_base || '',
@@ -299,8 +299,8 @@ function normalizeLlmProfile(profile = {}, index = 0) {
 function getLlmProfiles() {
   const cfg = state.config || {};
   let profiles = (cfg.llm_profiles || []).map((item, index) => normalizeLlmProfile(item, index));
-  if (!profiles.length && cfg.llm) profiles = [normalizeLlmProfile({...cfg.llm, id: 'default', name: '褰撳墠閰嶇疆', active: true})];
-  if (!profiles.length) profiles = [normalizeLlmProfile({id: 'default', name: '褰撳墠閰嶇疆', active: true})];
+  if (!profiles.length && cfg.llm) profiles = [normalizeLlmProfile({...cfg.llm, id: 'default', name: '当前配置', active: true})];
+  if (!profiles.length) profiles = [normalizeLlmProfile({id: 'default', name: '当前配置', active: true})];
   return profiles;
 }
 
@@ -343,8 +343,8 @@ function renderLlmProfiles() {
   $('llmProfileList').innerHTML = profiles.map(profile => `
     <button class="llm-profile-item ${profile.id === state.selectedLlmProfileId ? 'active' : ''}" type="button" data-profile-id="${escapeHtml(profile.id)}">
       <span>${escapeHtml(profile.name || profile.id)}</span>
-      ${profile.id === activeId ? '<b>褰撳墠浣跨敤</b>' : ''}
-      <small>${escapeHtml(profile.openai_model || '鏈～鍐欐ā鍨?)}</small>
+      ${profile.id === activeId ? '<b>当前使用</b>' : ''}
+      <small>${escapeHtml(profile.openai_model || '未填写模型')}</small>
     </button>
   `).join('');
   document.querySelectorAll('.llm-profile-item').forEach(btn => {
@@ -360,7 +360,7 @@ function renderLlmProfiles() {
 function renderSelectedLlmProfileForm() {
   const profile = selectedLlmProfile();
   const activeId = state.config?.active_llm_profile_id || profile.id;
-  $('llmProfileEditorTitle').textContent = profile.id === activeId ? `${profile.name}锛堝綋鍓嶄娇鐢級` : profile.name;
+  $('llmProfileEditorTitle').textContent = profile.id === activeId ? `${profile.name}（当前使用）` : profile.name;
   setValue('cfgLlmProfileId', profile.id);
   setValue('cfgLlmProfileName', profile.name);
   setValue('cfgOpenaiKey', profile.openai_api_key);
@@ -439,7 +439,7 @@ async function saveConfig() {
     body: JSON.stringify(collectConfig()),
   });
   renderConfig();
-  toast('閰嶇疆宸蹭繚瀛?);
+  toast('配置已保存');
 }
 
 function addLlmProfile() {
@@ -453,7 +453,7 @@ function addLlmProfile() {
   }
   profiles.push(normalizeLlmProfile({
     id,
-    name: `澶фā鍨嬮厤缃?${next}`,
+    name: `大模型配置 ${next}`,
     openai_api_key: 'EMPTY',
     openai_api_base: '',
     openai_model: '',
@@ -466,7 +466,7 @@ function addLlmProfile() {
 function removeLlmProfile() {
   saveCurrentLlmProfileForm();
   const profiles = getLlmProfiles();
-  if (profiles.length <= 1) return toast('鑷冲皯淇濈暀涓€缁勫ぇ妯″瀷閰嶇疆');
+  if (profiles.length <= 1) return toast('至少保留一组大模型配置');
   const removeId = state.selectedLlmProfileId;
   const nextProfiles = profiles.filter(item => item.id !== removeId);
   if (state.config.active_llm_profile_id === removeId) {
@@ -486,7 +486,7 @@ function activateLlmProfile() {
   profiles.forEach(item => { item.active = item.id === selected.id; });
   state.config.llm_profiles = profiles;
   renderLlmProfiles();
-  toast('宸茶涓哄綋鍓嶄娇鐢紝淇濆瓨閰嶇疆鍚庡啓鍏ョ郴缁?);
+  toast('已设为当前使用，保存配置后写入系统');
 }
 
 async function testLlmProfile() {
@@ -494,7 +494,7 @@ async function testLlmProfile() {
   const profile = selectedLlmProfile();
   const resultBox = $('llmTestResult');
   resultBox.className = 'test-result muted';
-  resultBox.textContent = '姝ｅ湪娴嬭瘯鎺ュ彛...';
+  resultBox.textContent = '正在测试接口...';
   $('testLlmProfileBtn').disabled = true;
   try {
     const result = await api('/api/config/llm-test', {
@@ -503,7 +503,7 @@ async function testLlmProfile() {
       body: JSON.stringify({profile, prompt: $('llmTestPrompt').value}),
     });
     resultBox.className = 'test-result ok';
-    resultBox.textContent = `娴嬭瘯鎴愬姛锛岀敤鏃?${result.elapsed_seconds}s锛?{result.content || '鎺ュ彛宸插搷搴?}`;
+    resultBox.textContent = `测试成功，用时 ${result.elapsed_seconds}s：${result.content || '接口已响应'}`;
   } catch (err) {
     resultBox.className = 'test-result bad';
     resultBox.textContent = err.message;
@@ -517,131 +517,131 @@ const joinLines = (items) => (items || []).join('\n');
 const STRATEGY_EXPERIENCE_DIMENSIONS = [
   {
     dimension_id: 'object_presence',
-    name: '瀵硅薄瀛樺湪鎬?,
-    description: '鍒ゆ柇璁烘枃涓槸鍚﹀瓨鍦ㄧ瓥鐣ョ粡楠屽璞★紝浠ュ強瀹冨湪璁烘枃涓殑瑙掕壊銆?,
+    name: '对象存在性',
+    description: '判断论文中是否存在策略经验对象，以及它在论文中的角色。',
     question: 'Does the paper contain strategy experience as a method component, knowledge object, memory object, policy guidance, or reusable lesson? If yes, what role does it play in the paper?',
     output_type: 'structured_object',
     required: true,
     requires_evidence: true,
     allow_inference: true,
     fields: [
-      {name: 'exists', type: 'boolean', description: '璁烘枃涓槸鍚﹀瓨鍦ㄧ瓥鐣ョ粡楠屽璞°€?},
-      {name: 'role_in_paper', type: 'enum', values: ['core_contribution', 'method_component', 'auxiliary_component', 'evaluation_object', 'discussion_only', 'not_present'], description: '绛栫暐缁忛獙鍦ㄨ鏂囦腑鐨勮鑹层€?},
-      {name: 'local_terms', type: 'list', description: '璁烘枃涓敤浜庤〃杈剧瓥鐣ョ粡楠岀殑鏈湴鏈銆?},
-      {name: 'judgement_reason', type: 'long_text', description: '鍒ゆ柇鍏跺睘浜庢垨涓嶅睘浜庣瓥鐣ョ粡楠岀殑鐞嗙敱銆?},
+      {name: 'exists', type: 'boolean', description: '论文中是否存在策略经验对象。'},
+      {name: 'role_in_paper', type: 'enum', values: ['core_contribution', 'method_component', 'auxiliary_component', 'evaluation_object', 'discussion_only', 'not_present'], description: '策略经验在论文中的角色。'},
+      {name: 'local_terms', type: 'list', description: '论文中用于表达策略经验的本地术语。'},
+      {name: 'judgement_reason', type: 'long_text', description: '判断其属于或不属于策略经验的理由。'},
     ],
   },
   {
     dimension_id: 'strategy_experience_definition',
-    name: '绛栫暐缁忛獙瀹氫箟',
-    description: '鎶藉彇璁烘枃濡備綍瀹氫箟銆佹弿杩版垨闅愬惈瀹氫箟绛栫暐缁忛獙銆?,
+    name: '策略经验定义',
+    description: '抽取论文如何定义、描述或隐含定义策略经验。',
     question: 'How does the paper define, describe, or operationalize strategy experience?',
     output_type: 'claim_with_evidence',
     required: true,
     requires_evidence: true,
     allow_inference: true,
     fields: [
-      {name: 'definition_type', type: 'enum', values: ['explicit_definition', 'operational_definition', 'implicit_definition', 'undefined'], description: '瀹氫箟绫诲瀷銆?},
-      {name: 'definition_text', type: 'long_text', description: '绛栫暐缁忛獙鐨勫畾涔夋垨鎿嶄綔鎬ф弿杩般€?},
-      {name: 'author_explicit', type: 'boolean', description: '璇ュ畾涔夋槸鍚︿负浣滆€呮槑纭〃杩般€?},
-      {name: 'model_inferred', type: 'boolean', description: '璇ュ畾涔夋槸鍚﹀寘鍚ā鍨嬪熀浜庝笂涓嬫枃鐨勬帹鏂€?},
+      {name: 'definition_type', type: 'enum', values: ['explicit_definition', 'operational_definition', 'implicit_definition', 'undefined'], description: '定义类型。'},
+      {name: 'definition_text', type: 'long_text', description: '策略经验的定义或操作性描述。'},
+      {name: 'author_explicit', type: 'boolean', description: '该定义是否为作者明确表述。'},
+      {name: 'model_inferred', type: 'boolean', description: '该定义是否包含模型基于上下文的推断。'},
     ],
   },
   {
     dimension_id: 'strategy_experience_source',
-    name: '绛栫暐缁忛獙鏉ユ簮',
-    description: '鎶藉彇绛栫暐缁忛獙鏉ヨ嚜鍝簺鏁版嵁銆佽繃绋嬫垨涓讳綋銆?,
+    name: '策略经验来源',
+    description: '抽取策略经验来自哪些数据、过程或主体。',
     question: 'Where does the strategy experience come from? Identify its source, producer, and collection stage.',
     output_type: 'structured_object',
     required: true,
     requires_evidence: true,
     allow_inference: true,
     fields: [
-      {name: 'source_type', type: 'multi_enum', values: ['human_feedback', 'user_preference', 'expert_demonstration', 'agent_trajectory', 'environment_feedback', 'success_case', 'failure_case', 'interaction_log', 'model_self_reflection', 'external_case_base', 'domain_expert_rule', 'not_reported'], description: '绛栫暐缁忛獙鐨勬潵婧愮被鍨嬨€?},
-      {name: 'producer', type: 'enum', values: ['human', 'agent', 'environment', 'model', 'expert', 'user', 'hybrid', 'not_reported'], description: '绛栫暐缁忛獙鐢辫皝浜х敓銆?},
-      {name: 'collection_stage', type: 'enum', values: ['before_task', 'during_task', 'after_task', 'during_training', 'during_inference', 'offline_preprocessing', 'not_reported'], description: '绛栫暐缁忛獙鍦ㄤ粈涔堟椂鍊欒鏀堕泦銆?},
-      {name: 'raw_material', type: 'long_text', description: '绛栫暐缁忛獙褰㈡垚鍓嶇殑鍘熷鏉愭枡锛屼緥濡傝建杩广€佸弽棣堛€佹渚嬨€佹棩蹇椼€佺ず鑼冪瓑銆?},
+      {name: 'source_type', type: 'multi_enum', values: ['human_feedback', 'user_preference', 'expert_demonstration', 'agent_trajectory', 'environment_feedback', 'success_case', 'failure_case', 'interaction_log', 'model_self_reflection', 'external_case_base', 'domain_expert_rule', 'not_reported'], description: '策略经验的来源类型。'},
+      {name: 'producer', type: 'enum', values: ['human', 'agent', 'environment', 'model', 'expert', 'user', 'hybrid', 'not_reported'], description: '策略经验由谁产生。'},
+      {name: 'collection_stage', type: 'enum', values: ['before_task', 'during_task', 'after_task', 'during_training', 'during_inference', 'offline_preprocessing', 'not_reported'], description: '策略经验在什么时候被收集。'},
+      {name: 'raw_material', type: 'long_text', description: '策略经验形成前的原始材料，例如轨迹、反馈、案例、日志、示范等。'},
     ],
   },
   {
     dimension_id: 'strategy_experience_extraction_method',
-    name: '绛栫暐缁忛獙鎶藉彇鏂瑰紡',
-    description: '鎶藉彇绛栫暐缁忛獙濡備綍浠庡師濮嬫潗鏂欎腑琚舰鎴愩€佹€荤粨銆佸涔犳垨鏋勫缓銆?,
+    name: '策略经验抽取方式',
+    description: '抽取策略经验如何从原始材料中被形成、总结、学习或构建。',
     question: 'How is strategy experience extracted, summarized, learned, or constructed from raw materials?',
     output_type: 'method_step_list',
     required: true,
     requires_evidence: true,
     allow_inference: true,
     fields: [
-      {name: 'method_type', type: 'multi_enum', values: ['manual_annotation', 'rule_based_extraction', 'llm_summarization', 'reflection_generation', 'trajectory_compression', 'failure_attribution', 'success_pattern_mining', 'preference_learning', 'reward_modeling', 'case_abstraction', 'reinforcement_learning', 'supervised_finetuning', 'not_reported'], description: '绛栫暐缁忛獙鎶藉彇鎴栧舰鎴愮殑鏂规硶绫诲瀷銆?},
-      {name: 'input', type: 'long_text', description: '鎶藉彇鏂规硶鐨勮緭鍏ャ€?},
-      {name: 'process', type: 'method_step_list', description: '缁忛獙鎶藉彇鐨勪富瑕佽繃绋嬨€?},
-      {name: 'output', type: 'long_text', description: '鎶藉彇鍚庣殑绛栫暐缁忛獙缁撴灉銆?},
-      {name: 'automation_level', type: 'enum', values: ['manual', 'semi_automatic', 'automatic', 'not_reported'], description: '鎶藉彇杩囩▼鐨勮嚜鍔ㄥ寲绋嬪害銆?},
+      {name: 'method_type', type: 'multi_enum', values: ['manual_annotation', 'rule_based_extraction', 'llm_summarization', 'reflection_generation', 'trajectory_compression', 'failure_attribution', 'success_pattern_mining', 'preference_learning', 'reward_modeling', 'case_abstraction', 'reinforcement_learning', 'supervised_finetuning', 'not_reported'], description: '策略经验抽取或形成的方法类型。'},
+      {name: 'input', type: 'long_text', description: '抽取方法的输入。'},
+      {name: 'process', type: 'method_step_list', description: '经验抽取的主要过程。'},
+      {name: 'output', type: 'long_text', description: '抽取后的策略经验结果。'},
+      {name: 'automation_level', type: 'enum', values: ['manual', 'semi_automatic', 'automatic', 'not_reported'], description: '抽取过程的自动化程度。'},
     ],
   },
   {
     dimension_id: 'strategy_experience_representation',
-    name: '绛栫暐缁忛獙琛ㄧず鏂瑰紡',
-    description: '鎶藉彇绛栫暐缁忛獙浠ヤ粈涔堝舰寮忚琛ㄨ揪銆佸瓨鍌ㄦ垨缁勭粐銆?,
+    name: '策略经验表示方式',
+    description: '抽取策略经验以什么形式被表达、存储或组织。',
     question: 'How is strategy experience represented, stored, or organized?',
     output_type: 'structured_object',
     required: false,
     requires_evidence: true,
     allow_inference: true,
     fields: [
-      {name: 'representation_type', type: 'multi_enum', values: ['natural_language_rule', 'heuristic', 'plan_template', 'action_policy', 'decision_rule', 'case_library', 'trajectory_summary', 'prompt_snippet', 'key_value_memory', 'vector_embedding', 'knowledge_graph', 'model_parameter', 'reward_function', 'not_reported'], description: '绛栫暐缁忛獙鐨勮〃绀虹被鍨嬨€?},
-      {name: 'storage_location', type: 'enum', values: ['prompt', 'memory_buffer', 'external_memory', 'case_base', 'database', 'model_parameters', 'policy_network', 'retrieval_index', 'not_reported'], description: '绛栫暐缁忛獙瀛樺偍鍦ㄥ摢閲屻€?},
-      {name: 'organization_method', type: 'long_text', description: '绛栫暐缁忛獙濡備綍琚粍缁囥€佺储寮曘€佸垎绫绘垨绠＄悊銆?},
+      {name: 'representation_type', type: 'multi_enum', values: ['natural_language_rule', 'heuristic', 'plan_template', 'action_policy', 'decision_rule', 'case_library', 'trajectory_summary', 'prompt_snippet', 'key_value_memory', 'vector_embedding', 'knowledge_graph', 'model_parameter', 'reward_function', 'not_reported'], description: '策略经验的表示类型。'},
+      {name: 'storage_location', type: 'enum', values: ['prompt', 'memory_buffer', 'external_memory', 'case_base', 'database', 'model_parameters', 'policy_network', 'retrieval_index', 'not_reported'], description: '策略经验存储在哪里。'},
+      {name: 'organization_method', type: 'long_text', description: '策略经验如何被组织、索引、分类或管理。'},
     ],
   },
   {
     dimension_id: 'strategy_experience_usage',
-    name: '绛栫暐缁忛獙浣跨敤鏂瑰紡',
-    description: '鎶藉彇绛栫暐缁忛獙濡備綍琚敤浜庡悗缁换鍔°€佸喅绛栥€佽鍒掓垨妯″瀷浼樺寲銆?,
+    name: '策略经验使用方式',
+    description: '抽取策略经验如何被用于后续任务、决策、规划或模型优化。',
     question: 'How is strategy experience used to guide future tasks, planning, decision making, generation, or model optimization?',
     output_type: 'structured_object',
     required: true,
     requires_evidence: true,
     allow_inference: true,
     fields: [
-      {name: 'usage_type', type: 'multi_enum', values: ['prompt_augmentation', 'retrieval_augmented_generation', 'planning_guidance', 'decision_support', 'action_selection', 'reranking', 'error_avoidance', 'policy_update', 'model_training', 'personalization', 'self_improvement', 'not_reported'], description: '绛栫暐缁忛獙鐨勪娇鐢ㄧ被鍨嬨€?},
-      {name: 'use_stage', type: 'multi_enum', values: ['before_task', 'during_task', 'after_task', 'training_time', 'inference_time', 'evaluation_time', 'not_reported'], description: '绛栫暐缁忛獙鍦ㄤ粈涔堟椂鍊欒浣跨敤銆?},
-      {name: 'consumer', type: 'enum', values: ['llm', 'agent', 'planner', 'retriever', 'policy_model', 'reward_model', 'human_user', 'hybrid_system', 'not_reported'], description: '璋佷娇鐢ㄧ瓥鐣ョ粡楠屻€?},
-      {name: 'usage_mechanism', type: 'long_text', description: '绛栫暐缁忛獙鍏蜂綋濡備綍褰卞搷琛屼负鎴栬緭鍑恒€?},
+      {name: 'usage_type', type: 'multi_enum', values: ['prompt_augmentation', 'retrieval_augmented_generation', 'planning_guidance', 'decision_support', 'action_selection', 'reranking', 'error_avoidance', 'policy_update', 'model_training', 'personalization', 'self_improvement', 'not_reported'], description: '策略经验的使用类型。'},
+      {name: 'use_stage', type: 'multi_enum', values: ['before_task', 'during_task', 'after_task', 'training_time', 'inference_time', 'evaluation_time', 'not_reported'], description: '策略经验在什么时候被使用。'},
+      {name: 'consumer', type: 'enum', values: ['llm', 'agent', 'planner', 'retriever', 'policy_model', 'reward_model', 'human_user', 'hybrid_system', 'not_reported'], description: '谁使用策略经验。'},
+      {name: 'usage_mechanism', type: 'long_text', description: '策略经验具体如何影响行为或输出。'},
     ],
   },
   {
     dimension_id: 'strategy_experience_evaluation',
-    name: '绛栫暐缁忛獙鏁堟灉楠岃瘉',
-    description: '鎶藉彇璁烘枃鏄惁楠岃瘉绛栫暐缁忛獙鏈夋晥锛屼互鍙婂浣曢獙璇併€?,
+    name: '策略经验效果验证',
+    description: '抽取论文是否验证策略经验有效，以及如何验证。',
     question: 'Does the paper evaluate the contribution or effectiveness of strategy experience? If yes, how?',
     output_type: 'comparison_result',
     required: false,
     requires_evidence: true,
     allow_inference: false,
     fields: [
-      {name: 'has_direct_evaluation', type: 'boolean', description: '鏄惁鐩存帴楠岃瘉绛栫暐缁忛獙鐨勮础鐚€?},
-      {name: 'evaluation_type', type: 'multi_enum', values: ['ablation_study', 'baseline_comparison', 'human_evaluation', 'case_study', 'error_analysis', 'longitudinal_evaluation', 'generalization_test', 'not_reported'], description: '楠岃瘉鏂瑰紡銆?},
-      {name: 'baseline', type: 'string', description: '瀵规瘮鍩虹嚎锛屼緥濡?without experience銆亀ithout reflection銆亀ithout memory銆?},
-      {name: 'metrics', type: 'list', description: '浣跨敤鐨勮瘎浠锋寚鏍囥€?},
-      {name: 'reported_effect', type: 'long_text', description: '璁烘枃鎶ュ憡鐨勬晥鏋溿€?},
-      {name: 'evidence_strength', type: 'enum', values: ['strong', 'medium', 'weak', 'missing'], description: '璇佹嵁寮哄害銆?},
+      {name: 'has_direct_evaluation', type: 'boolean', description: '是否直接验证策略经验的贡献。'},
+      {name: 'evaluation_type', type: 'multi_enum', values: ['ablation_study', 'baseline_comparison', 'human_evaluation', 'case_study', 'error_analysis', 'longitudinal_evaluation', 'generalization_test', 'not_reported'], description: '验证方式。'},
+      {name: 'baseline', type: 'string', description: '对比基线，例如 without experience、without reflection、without memory。'},
+      {name: 'metrics', type: 'list', description: '使用的评价指标。'},
+      {name: 'reported_effect', type: 'long_text', description: '论文报告的效果。'},
+      {name: 'evidence_strength', type: 'enum', values: ['strong', 'medium', 'weak', 'missing'], description: '证据强度。'},
     ],
   },
   {
     dimension_id: 'strategy_experience_limitations',
-    name: '灞€闄愪笌閫傜敤鏉′欢',
-    description: '鎶藉彇绛栫暐缁忛獙鐨勯€傜敤杈圭晫銆佸眬闄愭€у拰娼滃湪椋庨櫓銆?,
+    name: '局限与适用条件',
+    description: '抽取策略经验的适用边界、局限性和潜在风险。',
     question: 'What are the limitations, applicable conditions, or risks of the strategy experience mechanism?',
     output_type: 'claim_with_evidence',
     required: false,
     requires_evidence: true,
     allow_inference: true,
     fields: [
-      {name: 'limitation_type', type: 'multi_enum', values: ['quality_dependency', 'scalability_issue', 'domain_specificity', 'negative_transfer', 'staleness', 'conflict_between_experiences', 'cost_overhead', 'lack_of_evaluation', 'not_reported'], description: '灞€闄愮被鍨嬨€?},
-      {name: 'limitation_text', type: 'long_text', description: '鍏蜂綋灞€闄愭垨閫傜敤鏉′欢銆?},
-      {name: 'source', type: 'enum', values: ['author_stated', 'experiment_implied', 'model_inferred', 'user_note'], description: '灞€闄愭潵婧愩€?},
+      {name: 'limitation_type', type: 'multi_enum', values: ['quality_dependency', 'scalability_issue', 'domain_specificity', 'negative_transfer', 'staleness', 'conflict_between_experiences', 'cost_overhead', 'lack_of_evaluation', 'not_reported'], description: '局限类型。'},
+      {name: 'limitation_text', type: 'long_text', description: '具体局限或适用条件。'},
+      {name: 'source', type: 'enum', values: ['author_stated', 'experiment_implied', 'model_inferred', 'user_note'], description: '局限来源。'},
     ],
   },
 ];
@@ -666,7 +666,7 @@ function normalizePromptProfiles(template) {
   if (!profiles.length && template?.system_prompt) {
     profiles.push({
       id: 'prompt_default',
-      name: '榛樿 Prompt',
+      name: '默认 Prompt',
       content: template.system_prompt,
       created_at: template.created_at || '',
       updated_at: template.updated_at || '',
@@ -675,7 +675,7 @@ function normalizePromptProfiles(template) {
   if (!profiles.length) {
     profiles.push({
       id: 'prompt_default',
-      name: '榛樿 Prompt',
+      name: '默认 Prompt',
       content: '',
       created_at: '',
       updated_at: '',
@@ -705,14 +705,14 @@ function defaultResearchObjectConfig(template = null) {
   return {
     object_definition: {
       profile_id: template?.id || 'strategy_experience_v1',
-      display_name: template?.name || '绛栫暐缁忛獙',
+      display_name: template?.name || '策略经验',
       object_type: 'research_object',
       version: template?.version || '1.0.0',
-      description: template?.description || '鐢ㄤ簬浠庤鏂囦腑鎶藉彇涓庣瓥鐣ョ粡楠岀浉鍏崇殑淇℃伅锛屽寘鎷瓥鐣ョ粡楠岀殑瀹氫箟銆佹潵婧愩€佹娊鍙栨柟寮忋€佽〃绀烘柟寮忋€佷娇鐢ㄦ柟寮忋€佹晥鏋滈獙璇佸拰灞€闄愭€с€?,
+      description: template?.description || '用于从论文中抽取与策略经验相关的信息，包括策略经验的定义、来源、抽取方式、表示方式、使用方式、效果验证和局限性。',
     },
     term_rules: {
       concept_policy: {
-        working_definition: '绛栫暐缁忛獙鏄寚浠庡巻鍙蹭换鍔°€佷氦浜掕建杩广€佹垚鍔?澶辫触妗堜緥銆佺幆澧冨弽棣堛€佷笓瀹剁ず鑼冦€佺敤鎴峰弽棣堟垨妯″瀷鍙嶆€濅腑鎬荤粨鍑烘潵锛屽苟鍙敤浜庢寚瀵煎悗缁换鍔¤鍒掋€佽鍔ㄩ€夋嫨銆佸喅绛栦紭鍖栥€侀敊璇閬挎垨绛栫暐鏀硅繘鐨勭粡楠屾€т俊鎭€?,
+        working_definition: '策略经验是指从历史任务、交互轨迹、成功/失败案例、环境反馈、专家示范、用户反馈或模型反思中总结出来，并可用于指导后续任务规划、行动选择、决策优化、错误规避或策略改进的经验性信息。',
         include_terms: [
           'strategy',
           'policy',
@@ -734,30 +734,30 @@ function defaultResearchObjectConfig(template = null) {
           'strategic knowledge',
         ],
         exclude_rules: [
-          '涓嶅皢鏅€氳儗鏅煡璇嗚涓虹瓥鐣ョ粡楠岋紝闄ら潪璁烘枃鏄庣‘璇存槑鍏舵潵鑷巻鍙蹭换鍔°€佸弽棣堛€佹渚嬫垨浜や簰杩囩▼銆?,
-          '涓嶅皢绾ā鍨嬪弬鏁版垨璁粌璇枡瑙嗕负绛栫暐缁忛獙锛岄櫎闈炶鏂囨槑纭皢鍏朵綔涓哄彲澶嶇敤绛栫暐鎴栫粡楠岃繘琛岀粍缁囧拰浣跨敤銆?,
-          '涓嶅皢鍗曠函鐨勫疄楠岀粨鏋滆涓虹瓥鐣ョ粡楠岋紝闄ら潪瀹為獙缁撴灉琚繘涓€姝ユ€荤粨涓哄彲鎸囧鍚庣画浠诲姟鐨勭瓥鐣ャ€佽鍒欐垨缁忛獙銆?,
-          '涓嶅皢 related work 涓彁鍒扮殑绛栫暐鎴栫粡楠岃涓烘湰鏂囩殑绛栫暐缁忛獙锛岄櫎闈炶鏂囨槑纭鐢ㄦ垨鏋勫缓浜嗚绫荤粡楠屻€?,
+          '不将普通背景知识视为策略经验，除非论文明确说明其来自历史任务、反馈、案例或交互过程。',
+          '不将纯模型参数或训练语料视为策略经验，除非论文明确将其作为可复用策略或经验进行组织和使用。',
+          '不将单纯的实验结果视为策略经验，除非实验结果被进一步总结为可指导后续任务的策略、规则或经验。',
+          '不将 related work 中提到的策略或经验视为本文的策略经验，除非论文明确复用或构建了该类经验。',
         ],
       },
-      decision_criteria: '蹇呴』鑳藉洖绛旇缁忛獙浠庝綍鑰屾潵銆佽濡備綍鎶藉彇鎴栫粍缁囥€佸浣曟寚瀵煎悗缁瓥鐣?鍐崇瓥锛屼互鍙婅鏂囨彁渚涗簡浠€涔堣瘉鎹€?,
+      decision_criteria: '必须能回答该经验从何而来、被如何抽取或组织、如何指导后续策略/决策，以及论文提供了什么证据。',
     },
     dimensions: dims.length ? dims : JSON.parse(JSON.stringify(STRATEGY_EXPERIENCE_DIMENSIONS)),
     normalization: {
       tags: ['definition', 'storage', 'retrieval', 'update', 'usage', 'evaluation'],
-      rules: '鍚屼箟鏈鍚堝苟鍒板悓涓€鏍囩锛涗繚鐣欎綔鑰呭師璇嶄綔涓?raw_value锛涙棤娉曞綊涓€鍖栨椂杩斿洖 unknown銆?,
+      rules: '同义术语合并到同一标签；保留作者原词作为 raw_value；无法归一化时返回 unknown。',
     },
     evidence_rules: {
       require_quote: true,
       require_section: true,
       require_page: true,
       require_chunk_id: true,
-      processing_policy: '鍏佽瀵瑰師鏂囪繘琛岀畝鐭鎷紝浣嗗繀椤讳繚鐣欏師鏂?quote锛涙帹鏂唴瀹瑰繀椤绘樉寮忔爣璁颁负 inferred銆?,
+      processing_policy: '允许对原文进行简短概括，但必须保留原文 quote；推断内容必须显式标记为 inferred。',
       evidence_types: ['author_claim', 'definition', 'method_description', 'experiment_result', 'ablation', 'limitation'],
     },
     analysis_views: {
-      views: ['瀵硅薄瀹氫箟瀵规瘮', '鏈哄埗娴佺▼瀵规瘮', '璇佹嵁寮哄害鐭╅樀', '灞€闄愪笌閫傜敤鏉′欢'],
-      prompt: '姣旇緝涓嶅悓璁烘枃涓璞＄殑缁勬垚銆佷綔鐢ㄩ樁娈点€佽瘉鎹被鍨嬨€侀€傜敤鏉′欢鍜屽眬闄愩€?,
+      views: ['对象定义对比', '机制流程对比', '证据强度矩阵', '局限与适用条件'],
+      prompt: '比较不同论文中对象的组成、作用阶段、证据类型、适用条件和局限。',
     },
     modeling: template?.modeling || defaultModelingState(template),
     prompts: normalizePromptProfiles(template),
@@ -767,7 +767,7 @@ function defaultResearchObjectConfig(template = null) {
 function defaultModelingState(template = null) {
   return {
     research_intent: {
-      object_name: template?.name || '绛栫暐缁忛獙',
+      object_name: template?.name || '策略经验',
       research_area: '',
       object_type: 'mechanism_or_concept',
       research_intent: template?.description || '',
@@ -812,9 +812,9 @@ function splitImportedDescription(text) {
 function comparableDimensionText(text) {
   return String(text || '')
     .replace(/^Question:\s*/i, '')
-    .replace(/^鎶藉彇闂[:锛歖\s*/i, '')
+    .replace(/^抽取问题[:：]\s*/i, '')
     .replace(/\s+/g, '')
-    .replace(/[锛?銆?!锛?锛燂紱;锛?銆?'鈥溾€濃€樷€?)锛堬級\[\]銆愩€慮/g, '')
+    .replace(/[，,。.!！?？；;：:、"'“”‘’()（）\[\]【】]/g, '')
     .toLowerCase();
 }
 
@@ -855,16 +855,16 @@ function normalizeSectionPolicy(policy = {}, dim = null) {
 function defaultSectionPolicyForDimension(dim = {}) {
   const text = `${dim.dimension_id || dim.name || ''} ${dim.label || ''} ${dim.description || ''} ${dim.question || ''}`.toLowerCase();
   const policy = (prefer, allow, exclude = ['references', 'related_work']) => ({prefer, allow, exclude});
-  if (/definition|瀹氫箟|identity|鍏冧俊鎭?.test(text)) return policy(['abstract','introduction','method','system'], ['discussion','conclusion','other']);
-  if (/source|鏉ユ簮|collection|data/.test(text)) return policy(['method','system','algorithm'], ['introduction','experiment','appendix','other']);
-  if (/extraction|extract|鎶藉彇|summar|learn|瀛︿範|鏋勫缓|鏂规硶|姝ラ|pipeline|algorithm/.test(text)) return policy(['method','algorithm','system'], ['experiment','appendix','other']);
-  if (/representation|琛ㄧず|storage|瀛樺偍|memory/.test(text)) return policy(['method','system','algorithm'], ['appendix','other']);
-  if (/usage|use|浣跨敤|planning|decision|搴旂敤/.test(text)) return policy(['method','system','algorithm','experiment'], ['discussion','appendix','other']);
-  if (/update|鏇存柊|adapt|refine|杩唬|transfer/.test(text)) return policy(['method','algorithm','system'], ['experiment','discussion','appendix','other']);
-  if (/experiment|evaluation|evidence|effect|result|鏁堟灉|瀹為獙|楠岃瘉/.test(text)) return policy(['experiment','results','ablation'], ['method','discussion','conclusion','other']);
-  if (/limitation|灞€闄恷risk|failure|future/.test(text)) return policy(['limitations','discussion','conclusion'], ['experiment','results','other']);
-  if (/motivation|background|gap|鍔ㄦ満|鑳屾櫙/.test(text)) return policy(['abstract','introduction'], ['discussion','related_work','other'], ['references']);
-  if (/contribution|claim|innovation|璐＄尞|鍒涙柊|瑙傜偣/.test(text)) return policy(['abstract','introduction','method'], ['results','discussion','conclusion','other']);
+  if (/definition|定义|identity|元信息/.test(text)) return policy(['abstract','introduction','method','system'], ['discussion','conclusion','other']);
+  if (/source|来源|collection|data/.test(text)) return policy(['method','system','algorithm'], ['introduction','experiment','appendix','other']);
+  if (/extraction|extract|抽取|summar|learn|学习|构建|方法|步骤|pipeline|algorithm/.test(text)) return policy(['method','algorithm','system'], ['experiment','appendix','other']);
+  if (/representation|表示|storage|存储|memory/.test(text)) return policy(['method','system','algorithm'], ['appendix','other']);
+  if (/usage|use|使用|planning|decision|应用/.test(text)) return policy(['method','system','algorithm','experiment'], ['discussion','appendix','other']);
+  if (/update|更新|adapt|refine|迭代|transfer/.test(text)) return policy(['method','algorithm','system'], ['experiment','discussion','appendix','other']);
+  if (/experiment|evaluation|evidence|effect|result|效果|实验|验证/.test(text)) return policy(['experiment','results','ablation'], ['method','discussion','conclusion','other']);
+  if (/limitation|局限|risk|failure|future/.test(text)) return policy(['limitations','discussion','conclusion'], ['experiment','results','other']);
+  if (/motivation|background|gap|动机|背景/.test(text)) return policy(['abstract','introduction'], ['discussion','related_work','other'], ['references']);
+  if (/contribution|claim|innovation|贡献|创新|观点/.test(text)) return policy(['abstract','introduction','method'], ['results','discussion','conclusion','other']);
   return policy(['method','system','algorithm','experiment','results'], ['abstract','introduction','discussion','limitations','conclusion','appendix','other']);
 }
 
@@ -874,30 +874,63 @@ function renderSectionPolicyEditor(dim) {
   const policy = normalizeSectionPolicy(dim?.section_policy, dim);
   const disabled = !dim;
   const groups = [
-    ['prefer', '浼樺厛绔犺妭'],
-    ['allow', '鍙敤绔犺妭'],
-    ['exclude', '鎺掗櫎绔犺妭'],
+    ['prefer', '优先章节'],
+    ['allow', '可用章节'],
+    ['exclude', '排除章节'],
   ];
+  const selectedValues = new Set([...policy.prefer, ...policy.allow, ...policy.exclude]);
   holder.innerHTML = groups.map(([key, title]) => `
-    <section class="section-policy-column">
-      <h4>${title}</h4>
-      ${SECTION_TYPE_OPTIONS.map(option => `
-        <label class="section-policy-option" title="${escapeHtml(option.value)}">
-          <input type="checkbox" data-section-policy="${key}" value="${escapeHtml(option.value)}" ${policy[key].includes(option.value) ? 'checked' : ''} ${disabled ? 'disabled' : ''} />
-          <span>${escapeHtml(option.label)}</span>
-          <small>${escapeHtml(option.value)}</small>
-        </label>
-      `).join('')}
+    <section class="section-policy-column" data-section-policy-column="${key}">
+      <div class="section-policy-column-head">
+        <h4>${title}</h4>
+        <select data-section-policy-select="${key}" ${disabled ? 'disabled' : ''}>
+          <option value="">添加章节</option>
+          ${SECTION_TYPE_OPTIONS
+            .filter(option => !selectedValues.has(option.value))
+            .map(option => `<option value="${escapeHtml(option.value)}" title="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`)
+            .join('')}
+        </select>
+      </div>
+      <div class="section-policy-tags">
+        ${policy[key].map(value => {
+          const option = SECTION_TYPE_OPTIONS.find(item => item.value === value) || {label: value, value};
+          return `
+            <span class="section-policy-tag" data-section-policy-tag="${key}" data-value="${escapeHtml(value)}" title="${escapeHtml(value)}">
+              <span>${escapeHtml(option.label)}</span>
+              <button type="button" data-section-policy-remove="${key}" data-value="${escapeHtml(value)}" aria-label="移除${escapeHtml(option.label)}" ${disabled ? 'disabled' : ''}>&times;</button>
+            </span>
+          `;
+        }).join('') || '<span class="section-policy-empty">未选择</span>'}
+      </div>
     </section>
   `).join('');
+  holder.querySelectorAll('select[data-section-policy-select]').forEach(select => {
+    select.onchange = () => {
+      if (!dim || !select.value) return;
+      const current = readSectionPolicyEditor(dim);
+      current[select.dataset.sectionPolicySelect].push(select.value);
+      dim.section_policy = normalizeSectionPolicy(current, dim);
+      renderSectionPolicyEditor(dim);
+    };
+  });
+  holder.querySelectorAll('button[data-section-policy-remove]').forEach(button => {
+    button.onclick = () => {
+      if (!dim) return;
+      const current = readSectionPolicyEditor(dim);
+      const key = button.dataset.sectionPolicyRemove;
+      current[key] = current[key].filter(value => value !== button.dataset.value);
+      dim.section_policy = normalizeSectionPolicy(current, dim);
+      renderSectionPolicyEditor(dim);
+    };
+  });
 }
 
 function readSectionPolicyEditor(dim) {
   const holder = $('dimSectionPolicy');
   if (!holder) return normalizeSectionPolicy(dim?.section_policy, dim);
   const picked = {prefer: [], allow: [], exclude: []};
-  holder.querySelectorAll('input[data-section-policy]:checked').forEach(input => {
-    picked[input.dataset.sectionPolicy].push(input.value);
+  holder.querySelectorAll('[data-section-policy-tag]').forEach(tag => {
+    picked[tag.dataset.sectionPolicyTag].push(tag.dataset.value);
   });
   return normalizeSectionPolicy(picked, dim);
 }
@@ -979,7 +1012,7 @@ function normalizeImportedPrompts(source) {
   if (source?.system_prompt && !items.some(item => item.content === source.system_prompt)) {
     items.unshift({
       id: 'prompt_imported_system',
-      name: '瀵煎叆閰嶇疆 Prompt',
+      name: '导入配置 Prompt',
       content: source.system_prompt,
       created_at: now,
       updated_at: now,
@@ -987,7 +1020,7 @@ function normalizeImportedPrompts(source) {
   } else if (source?.prompt && !items.length) {
     items.push({
       id: 'prompt_imported',
-      name: '瀵煎叆閰嶇疆 Prompt',
+      name: '导入配置 Prompt',
       content: source.prompt,
       created_at: now,
       updated_at: now,
@@ -1012,7 +1045,7 @@ function ensureImportedPromptContent(cfg) {
   if (!active) {
     cfg.prompts.items.push({
       id: 'prompt_imported_default',
-      name: '瀵煎叆閰嶇疆 Prompt',
+      name: '导入配置 Prompt',
       content: generated,
       created_at: now,
       updated_at: now,
@@ -1023,7 +1056,7 @@ function ensureImportedPromptContent(cfg) {
 
 function objectConfigFromImportedJson(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
-    throw new Error('瀵煎叆鍐呭蹇呴』鏄?JSON 瀵硅薄');
+    throw new Error('导入内容必须是 JSON 对象');
   }
   const looksLikeTemplate = data.id && data.name && Array.isArray(data.dimensions);
   const looksLikeInternal = data.object_definition && (data.object_definition.profile_id || data.term_rules || data.prompts?.items);
@@ -1035,7 +1068,7 @@ function objectConfigFromImportedJson(data) {
     const obj = data.object_definition || {};
     cfg.object_definition = {
       profile_id: obj.profile_id || data.profile_id || obj.id || configIdFromName(obj.display_name || obj.name || 'research_object'),
-      display_name: obj.display_name || data.display_name || obj.name || '鏈懡鍚嶇鐮斿璞?,
+      display_name: obj.display_name || data.display_name || obj.name || '未命名科研对象',
       object_type: obj.object_type || data.object_type || 'research_object',
       version: obj.version || data.version || '1.0.0',
       description: obj.description || data.description || '',
@@ -1052,7 +1085,7 @@ function objectConfigFromImportedJson(data) {
     const concept = data.object_definition || {};
     cfg.object_definition = {
       profile_id: data.profile_id || data.id || configIdFromName(data.display_name || data.name || 'research_object'),
-      display_name: data.display_name || data.name || '鏈懡鍚嶇鐮斿璞?,
+      display_name: data.display_name || data.name || '未命名科研对象',
       object_type: data.object_type || 'research_object',
       version: data.version || '1.0.0',
       description: data.description || '',
@@ -1075,7 +1108,7 @@ function objectConfigFromImportedJson(data) {
   if (!cfg.object_definition.profile_id) cfg.object_definition.profile_id = configIdFromName(cfg.object_definition.display_name);
   if (!cfg.object_definition.version) cfg.object_definition.version = '1.0.0';
   if (!cfg.object_definition.object_type) cfg.object_definition.object_type = 'research_object';
-  if (!cfg.dimensions.length) throw new Error('瀵煎叆閰嶇疆鑷冲皯闇€瑕佸寘鍚?1 涓?dimensions 椤?);
+  if (!cfg.dimensions.length) throw new Error('导入配置至少需要包含 1 个 dimensions 项');
   if (data.system_prompt) {
     ensurePromptManagerState(cfg);
     const active = activePromptProfile(cfg);
@@ -1088,8 +1121,8 @@ function objectConfigFromImportedJson(data) {
 function renderObjectConfigPanel() {
   if (!$('objectTemplateSelect')) return;
   $('objectTemplateSelect').innerHTML = [
-    '<option value="__new__">+鏂板缓瀵硅薄</option>',
-    ...state.templates.map(t => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.name)} 路 v${escapeHtml(t.version)}</option>`)
+    '<option value="__new__">+新建对象</option>',
+    ...state.templates.map(t => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.name)} · v${escapeHtml(t.version)}</option>`)
   ].join('');
   if (!state.objectConfig) {
     state.objectConfig = defaultResearchObjectConfig(null);
@@ -1112,7 +1145,7 @@ function updateObjectDeleteButton() {
   const selectedId = select.value;
   const template = state.templates.find(item => item.id === selectedId);
   btn.disabled = !template;
-  btn.title = template ? `鍒犻櫎 ${template.name}` : '璇峰厛閫夋嫨涓€涓凡淇濆瓨瀵硅薄';
+  btn.title = template ? `删除 ${template.name}` : '请先选择一个已保存对象';
 }
 
 function resetObjectAdvisorSuggestions() {
@@ -1232,7 +1265,7 @@ function renderTermIncludeTags() {
   $('termIncludeTags').innerHTML = terms.map((term, index) => `
     <button class="term-tag" type="button" data-term-index="${index}">
       <span>${escapeHtml(term)}</span>
-      <b aria-hidden="true">脳</b>
+      <b aria-hidden="true">×</b>
     </button>
   `).join('');
   document.querySelectorAll('.term-tag').forEach(tag => {
@@ -1269,7 +1302,7 @@ function renderExamplePaperSelect() {
 }
 
 function candidateSourceLabel(example) {
-  return [example.paper_title, example.section_title, example.chunk_id].filter(Boolean).join(' / ') || '鎵嬪姩鏍蜂緥';
+  return [example.paper_title, example.section_title, example.chunk_id].filter(Boolean).join(' / ') || '手动样例';
 }
 
 function renderCandidateExamples() {
@@ -1282,17 +1315,17 @@ function renderCandidateExamples() {
   ];
   $('candidateExampleList').innerHTML = examples.map((example, index) => `
     <article class="candidate-example-card ${escapeHtml(example.type)}" data-example-index="${index}">
-      <div class="candidate-example-source">娈佃惤鏉ユ簮锛?{escapeHtml(candidateSourceLabel(example))}</div>
+      <div class="candidate-example-source">段落来源：${escapeHtml(candidateSourceLabel(example))}</div>
       <p>${escapeHtml(example.text || '')}</p>
       <div class="candidate-example-actions">
-        <button type="button" data-mark-example="positive_example">绠椾綔${escapeHtml(state.objectConfig.object_definition?.display_name || '璇ュ璞?)}</button>
-        <button type="button" data-mark-example="negative_example">涓嶇畻</button>
-        <button type="button" data-mark-example="boundary_example">涓嶇‘瀹?/button>
+        <button type="button" data-mark-example="positive_example">算作${escapeHtml(state.objectConfig.object_definition?.display_name || '该对象')}</button>
+        <button type="button" data-mark-example="negative_example">不算</button>
+        <button type="button" data-mark-example="boundary_example">不确定</button>
       </div>
-      <label>鏍囨敞鐞嗙敱</label>
+      <label>标注理由</label>
       <textarea rows="3" data-example-reason>${escapeHtml(example.reason || '')}</textarea>
     </article>
-  `).join('') || '<p class="muted">鏆傛棤鍊欓€夋钀姐€傚彲浠ラ€夋嫨璁烘枃鍚庡彫鍥烇紝鎴栬浇鍏ョ瓥鐣ョ粡楠岀ず渚嬨€?/p>';
+  `).join('') || '<p class="muted">暂无候选段落。可以选择论文后召回，或载入策略经验示例。</p>';
   document.querySelectorAll('.candidate-example-card').forEach(card => {
     const index = Number(card.dataset.exampleIndex);
     card.querySelectorAll('[data-mark-example]').forEach(btn => {
@@ -1338,9 +1371,9 @@ function updateBoundaryExampleReason(index, reason) {
 
 function loadCandidateExamplesFromPaper() {
   const paper = state.papers.find(p => p.id === $('examplePaperSelect').value) || state.papers[0];
-  if (!paper) return toast('璇峰厛瀵煎叆鎴栭€夋嫨璁烘枃');
+  if (!paper) return toast('请先导入或选择论文');
   const chunks = (paper.chunks || []).slice(0, 5);
-  if (!chunks.length) return toast('璇ヨ鏂囨殏鏃犲彲鐢ㄦ钀?);
+  if (!chunks.length) return toast('该论文暂无可用段落');
   const examples = chunks.map(chunk => ({
     type: 'boundary_example',
     text: fmt(chunk.text, 700),
@@ -1353,7 +1386,7 @@ function loadCandidateExamplesFromPaper() {
   replaceBoundaryExamples([...allBoundaryExamples(), ...examples]);
   renderCandidateExamples();
   renderObjectPreview();
-  toast(`宸插彫鍥?${examples.length} 涓€欓€夋钀絗);
+  toast(`已召回 ${examples.length} 个候选段落`);
 }
 
 function goPaperUploadFromExamples() {
@@ -1363,10 +1396,10 @@ function goPaperUploadFromExamples() {
 }
 
 function loadStrategyExperienceIntent() {
-  setValue('intentObjectName', '绛栫暐缁忛獙');
+  setValue('intentObjectName', '策略经验');
   setValue('intentResearchArea', 'LLM Agent');
   setValue('intentObjectType', 'mechanism_or_concept');
-  setValue('intentResearchIntent', '鐮旂┒鏅鸿兘浣撳浣曚粠鍘嗗彶浠诲姟銆佷氦浜掕建杩广€佸弽棣堛€佸け璐ユ渚嬫垨鍙嶆€濅腑鎬荤粨鍙鐢ㄧ殑绛栫暐缁忛獙锛屽苟灏嗗叾鐢ㄤ簬鍚庣画瑙勫垝銆佽鍔ㄩ€夋嫨鍜岄敊璇閬裤€?);
+  setValue('intentResearchIntent', '研究智能体如何从历史任务、交互轨迹、反馈、失败案例或反思中总结可复用的策略经验，并将其用于后续规划、行动选择和错误规避。');
   document.querySelectorAll('.intentUsage').forEach(input => {
     input.checked = ['literature_review', 'method_design', 'comparative_analysis'].includes(input.value);
   });
@@ -1378,7 +1411,7 @@ function loadStrategyExperienceExamples() {
     {
       type: 'positive_example',
       text: 'The agent reflects on failed trajectories and stores lessons to guide future planning.',
-      reason: '浠庡け璐ヨ建杩逛腑鎬荤粨 lesson锛屽苟鐢ㄤ簬鏈潵瑙勫垝銆?,
+      reason: '从失败轨迹中总结 lesson，并用于未来规划。',
       paper_title: 'Strategy Experience Example',
       section_title: 'Method',
       chunk_id: 'example_positive_001',
@@ -1386,7 +1419,7 @@ function loadStrategyExperienceExamples() {
     {
       type: 'negative_example',
       text: 'The model achieves 10% improvement over the baseline.',
-      reason: '杩欏彧鏄疄楠岀粨鏋滐紝娌℃湁琚€荤粨涓哄彲澶嶇敤绛栫暐銆?,
+      reason: '这只是实验结果，没有被总结为可复用策略。',
       paper_title: 'Strategy Experience Example',
       section_title: 'Experiments',
       chunk_id: 'example_negative_001',
@@ -1394,7 +1427,7 @@ function loadStrategyExperienceExamples() {
     {
       type: 'boundary_example',
       text: 'The system stores previous trajectories in memory.',
-      reason: '鍙繚瀛樿建杩癸紝涓嶇‘瀹氭槸鍚︾敤浜庡悗缁喅绛栥€?,
+      reason: '只保存轨迹，不确定是否用于后续决策。',
       paper_title: 'Strategy Experience Example',
       section_title: 'System',
       chunk_id: 'example_boundary_001',
@@ -1409,12 +1442,12 @@ function updateBoundaryRulesFromExamples() {
   const modeling = ensureModelingState();
   if (modeling.boundary_examples.positive_examples.length) {
     modeling.boundary_rules.include_rules = [
-      '浠庡け璐ユ渚嬨€佹垚鍔熸渚嬫垨浜や簰杞ㄨ抗涓敓鎴?lesson銆乺eflection銆乺ule銆乸olicy guidance锛屽苟鐢ㄤ簬鍚庣画浠诲姟鐨勫唴瀹癸紝搴旇涓虹瓥鐣ョ粡楠屻€?
+      '从失败案例、成功案例或交互轨迹中生成 lesson、reflection、rule、policy guidance，并用于后续任务的内容，应视为策略经验。'
     ];
   }
   if (modeling.boundary_examples.negative_examples.length || modeling.boundary_examples.uncertain_examples.length) {
     modeling.boundary_rules.exclude_rules = [
-      '浠呬繚瀛樺巻鍙茶建杩逛絾鏈鏄庡叾琚€荤粨銆佹绱€佸鐢ㄦ垨鐢ㄤ簬鍚庣画瑙勫垝/鍐崇瓥鐨勫唴瀹癸紝涓嶅簲瑙嗕负绛栫暐缁忛獙銆?
+      '仅保存历史轨迹但未说明其被总结、检索、复用或用于后续规划/决策的内容，不应视为策略经验。'
     ];
   }
   setValue('includeBoundaryRules', joinLines(modeling.boundary_rules.include_rules));
@@ -1431,7 +1464,7 @@ function applyIntentToDefinition() {
   if (intent.research_intent) setValue('objPurpose', intent.research_intent);
   collectObjectConfigFromForm();
   renderObjectConfigForm();
-  toast('宸插悓姝ュ埌瀵硅薄瀹氫箟');
+  toast('已同步到对象定义');
 }
 
 function objectTypeFromIntent(type) {
@@ -1447,10 +1480,10 @@ function renderObjectDimensionList() {
   const dims = state.objectConfig?.dimensions || [];
   $('objectDimensionList').innerHTML = dims.map((d, index) => `
     <button class="dimension-list-item ${index === state.objectDimensionIndex ? 'active' : ''}" data-dimension-index="${index}">
-      <b>${escapeHtml(d.name || d.dimension_id || '鏈懡鍚嶇淮搴?)}</b>
+      <b>${escapeHtml(d.name || d.dimension_id || '未命名维度')}</b>
       <span>${escapeHtml(d.dimension_id || '')}</span>
     </button>
-  `).join('') || '<p class="muted">鏆傛棤缁村害銆?/p>';
+  `).join('') || '<p class="muted">暂无维度。</p>';
   document.querySelectorAll('.dimension-list-item').forEach(btn => {
     btn.onclick = () => {
       saveCurrentDimensionForm();
@@ -1525,11 +1558,11 @@ function feedbackLookupLabel(value, options) {
 
 function feedbackTargetLevelLabel(value) {
   return ({
-    dimension: '缁村害',
+    dimension: '维度',
     prompt: 'Prompt',
-    object_definition: '瀵硅薄瀹氫箟',
-    result: '缁撴灉',
-  })[value] || value || '妯℃澘';
+    object_definition: '对象定义',
+    result: '结果',
+  })[value] || value || '模板';
 }
 
 function findCurrentDimensionFeedbackPool(dim = currentObjectDimension()) {
@@ -1550,7 +1583,7 @@ function findCurrentDimensionFeedbackPool(dim = currentObjectDimension()) {
 }
 
 function renderFeedbackTagRows(entries, options = []) {
-  if (!entries.length) return '<p class="muted">鏆傛棤璁板綍銆?/p>';
+  if (!entries.length) return '<p class="muted">暂无记录。</p>';
   return `<div class="feedback-tag-row compact">${entries.map(([key, count]) => `
     <span title="${escapeHtml(key)}">${escapeHtml(feedbackLookupLabel(key, options))} <b>${escapeHtml(count)}</b></span>
   `).join('')}</div>`;
@@ -1562,19 +1595,19 @@ function renderCurrentDimensionFeedback() {
   const scope = $('dimensionFeedbackScope');
   const dim = currentObjectDimension();
   if (!dim) {
-    if (scope) scope.textContent = '鏈€夋嫨缁村害';
-    panel.innerHTML = '<div class="dimension-feedback-empty"><b>鏆傛棤缁村害</b><p>閫夋嫨鎴栨柊澧炵淮搴﹀悗鏄剧ず鍙嶉姹囨€汇€?/p></div>';
+    if (scope) scope.textContent = '未选择维度';
+    panel.innerHTML = '<div class="dimension-feedback-empty"><b>暂无维度</b><p>选择或新增维度后显示反馈汇总。</p></div>';
     return;
   }
 
   const poolWrapper = findCurrentDimensionFeedbackPool(dim);
-  const dimLabel = dim.name || dim.dimension_id || '褰撳墠缁村害';
+  const dimLabel = dim.name || dim.dimension_id || '当前维度';
   if (!poolWrapper) {
-    if (scope) scope.textContent = `${dimLabel} 路 鏆傛棤瀹℃煡鍙嶉`;
+    if (scope) scope.textContent = `${dimLabel} · 暂无审查反馈`;
     panel.innerHTML = `
       <div class="dimension-feedback-empty">
-        <b>鏆傛棤鍙嶉璁板綍</b>
-        <p>璇ョ淮搴﹀畬鎴愬鏌ュ悗锛岀粺璁′細鑷姩姹囨€诲埌杩欓噷銆?/p>
+        <b>暂无反馈记录</b>
+        <p>该维度完成审查后，统计会自动汇总到这里。</p>
       </div>
     `;
     return;
@@ -1591,70 +1624,70 @@ function renderCurrentDimensionFeedback() {
   const targetRows = feedbackCountEntries(pool.common_suggested_targets, 6);
 
   if (scope) {
-    scope.textContent = `${poolWrapper.dimension_name || dimLabel} 路 v${poolWrapper.profile_version || state.objectConfig?.object_definition?.version || '-'} 路 ${total} 鏉″鏌;
+    scope.textContent = `${poolWrapper.dimension_name || dimLabel} · v${poolWrapper.profile_version || state.objectConfig?.object_definition?.version || '-'} · ${total} 条审查`;
   }
 
   panel.innerHTML = `
     <div class="dimension-feedback-counts">
-      <div><b>${escapeHtml(total)}</b><span>瀹℃煡鎬绘暟</span></div>
-      <div><b>${escapeHtml(pool.confirmed || 0)}</b><span>纭</span></div>
-      <div><b>${escapeHtml(pool.revised || 0)}</b><span>淇敼</span></div>
-      <div><b>${escapeHtml(pool.rejected || 0)}</b><span>椹冲洖</span></div>
+      <div><b>${escapeHtml(total)}</b><span>审查总数</span></div>
+      <div><b>${escapeHtml(pool.confirmed || 0)}</b><span>确认</span></div>
+      <div><b>${escapeHtml(pool.revised || 0)}</b><span>修改</span></div>
+      <div><b>${escapeHtml(pool.rejected || 0)}</b><span>驳回</span></div>
     </div>
     <div class="dimension-feedback-metrics">
-      <div class="good"><span>纭鐜?/span><b>${feedbackPercent(metrics.confirm_rate)}</b></div>
-      <div><span>淇敼鐜?/span><b>${feedbackPercent(metrics.revise_rate)}</b></div>
-      <div class="warn"><span>椹冲洖鐜?/span><b>${feedbackPercent(metrics.reject_rate)}</b></div>
-      <div class="warn"><span>璇佹嵁闂</span><b>${feedbackPercent(metrics.evidence_issue_rate)}</b></div>
-      <div class="warn"><span>杩囧害鎺ㄦ柇</span><b>${feedbackPercent(metrics.over_inference_rate)}</b></div>
-      <div><span>鏈姤鍛婁慨姝?/span><b>${feedbackPercent(metrics.not_reported_correction_rate)}</b></div>
-      <div><span>缁村害閿欒</span><b>${feedbackPercent(metrics.wrong_dimension_rate)}</b></div>
-      <div><span>骞冲潎淇敼骞呭害</span><b>${escapeHtml(metrics.average_edit_distance || 0)}</b></div>
+      <div class="good"><span>确认率</span><b>${feedbackPercent(metrics.confirm_rate)}</b></div>
+      <div><span>修改率</span><b>${feedbackPercent(metrics.revise_rate)}</b></div>
+      <div class="warn"><span>驳回率</span><b>${feedbackPercent(metrics.reject_rate)}</b></div>
+      <div class="warn"><span>证据问题</span><b>${feedbackPercent(metrics.evidence_issue_rate)}</b></div>
+      <div class="warn"><span>过度推断</span><b>${feedbackPercent(metrics.over_inference_rate)}</b></div>
+      <div><span>未报告修正</span><b>${feedbackPercent(metrics.not_reported_correction_rate)}</b></div>
+      <div><span>维度错误</span><b>${feedbackPercent(metrics.wrong_dimension_rate)}</b></div>
+      <div><span>平均修改幅度</span><b>${escapeHtml(metrics.average_edit_distance || 0)}</b></div>
     </div>
     <div class="dimension-feedback-grid">
       <section>
-        <h4>楂橀閿欒鏍囩</h4>
+        <h4>高频错误标签</h4>
         ${renderFeedbackTagRows(tagRows, REVIEW_ERROR_TAGS)}
       </section>
       <section>
-        <h4>鏍瑰洜褰掑洜</h4>
+        <h4>根因归因</h4>
         ${renderFeedbackTagRows(rootRows, REVIEW_ROOT_CAUSES)}
       </section>
       <section>
-        <h4>寤鸿鍗囩骇浣嶇疆</h4>
+        <h4>建议升级位置</h4>
         ${renderFeedbackTagRows(targetRows, REVIEW_SUGGESTED_TARGETS)}
       </section>
     </div>
     <section class="dimension-feedback-block">
-      <h4>鍗囩骇鍊欓€?/h4>
+      <h4>升级候选</h4>
       <div class="dimension-upgrade-list">
         ${candidates.slice(0, 4).map(item => `
           <article>
             <header>
-              <b>${escapeHtml(item.title || '妯℃澘鍗囩骇寤鸿')}</b>
-              <span>${escapeHtml(feedbackTargetLevelLabel(item.target_level))} 路 ${escapeHtml(item.suggested_target || '')}</span>
+              <b>${escapeHtml(item.title || '模板升级建议')}</b>
+              <span>${escapeHtml(feedbackTargetLevelLabel(item.target_level))} · ${escapeHtml(item.suggested_target || '')}</span>
             </header>
             <p>${escapeHtml(item.recommended_change || item.reason || '')}</p>
             ${item.reason ? `<small>${escapeHtml(item.reason)}</small>` : ''}
           </article>
-        `).join('') || '<p class="muted">鏆傛棤鏄庢樉鍗囩骇鍊欓€夈€?/p>'}
+        `).join('') || '<p class="muted">暂无明显升级候选。</p>'}
       </div>
     </section>
     <details class="dimension-feedback-details">
-      <summary>浠ｈ〃鎬у弽棣堜笌浜哄伐淇</summary>
+      <summary>代表性反馈与人工修订</summary>
       <div class="dimension-feedback-case-list">
         ${cases.slice(0, 4).map(item => `
           <article>
             <b>${escapeHtml(reviewStatusLabel(item.review_action))}</b>
-            <p>${escapeHtml(item.review_comment || (item.error_tags || []).map(tag => feedbackLookupLabel(tag, REVIEW_ERROR_TAGS)).join('銆?) || '鏃犺ˉ鍏呰鏄?)}</p>
-            ${(item.error_tags || []).length ? `<span>${escapeHtml(item.error_tags.map(tag => feedbackLookupLabel(tag, REVIEW_ERROR_TAGS)).join('銆?))}</span>` : ''}
+            <p>${escapeHtml(item.review_comment || (item.error_tags || []).map(tag => feedbackLookupLabel(tag, REVIEW_ERROR_TAGS)).join('、') || '无补充说明')}</p>
+            ${(item.error_tags || []).length ? `<span>${escapeHtml(item.error_tags.map(tag => feedbackLookupLabel(tag, REVIEW_ERROR_TAGS)).join('、'))}</span>` : ''}
           </article>
-        `).join('') || '<p class="muted">鏆傛棤浠ｈ〃鎬у弽棣堛€?/p>'}
+        `).join('') || '<p class="muted">暂无代表性反馈。</p>'}
         ${edits.slice(0, 3).map(item => `
           <article>
-            <b>浜哄伐淇</b>
+            <b>人工修订</b>
             <p>${escapeHtml(fmt(item.new_answer || item.comment || '', 180))}</p>
-            ${item.old_answer ? `<span>鍘熺瓟妗堬細${escapeHtml(fmt(item.old_answer, 120))}</span>` : ''}
+            ${item.old_answer ? `<span>原答案：${escapeHtml(fmt(item.old_answer, 120))}</span>` : ''}
           </article>
         `).join('')}
       </div>
@@ -1665,7 +1698,7 @@ function renderCurrentDimensionFeedback() {
 async function refreshDimensionFeedback() {
   state.reviewFeedback = await api('/api/feedback/dimensions');
   renderCurrentDimensionFeedback();
-  toast('缁村害鍙嶉宸插埛鏂?);
+  toast('维度反馈已刷新');
 }
 
 function addObjectDimension() {
@@ -1673,13 +1706,13 @@ function addObjectDimension() {
   const next = (state.objectConfig.dimensions || []).length + 1;
   state.objectConfig.dimensions.push({
     dimension_id: `dimension_${next}`,
-    name: `缁村害 ${next}`,
+    name: `维度 ${next}`,
     output_type: 'structured_object',
     description: '',
     question: '',
     fields: [],
     retrieval_keywords: [],
-    section_policy: normalizeSectionPolicy({}, {dimension_id: `dimension_${next}`, name: `缁村害 ${next}`}),
+    section_policy: normalizeSectionPolicy({}, {dimension_id: `dimension_${next}`, name: `维度 ${next}`}),
     required: false,
     requires_evidence: true,
     allow_inference: true,
@@ -1736,19 +1769,19 @@ function renderObjectAdvisor(cfg) {
   const pending = suggestions.filter(item => item.status !== 'applied');
   if ($('objectAdvisorStatus')) {
     if (!state.objectAdvisorGeneratedAt) {
-      $('objectAdvisorStatus').textContent = '鐐瑰嚮鐢熸垚寤鸿鍚庯紝灏嗘牴鎹綋鍓嶉厤缃粰鍑哄彲搴旂敤鐨勪慨鏀归」銆?;
+      $('objectAdvisorStatus').textContent = '点击生成建议后，将根据当前配置给出可应用的修改项。';
     } else if (suggestions.length) {
-      $('objectAdvisorStatus').textContent = `鏈疆鐢熸垚 ${suggestions.length} 鏉″缓璁紝寰呭鐞?${pending.length} 鏉°€俙;
+      $('objectAdvisorStatus').textContent = `本轮生成 ${suggestions.length} 条建议，待处理 ${pending.length} 条。`;
     } else {
-      $('objectAdvisorStatus').textContent = '褰撳墠娌℃湁鏂扮殑寤鸿銆傚彲浠ョ户缁ˉ鍏呭璞″畾涔夈€佹鍙嶄緥鎴栬瘯鎶界粨鏋滃悗鍐嶇敓鎴愩€?;
+      $('objectAdvisorStatus').textContent = '当前没有新的建议。可以继续补充对象定义、正反例或试抽结果后再生成。';
     }
   }
   if (!state.objectAdvisorGeneratedAt) {
-    $('objectAdvisorList').innerHTML = '<div class="advisor-empty">寤鸿浼氬洿缁曞璞″畾涔夈€佽竟鐣岃鍒欍€佹娊鍙栫淮搴︺€丳rompt 鍜岃瘯鎶借瘖鏂敓鎴愩€?/div>';
+    $('objectAdvisorList').innerHTML = '<div class="advisor-empty">建议会围绕对象定义、边界规则、抽取维度、Prompt 和试抽诊断生成。</div>';
     return;
   }
   if (!suggestions.length) {
-    $('objectAdvisorList').innerHTML = '<div class="advisor-empty">鏈疆寤鸿宸插鐞嗗畬锛屾垨鑰呭綋鍓嶉厤缃殏鏈彂鐜版槑鏄剧己鍙ｃ€?/div>';
+    $('objectAdvisorList').innerHTML = '<div class="advisor-empty">本轮建议已处理完，或者当前配置暂未发现明显缺口。</div>';
     return;
   }
   $('objectAdvisorList').innerHTML = suggestions.map(item => {
@@ -1768,8 +1801,8 @@ function renderObjectAdvisor(cfg) {
           </div>
         ` : ''}
         <div class="advisor-actions">
-          <button type="button" data-advisor-apply="${escapeHtml(item.id)}" ${applied ? 'disabled' : ''}>${applied ? '宸插簲鐢? : '搴旂敤'}</button>
-          <button type="button" data-advisor-ignore="${escapeHtml(item.id)}" ${applied ? 'disabled' : ''}>蹇界暐</button>
+          <button type="button" data-advisor-apply="${escapeHtml(item.id)}" ${applied ? 'disabled' : ''}>${applied ? '已应用' : '应用'}</button>
+          <button type="button" data-advisor-ignore="${escapeHtml(item.id)}" ${applied ? 'disabled' : ''}>忽略</button>
         </div>
       </article>
     `;
@@ -1796,7 +1829,7 @@ function ensureObjectConceptPolicy(cfg = state.objectConfig) {
 }
 
 function objectAdvisorName(cfg = state.objectConfig) {
-  return cfg?.object_definition?.display_name?.trim() || cfg?.modeling?.research_intent?.object_name?.trim() || '璇ョ爺绌跺璞?;
+  return cfg?.object_definition?.display_name?.trim() || cfg?.modeling?.research_intent?.object_name?.trim() || '该研究对象';
 }
 
 function appendUniqueLine(items, line) {
@@ -1852,44 +1885,44 @@ function buildObjectAdvisorSuggestions(cfg = state.objectConfig) {
   if ((obj.display_name || intent) && !concept.working_definition?.trim()) {
     suggestions.push(objectAdvisorSuggestion(
       'definition:working-definition',
-      '瀵硅薄瀹氫箟寤鸿',
-      '寤鸿琛ュ厖宸ヤ綔瀹氫箟',
-      `灏嗏€?{name}鈥濆畾涔夋竻妤氾紝鍑忓皯鎶藉彇鏃跺拰鐩搁偦姒傚康娣锋穯銆俙,
-      '褰撳墠宸茬粡鏈夊璞″悕绉版垨鐮旂┒鎰忓浘锛屼絾宸ヤ綔瀹氫箟涓虹┖銆傚缓璁湪瀹氫箟涓槑纭潵婧愩€佸舰鎴愭柟寮忋€佷娇鐢ㄤ綔鐢ㄤ笁涓绱犮€?,
-      `${name}鏄寚璁烘枃涓粠鍘嗗彶浠诲姟銆佷氦浜掕建杩广€佹垚鍔?澶辫触妗堜緥銆佺幆澧冨弽棣堛€佷笓瀹剁ず鑼冦€佺敤鎴峰弽棣堟垨妯″瀷鍙嶆€濅腑鎬荤粨鍑烘潵锛屽苟鍙敤浜庢寚瀵煎悗缁鍒掋€佽鍔ㄩ€夋嫨銆佸喅绛栦紭鍖栥€侀敊璇閬挎垨绛栫暐鏀硅繘鐨勭粡楠屾€т俊鎭€俙,
+      '对象定义建议',
+      '建议补充工作定义',
+      `将“${name}”定义清楚，减少抽取时和相邻概念混淆。`,
+      '当前已经有对象名称或研究意图，但工作定义为空。建议在定义中明确来源、形成方式、使用作用三个要素。',
+      `${name}是指论文中从历史任务、交互轨迹、成功/失败案例、环境反馈、专家示范、用户反馈或模型反思中总结出来，并可用于指导后续规划、行动选择、决策优化、错误规避或策略改进的经验性信息。`,
       {type: 'set_working_definition'}
     ));
   }
   if ((obj.display_name || intent) && !(modeling.boundary_rules.include_rules || []).length) {
     suggestions.push(objectAdvisorSuggestion(
       'definition:include-rule',
-      '瀵硅薄瀹氫箟寤鸿',
-      '寤鸿琛ュ厖绾冲叆鏍囧噯',
-      '鎶娾€滀粈涔堢畻璇ュ璞♀€濆啓鎴愬彲鎵ц瑙勫垯锛屽悗缁?Prompt 浼氭洿绋冲畾銆?,
-      '绾冲叆鏍囧噯閫傚悎鎻忚堪瀵硅薄蹇呴』鍏峰鐨勬潵婧愩€佸舰鎴愯繃绋嬪拰浣跨敤浣滅敤銆傜郴缁熶細鎶婅繖鏉¤鍒欏悓姝ュ埌杈圭晫瑙勫垯鍖恒€?,
-      `鏉ヨ嚜鍘嗗彶浠诲姟銆佷氦浜掕建杩广€佸弽棣堛€佹渚嬨€佺ず鑼冩垨鍙嶆€濓紝骞惰杩涗竴姝ユ€荤粨涓哄彲鎸囧鍚庣画瑙勫垝銆佸喅绛栥€佺敓鎴愭垨琛屽姩閫夋嫨鐨勫唴瀹癸紝搴旇涓?{name}銆俙,
+      '对象定义建议',
+      '建议补充纳入标准',
+      '把“什么算该对象”写成可执行规则，后续 Prompt 会更稳定。',
+      '纳入标准适合描述对象必须具备的来源、形成过程和使用作用。系统会把这条规则同步到边界规则区。',
+      `来自历史任务、交互轨迹、反馈、案例、示范或反思，并被进一步总结为可指导后续规划、决策、生成或行动选择的内容，应视为${name}。`,
       {type: 'append_include_rule'}
     ));
   }
   if ((obj.display_name || intent) && !concept.exclude_rules?.length) {
     suggestions.push(objectAdvisorSuggestion(
       'definition:exclude-rule',
-      '瀵硅薄瀹氫箟寤鸿',
-      '寤鸿琛ュ厖鎺掗櫎鏍囧噯',
-      '鍏堟帓闄ゆ渶瀹规槗璇娊鐨勮儗鏅煡璇嗐€乺elated work 鍜屽崟绾疄楠岀粨鏋溿€?,
-      '鎺掗櫎鏍囧噯浼氬悓鏃跺啓鍏ユ湳璇鍒欏拰杈圭晫瑙勫垯锛屽府鍔╁悗缁瘯鎶芥椂鏀剁獎杈圭晫銆?,
-      `浠呬綔涓鸿儗鏅煡璇嗐€乺elated work 鎴栧崟绾疄楠岀粨鏋滃嚭鐜帮紝涓旀湭琚€荤粨銆佹绱€佸鐢ㄦ垨褰卞搷鍚庣画鍐崇瓥鐨勫唴瀹癸紝涓嶅簲鐩存帴瑙嗕负${name}銆俙,
+      '对象定义建议',
+      '建议补充排除标准',
+      '先排除最容易误抽的背景知识、related work 和单纯实验结果。',
+      '排除标准会同时写入术语规则和边界规则，帮助后续试抽时收窄边界。',
+      `仅作为背景知识、related work 或单纯实验结果出现，且未被总结、检索、复用或影响后续决策的内容，不应直接视为${name}。`,
       {type: 'append_exclude_rule'}
     ));
   }
   if ((obj.display_name || intent) && !cfg.term_rules?.decision_criteria?.trim()) {
     suggestions.push(objectAdvisorSuggestion(
       'definition:observation-signal',
-      '瀵硅薄瀹氫箟寤鸿',
-      '寤鸿琛ュ厖瑙傚療淇″彿',
-      '鍛婅瘔绯荤粺鍦ㄨ鏂囦腑鐪嬪摢浜涗俊鍙凤紝鑳芥彁鍗囧璞″垽瀹氱殑涓€鑷存€с€?,
-      '瑙傚療淇″彿涓嶆槸鎶藉彇缁撴灉鏈韩锛岃€屾槸鍒ゆ柇鏌愭鍐呭鏄惁灞炰簬璇ョ爺绌跺璞℃椂搴斾紭鍏堟鏌ョ殑璇佹嵁绾跨储銆?,
-      `浼樺厛瑙傚療璁烘枃鏄惁鏄庣‘浜や唬${name}鐨勬潵婧愩€佸舰鎴?鎶藉彇杩囩▼銆佽〃绀哄舰寮忋€佷娇鐢ㄤ綅缃€佹晥鏋滈獙璇佸拰閫傜敤杈圭晫銆俙,
+      '对象定义建议',
+      '建议补充观察信号',
+      '告诉系统在论文中看哪些信号，能提升对象判定的一致性。',
+      '观察信号不是抽取结果本身，而是判断某段内容是否属于该研究对象时应优先检查的证据线索。',
+      `优先观察论文是否明确交代${name}的来源、形成/抽取过程、表示形式、使用位置、效果验证和适用边界。`,
       {type: 'set_decision_criteria'}
     ));
   }
@@ -1905,36 +1938,36 @@ function buildObjectAdvisorSuggestions(cfg = state.objectConfig) {
   if (positiveExamples.length && !(modeling.boundary_rules.include_rules || []).length) {
     suggestions.push(objectAdvisorSuggestion(
       'boundary:positive-summary',
-      '杈圭晫瑙勫垯寤鸿',
-      '寤鸿浠庢渚嬫€荤粨绾冲叆瑙勫垯',
-      `宸叉湁 ${positiveExamples.length} 鏉℃渚嬶紝鍙互娌夋穩鎴愯竟鐣岃鍒欍€俙,
-      '姝ｄ緥涓殑鍏卞悓鐐瑰簲璇ュ彉鎴愬彲澶嶇敤瑙勫垯锛岃€屼笉鏄彧鍋滅暀鍦ㄦ牱渚嬪眰闈€?,
-      `褰撹鏂囨槑纭鏄庢煇绫荤粡楠屾潵鑷换鍔¤繃绋嬨€佸弽棣堛€佹渚嬫垨鍙嶆€濓紝骞惰鐢ㄤ簬鍚庣画瑙勫垝銆佽鍔ㄩ€夋嫨鎴栭敊璇閬挎椂锛屽簲绾冲叆${name}銆俙,
+      '边界规则建议',
+      '建议从正例总结纳入规则',
+      `已有 ${positiveExamples.length} 条正例，可以沉淀成边界规则。`,
+      '正例中的共同点应该变成可复用规则，而不是只停留在样例层面。',
+      `当论文明确说明某类经验来自任务过程、反馈、案例或反思，并被用于后续规划、行动选择或错误规避时，应纳入${name}。`,
       {type: 'append_include_rule'}
     ));
   }
-  if (/鍘嗗彶杞ㄨ抗|杞ㄨ抗|trajectory|trace|log|interaction history|history/i.test(boundaryText) && !/浠呬繚瀛樺巻鍙茶建杩箌淇濆瓨鍘嗗彶杞ㄨ抗/.test(excludeRuleText)) {
+  if (/历史轨迹|轨迹|trajectory|trace|log|interaction history|history/i.test(boundaryText) && !/仅保存历史轨迹|保存历史轨迹/.test(excludeRuleText)) {
     suggestions.push(objectAdvisorSuggestion(
       'boundary:history-trace-exclusion',
-      '杈圭晫瑙勫垯寤鸿',
-      '寤鸿鏂板鎺掗櫎瑙勫垯',
-      '鈥滃彧淇濆瓨鍘嗗彶杞ㄨ抗鈥濆鏄撹璇垽涓虹瓥鐣ョ粡楠岋紝寤鸿鏄庣‘鎺掗櫎鏉′欢銆?,
-      '濡傛灉杞ㄨ抗娌℃湁琚繘涓€姝ユ€荤粨銆佹绱€佸鐢ㄦ垨褰卞搷鍚庣画鍐崇瓥锛屽畠鏇村儚鍘熷鏉愭枡锛岃€屼笉鏄凡缁忓舰鎴愮殑缁忛獙鎬у璞°€?,
-      `浠呬繚瀛樺巻鍙茶建杩逛絾鏈鏄庡叾琚€荤粨銆佹绱€佸鐢ㄦ垨褰卞搷鍚庣画鍐崇瓥鐨勫唴瀹癸紝涓嶅簲鐩存帴瑙嗕负${name}銆俙,
+      '边界规则建议',
+      '建议新增排除规则',
+      '“只保存历史轨迹”容易被误判为策略经验，建议明确排除条件。',
+      '如果轨迹没有被进一步总结、检索、复用或影响后续决策，它更像原始材料，而不是已经形成的经验性对象。',
+      `仅保存历史轨迹但未说明其被总结、检索、复用或影响后续决策的内容，不应直接视为${name}。`,
       {type: 'append_exclude_rule'}
     ));
   }
 
-  const hasUpdateDimension = dims.some(dim => /鏇存柊|杩唬|refine|revision|update|improvement/i.test(`${dim.dimension_id} ${dim.name} ${dim.question} ${dim.description}`));
-  const updateSignals = /experience refinement|memory update|reflection update|policy update|update|refinement|鏇存柊|杩唬|淇|浼樺寲/.test(lowerCorpus);
-  if (!hasUpdateDimension && (updateSignals || /绛栫暐缁忛獙/.test(name))) {
+  const hasUpdateDimension = dims.some(dim => /更新|迭代|refine|revision|update|improvement/i.test(`${dim.dimension_id} ${dim.name} ${dim.question} ${dim.description}`));
+  const updateSignals = /experience refinement|memory update|reflection update|policy update|update|refinement|更新|迭代|修订|优化/.test(lowerCorpus);
+  if (!hasUpdateDimension && (updateSignals || /策略经验/.test(name))) {
     suggestions.push(objectAdvisorSuggestion(
       'dimension:update-method',
-      '鎶藉彇缁村害寤鸿',
-      `寤鸿鏂板缁村害锛?{name}鏇存柊鏂瑰紡`,
-      '褰撳墠閰嶇疆鍙兘娌℃湁瑕嗙洊缁忛獙濡備綍琚洿鏂般€佷慨璁㈡垨杩唬銆?,
-      '姝ｄ緥銆佸€欓€夋钀芥垨璇曟娊鏂囨湰涓嚭鐜?experience refinement銆乵emory update銆乺eflection update 绛変俊鍙锋椂锛屽缓璁妸鈥滄洿鏂版柟寮忊€濅綔涓虹嫭绔嬬淮搴︺€?,
-      `鏂板缁村害锛?{name}鏇存柊鏂瑰紡\n鎶藉彇闂锛氳鏂囨槸鍚﹁鏄?{name}濡備綍琚洿鏂般€佷慨璁€佽凯浠ｆ垨鏇挎崲锛熻Е鍙戞潯浠躲€佹洿鏂版潵婧愬拰鏇存柊缁撴灉鏄粈涔堬紵`,
+      '抽取维度建议',
+      `建议新增维度：${name}更新方式`,
+      '当前配置可能没有覆盖经验如何被更新、修订或迭代。',
+      '正例、候选段落或试抽文本中出现 experience refinement、memory update、reflection update 等信号时，建议把“更新方式”作为独立维度。',
+      `新增维度：${name}更新方式\n抽取问题：论文是否说明${name}如何被更新、修订、迭代或替换？触发条件、更新来源和更新结果是什么？`,
       {type: 'add_dimension_update'}
     ));
   }
@@ -1945,49 +1978,49 @@ function buildObjectAdvisorSuggestions(cfg = state.objectConfig) {
   if (!promptText.trim()) {
     suggestions.push(objectAdvisorSuggestion(
       'prompt:create-active',
-      'Prompt 浼樺寲寤鸿',
-      '寤鸿鐢熸垚婵€娲?Prompt',
-      '褰撳墠婵€娲?Prompt 涓虹┖锛岃瘯鎶藉拰鎵归噺鎶藉彇閮界己灏戠ǔ瀹氫换鍔℃寚浠ゃ€?,
-      '绯荤粺浼氬熀浜庡綋鍓嶅璞″畾涔夈€佺淮搴﹀拰璇佹嵁瑕佹眰閲嶆柊鐢熸垚 Prompt锛屽苟鍐欏叆褰撳墠婵€娲?Prompt銆?,
-      '閲嶆柊鐢熸垚褰撳墠婵€娲?Prompt銆?,
+      'Prompt 优化建议',
+      '建议生成激活 Prompt',
+      '当前激活 Prompt 为空，试抽和批量抽取都缺少稳定任务指令。',
+      '系统会基于当前对象定义、维度和证据要求重新生成 Prompt，并写入当前激活 Prompt。',
+      '重新生成当前激活 Prompt。',
       {type: 'regenerate_prompt'}
     ));
   } else if (missingPromptDims.length) {
     suggestions.push(objectAdvisorSuggestion(
       'prompt:sync-dimensions',
-      'Prompt 浼樺寲寤鸿',
-      '褰撳墠 Prompt 鏈鐩栨渶鏂扮淮搴?,
-      `鍙戠幇 ${missingPromptDims.length} 涓淮搴﹀彲鑳芥病鏈夊啓鍏ュ綋鍓?Prompt銆俙,
-      '褰撳璞″畾涔夋垨缁村害鏇存柊鍚庯紝鏃?Prompt 鍙兘浠嶆寜鏃фā鏉挎娊鍙栥€傚缓璁噸鏂扮敓鎴愭垨鎵嬪姩琛ュ厖銆?,
-      `缂哄け缁村害锛?{missingPromptDims.map(dim => dim.name || dim.dimension_id).join('銆?)}`,
+      'Prompt 优化建议',
+      '当前 Prompt 未覆盖最新维度',
+      `发现 ${missingPromptDims.length} 个维度可能没有写入当前 Prompt。`,
+      '当对象定义或维度更新后，旧 Prompt 可能仍按旧模板抽取。建议重新生成或手动补充。',
+      `缺失维度：${missingPromptDims.map(dim => dim.name || dim.dimension_id).join('、')}`,
       {type: 'regenerate_prompt'}
     ));
   }
-  const evaluationDim = dims.find(dim => /鏁堟灉|楠岃瘉|evaluation|experiment/i.test(`${dim.name} ${dim.dimension_id}`));
-  if (evaluationDim && !/Experiment|Results|Ablation|瀹為獙|缁撴灉|娑堣瀺/i.test(promptText)) {
+  const evaluationDim = dims.find(dim => /效果|验证|evaluation|experiment/i.test(`${dim.name} ${dim.dimension_id}`));
+  if (evaluationDim && !/Experiment|Results|Ablation|实验|结果|消融/i.test(promptText)) {
     suggestions.push(objectAdvisorSuggestion(
       'prompt:evaluation-evidence',
-      'Prompt 浼樺寲寤鸿',
-      '寤鸿寮哄寲鏁堟灉楠岃瘉璇佹嵁鏉ユ簮',
-      '鏁堟灉楠岃瘉缁村害搴斾紭鍏堜娇鐢ㄥ疄楠屻€佺粨鏋滃拰娑堣瀺璇佹嵁锛岄伩鍏嶅彧寮曠敤鎬荤粨鎬ц〃杩般€?,
-      '杩欐潯寤鸿浼氳拷鍔犲埌褰撳墠婵€娲?Prompt锛屾彁閱掓ā鍨嬩笉瑕佹妸 Conclusion 涓殑瀹芥硾 claim 鐩存帴褰撴垚瀹為獙璇佹嵁銆?,
-      '鏁堟灉楠岃瘉缁村害浼樺厛浣跨敤 Experiment銆丷esults銆丄blation Study 涓殑璇佹嵁锛涗笉瑕佹妸 Conclusion 涓殑鎬荤粨鎬ц〃杩扮洿鎺ュ綋鎴愬疄楠岃瘉鎹€?,
+      'Prompt 优化建议',
+      '建议强化效果验证证据来源',
+      '效果验证维度应优先使用实验、结果和消融证据，避免只引用总结性表述。',
+      '这条建议会追加到当前激活 Prompt，提醒模型不要把 Conclusion 中的宽泛 claim 直接当成实验证据。',
+      '效果验证维度优先使用 Experiment、Results、Ablation Study 中的证据；不要把 Conclusion 中的总结性表述直接当成实验证据。',
       {type: 'append_prompt_note'}
     ));
   }
 
   if (
     state.simulationRawResult
-    && /瀹為獙缁撴灉|缁撴灉鎻愬崌|鎻愬崌|performance|accuracy|score|improvement/i.test(state.simulationRawResult)
-    && !/鍗曠函瀹為獙缁撴灉/.test(excludeRuleText)
+    && /实验结果|结果提升|提升|performance|accuracy|score|improvement/i.test(state.simulationRawResult)
+    && !/单纯实验结果/.test(excludeRuleText)
   ) {
     suggestions.push(objectAdvisorSuggestion(
       'simulation:broad-boundary',
-      '璇曟娊璇婃柇寤鸿',
-      '璇婃柇锛氬彫鍥炶竟鐣屽亸瀹?,
-      '璇曟娊缁撴灉涓彲鑳芥妸鈥滃疄楠岀粨鏋滄彁鍗団€濆綋鎴愪簡鐮旂┒瀵硅薄銆?,
-      '濡傛灉妯″瀷鎶婂崟绾€ц兘鎻愬崌鎶芥垚绛栫暐缁忛獙锛岃鏄庢帓闄よ鍒欒繕涓嶅寮猴紝闇€瑕佹槑纭€滃疄楠岀粨鏋溾€濆拰鈥滃彲澶嶇敤缁忛獙瑙勫垯鈥濈殑鍖哄埆銆?,
-      `涓嶅皢鍗曠函瀹為獙缁撴灉瑙嗕负${name}锛岄櫎闈炲疄楠岀粨鏋滆杩涗竴姝ユ€荤粨涓哄彲鎸囧鍚庣画浠诲姟鐨勮鍒欍€乴esson 鎴栫瓥鐣ャ€俙,
+      '试抽诊断建议',
+      '诊断：召回边界偏宽',
+      '试抽结果中可能把“实验结果提升”当成了研究对象。',
+      '如果模型把单纯性能提升抽成策略经验，说明排除规则还不够强，需要明确“实验结果”和“可复用经验规则”的区别。',
+      `不将单纯实验结果视为${name}，除非实验结果被进一步总结为可指导后续任务的规则、lesson 或策略。`,
       {type: 'append_exclude_rule'}
     ));
   }
@@ -2001,7 +2034,7 @@ function generateObjectAdvisorSuggestions(options = {}) {
   state.objectAdvisorSuggestions = suggestions;
   state.objectAdvisorGeneratedAt = new Date().toISOString();
   renderObjectAdvisor(state.objectConfig);
-  if (!options.silent) toast(suggestions.length ? `宸茬敓鎴?${suggestions.length} 鏉″缓璁甡 : '褰撳墠娌℃湁鍙戠幇鏂扮殑寤鸿');
+  if (!options.silent) toast(suggestions.length ? `已生成 ${suggestions.length} 条建议` : '当前没有发现新的建议');
 }
 
 function toggleObjectAdvisorSuggestion(id) {
@@ -2018,20 +2051,20 @@ function ignoreObjectAdvisorSuggestion(id) {
 function addUpdateDimensionSuggestion(cfg) {
   const name = objectAdvisorName(cfg);
   const id = configIdFromName(`${name}_update_method`);
-  if ((cfg.dimensions || []).some(dim => dim.dimension_id === id || dim.name === `${name}鏇存柊鏂瑰紡`)) return;
+  if ((cfg.dimensions || []).some(dim => dim.dimension_id === id || dim.name === `${name}更新方式`)) return;
   cfg.dimensions.push({
     dimension_id: id,
-    name: `${name}鏇存柊鏂瑰紡`,
+    name: `${name}更新方式`,
     output_type: 'structured_object',
-    description: `鎶藉彇璁烘枃鏄惁璇存槑${name}濡備綍琚洿鏂般€佷慨璁€佽凯浠ｆ垨鏇挎崲銆俙,
-    question: `璁烘枃鏄惁璇存槑${name}濡備綍琚洿鏂般€佷慨璁€佽凯浠ｆ垨鏇挎崲锛熻Е鍙戞潯浠躲€佹洿鏂版潵婧愬拰鏇存柊缁撴灉鏄粈涔堬紵`,
+    description: `抽取论文是否说明${name}如何被更新、修订、迭代或替换。`,
+    question: `论文是否说明${name}如何被更新、修订、迭代或替换？触发条件、更新来源和更新结果是什么？`,
     fields: [
-      {name: 'update_trigger', type: 'long_text', description: '瑙﹀彂鏇存柊鐨勬潯浠舵垨浜嬩欢銆?},
-      {name: 'update_source', type: 'long_text', description: '鏇存柊鎵€渚濇嵁鐨勬暟鎹€佸弽棣堛€佹渚嬫垨鍙嶆€濄€?},
-      {name: 'update_process', type: 'method_step_list', description: '鏇存柊銆佷慨璁㈡垨杩唬鐨勮繃绋嬨€?},
-      {name: 'updated_output', type: 'long_text', description: '鏇存柊鍚庣殑缁忛獙銆佽鍒欐垨绛栫暐褰㈠紡銆?},
+      {name: 'update_trigger', type: 'long_text', description: '触发更新的条件或事件。'},
+      {name: 'update_source', type: 'long_text', description: '更新所依据的数据、反馈、案例或反思。'},
+      {name: 'update_process', type: 'method_step_list', description: '更新、修订或迭代的过程。'},
+      {name: 'updated_output', type: 'long_text', description: '更新后的经验、规则或策略形式。'},
     ],
-    retrieval_keywords: ['update', 'refinement', 'reflection update', 'memory update', 'policy update', 'revision', '鏇存柊', '杩唬', '淇'],
+    retrieval_keywords: ['update', 'refinement', 'reflection update', 'memory update', 'policy update', 'revision', '更新', '迭代', '修订'],
     section_policy: normalizeSectionPolicy({}, {dimension_id: id, name: `${name}更新方式`, description: 'update refinement memory update'}),
     required: false,
     requires_evidence: true,
@@ -2088,7 +2121,7 @@ function applyObjectAdvisorSuggestion(id) {
   }
   suggestion.status = 'applied';
   renderObjectConfigForm();
-  toast('寤鸿宸插簲鐢?);
+  toast('建议已应用');
 }
 
 function openPromptPreviewModal() {
@@ -2114,7 +2147,7 @@ function ensurePromptManagerState(cfg) {
   if (!cfg.prompts.items.length) {
     cfg.prompts.items.push({
       id: 'prompt_default',
-      name: '榛樿 Prompt',
+      name: '默认 Prompt',
       content: '',
       created_at: '',
       updated_at: '',
@@ -2143,15 +2176,15 @@ function renderPromptManager() {
   if (!$('promptProfilePicker') || !cfg) return;
   ensurePromptManagerState(cfg);
   const selected = selectedPromptProfile(cfg);
-  $('promptPickerLabel').textContent = selected.name || '閫夋嫨 Prompt';
+  $('promptPickerLabel').textContent = selected.name || '选择 Prompt';
   $('promptPickerMenu').innerHTML = cfg.prompts.items.map(item => `
     <div class="prompt-picker-item ${item.id === selected.id ? 'selected' : ''} ${item.id === cfg.prompts.active_id ? 'active' : ''}"
       data-prompt-id="${escapeHtml(item.id)}"
       role="option"
       aria-selected="${item.id === selected.id ? 'true' : 'false'}"
       tabindex="0">
-      <label class="prompt-picker-active" title="璁句负婵€娲?Prompt">
-        <input type="checkbox" data-prompt-active-id="${escapeHtml(item.id)}" ${item.id === cfg.prompts.active_id ? 'checked' : ''} aria-label="璁句负婵€娲?Prompt锛?{escapeHtml(item.name)}" />
+      <label class="prompt-picker-active" title="设为激活 Prompt">
+        <input type="checkbox" data-prompt-active-id="${escapeHtml(item.id)}" ${item.id === cfg.prompts.active_id ? 'checked' : ''} aria-label="设为激活 Prompt：${escapeHtml(item.name)}" />
       </label>
       <span class="prompt-picker-name">${escapeHtml(item.name)}</span>
     </div>
@@ -2203,7 +2236,7 @@ function renderSimulationPromptSelect() {
     state.selectedSimulationPromptId = cfg.prompts.active_id;
   }
   $('simulationPromptSelect').innerHTML = cfg.prompts.items.map(item => `
-    <option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}${item.id === cfg.prompts.active_id ? '锛堟縺娲伙級' : ''}</option>
+    <option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}${item.id === cfg.prompts.active_id ? '（激活）' : ''}</option>
   `).join('');
   $('simulationPromptSelect').value = state.selectedSimulationPromptId;
 }
@@ -2245,7 +2278,7 @@ function setSelectedPromptActive(promptId) {
   state.objectPromptDirty = false;
   renderPromptManager();
   renderObjectPreview();
-  toast('宸茶涓哄綋鍓嶆縺娲?Prompt');
+  toast('已设为当前激活 Prompt');
 }
 
 function saveSelectedPromptDraft() {
@@ -2261,12 +2294,12 @@ function saveCurrentPrompt() {
   saveSelectedPromptDraft();
   state.objectPromptDirty = false;
   renderObjectPreview();
-  toast('褰撳墠 Prompt 宸蹭繚瀛樺埌閰嶇疆锛岀偣鍑讳繚瀛橀厤缃悗鍐欏叆妯℃澘');
+  toast('当前 Prompt 已保存到配置，点击保存配置后写入模板');
 }
 
 function saveNewPrompt() {
   collectObjectConfigFromForm();
-  const name = window.prompt('璇疯緭鍏ユ柊 Prompt 鍚嶇О');
+  const name = window.prompt('请输入新 Prompt 名称');
   if (!name || !name.trim()) return;
   const now = new Date().toISOString();
   const newPrompt = {
@@ -2283,7 +2316,7 @@ function saveNewPrompt() {
   state.selectedSimulationPromptId = newPrompt.id;
   state.objectPromptDirty = false;
   renderObjectPreview();
-  toast('鏂?Prompt 宸蹭繚瀛樺苟璁句负婵€娲?);
+  toast('新 Prompt 已保存并设为激活');
 }
 
 function currentObjectPrompt() {
@@ -2300,33 +2333,33 @@ function buildSimulationPrompt(cfg, inputText, promptContent) {
   const dim = currentObjectDimension() || cfg.dimensions[0] || {};
   const fields = (dim.fields || []).map(field => typeof field === 'string' ? field : field.name).filter(Boolean);
   const activePromptNote = promptContent?.trim()
-    ? '褰撳墠娴嬭瘯浣跨敤鎵€閫?Prompt 鐨勪换鍔¤瀹氾紝浣嗕负浜嗛伩鍏嶆湰鍦版ā鍨嬩笂涓嬫枃杩囬暱锛屾ā鎷熷彧鍙戦€佸綋鍓嶇淮搴︾殑绱у噾鎶藉彇鎸囦护銆?
+    ? '当前测试使用所选 Prompt 的任务设定，但为了避免本地模型上下文过长，模拟只发送当前维度的紧凑抽取指令。'
     : '';
   return [
-    '浣犳槸涓ヨ皑鐨勭鐮旇鏂囦俊鎭娊鍙栧姪鎵嬨€傝涓ユ牸鍩轰簬鐢ㄦ埛鎻愪緵鐨勮鏂囩墖娈碉紝鍥寸粫鎸囧畾绉戠爺瀵硅薄鍜屽綋鍓嶇淮搴︽娊鍙栫粨鏋勫寲淇℃伅銆?,
+    '你是严谨的科研论文信息抽取助手。请严格基于用户提供的论文片段，围绕指定科研对象和当前维度抽取结构化信息。',
     activePromptNote,
     '',
-    '# 绉戠爺瀵硅薄',
+    '# 科研对象',
     `- profile_id: ${obj.profile_id || ''}`,
-    `- 鍚嶇О: ${obj.display_name || ''}`,
-    `- 绫诲瀷: ${obj.object_type || ''}`,
-    `- 璇存槑: ${obj.description || ''}`,
-    concept.working_definition ? `- 宸ヤ綔瀹氫箟: ${concept.working_definition}` : '',
+    `- 名称: ${obj.display_name || ''}`,
+    `- 类型: ${obj.object_type || ''}`,
+    `- 说明: ${obj.description || ''}`,
+    concept.working_definition ? `- 工作定义: ${concept.working_definition}` : '',
     '',
-    '# 褰撳墠娴嬭瘯缁村害',
+    '# 当前测试维度',
     `- dimension_id: ${dim.dimension_id || ''}`,
-    `- 鍚嶇О: ${dim.name || dim.dimension_id || '鏈寚瀹?}`,
-    `- 鎶藉彇闂: ${dim.question || dim.description || ''}`,
-    `杈撳嚭绫诲瀷锛?{dim.output_type || 'list'}`,
-    `瀛楁锛?{fields.join(', ') || '鏈寚瀹?}`,
+    `- 名称: ${dim.name || dim.dimension_id || '未指定'}`,
+    `- 抽取问题: ${dim.question || dim.description || ''}`,
+    `输出类型：${dim.output_type || 'list'}`,
+    `字段：${fields.join(', ') || '未指定'}`,
     '',
-    '# 璇佹嵁瑕佹眰',
-    '- 姣忎釜闈?not_reported 鐨勭粨鏋滈兘灏介噺缁戝畾 quote銆乻ection銆乸age 鎴?chunk_id銆?,
-    '- 鍖哄垎 author_explicit 涓?model_inferred銆?,
-    '- 鏈姤鍛婄殑淇℃伅鏍囪 not_reported=true锛屼笉瑕佺紪閫犮€?,
+    '# 证据要求',
+    '- 每个非 not_reported 的结果都尽量绑定 quote、section、page 或 chunk_id。',
+    '- 区分 author_explicit 与 model_inferred。',
+    '- 未报告的信息标记 not_reported=true，不要编造。',
     '',
-    '# 杈撳嚭鏍煎紡',
-    '璇峰彧杈撳嚭鍚堟硶 JSON锛屼笉瑕佽緭鍑?Markdown锛屼笉瑕佹坊鍔犻澶栬В閲娿€傝緭鍑虹粨鏋勫涓嬶細',
+    '# 输出格式',
+    '请只输出合法 JSON，不要输出 Markdown，不要添加额外解释。输出结构如下：',
     JSON.stringify({
       profile_id: obj.profile_id || '',
       research_object: obj.display_name || '',
@@ -2353,7 +2386,7 @@ function buildSimulationPrompt(cfg, inputText, promptContent) {
       summary_for_review: '',
     }, null, 2),
     '',
-    '娴嬭瘯鏂囨湰锛?,
+    '测试文本：',
     inputText,
   ].filter(Boolean).join('\n');
 }
@@ -2361,7 +2394,7 @@ function buildSimulationPrompt(cfg, inputText, promptContent) {
 function insertRandomSimulationSample() {
   const index = Math.floor(Math.random() * SIMULATION_SAMPLE_TEXTS.length);
   $('simulationInput').value = SIMULATION_SAMPLE_TEXTS[index];
-  $('simulationStatus').textContent = '宸叉彃鍏ラ缃嫳鏂囪鏂囨牱渚嬨€?;
+  $('simulationStatus').textContent = '已插入预置英文论文样例。';
 }
 
 function stripJsonFence(text) {
@@ -2380,15 +2413,15 @@ function parseSimulationJson(text) {
     const start = raw.indexOf('{');
     const end = raw.lastIndexOf('}');
     if (start >= 0 && end > start) return JSON.parse(raw.slice(start, end + 1));
-    throw new Error('妯″瀷杩斿洖鍐呭涓嶆槸鍚堟硶 JSON');
+    throw new Error('模型返回内容不是合法 JSON');
   }
 }
 
 function formatStructuredValue(value) {
-  if (value === null || value === undefined || value === '') return '<span class="muted">鏈姤鍛?/span>';
+  if (value === null || value === undefined || value === '') return '<span class="muted">未报告</span>';
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return escapeHtml(value);
   if (Array.isArray(value)) {
-    if (!value.length) return '<span class="muted">绌哄垪琛?/span>';
+    if (!value.length) return '<span class="muted">空列表</span>';
     return `<ul>${value.map(item => `<li>${formatStructuredValue(item)}</li>`).join('')}</ul>`;
   }
   return `<dl class="simulation-kv">${Object.entries(value).map(([key, val]) => `
@@ -2398,11 +2431,11 @@ function formatStructuredValue(value) {
 
 function renderEvidenceList(evidence) {
   const items = Array.isArray(evidence) ? evidence : [];
-  if (!items.length) return '<p class="muted">鏈彁渚涜瘉鎹€?/p>';
+  if (!items.length) return '<p class="muted">未提供证据。</p>';
   return `<div class="simulation-evidence-list">${items.slice(0, 3).map(item => `
     <blockquote>
-      ${escapeHtml(item.quote || item.text || '鏈彁渚?quote')}
-      <cite>${escapeHtml([item.section, item.page ? `page ${item.page}` : '', item.chunk_id].filter(Boolean).join(' 路 ') || 'source not specified')}</cite>
+      ${escapeHtml(item.quote || item.text || '未提供 quote')}
+      <cite>${escapeHtml([item.section, item.page ? `page ${item.page}` : '', item.chunk_id].filter(Boolean).join(' · ') || 'source not specified')}</cite>
     </blockquote>
   `).join('')}</div>`;
 }
@@ -2411,7 +2444,7 @@ function renderSimulationStructuredResult(content) {
   state.simulationRawResult = content || '';
   $('simulationRawJsonBtn').hidden = !state.simulationRawResult;
   if (!content) {
-    $('simulationResult').innerHTML = '妯″瀷娌℃湁杩斿洖鍐呭銆?;
+    $('simulationResult').innerHTML = '模型没有返回内容。';
     return;
   }
   let data;
@@ -2420,8 +2453,8 @@ function renderSimulationStructuredResult(content) {
   } catch (err) {
     $('simulationResult').innerHTML = `
       <div class="simulation-empty-state">
-        <b>鏃犳硶瑙ｆ瀽涓虹粨鏋勫寲 JSON</b>
-        <p>${escapeHtml(err.message)}銆傚彲浠ョ偣鍑烩€滃師濮?JSON鈥濇煡鐪嬫ā鍨嬭繑鍥炲唴瀹广€?/p>
+        <b>无法解析为结构化 JSON</b>
+        <p>${escapeHtml(err.message)}。可以点击“原始 JSON”查看模型返回内容。</p>
         <pre>${escapeHtml(fmt(content, 1200))}</pre>
       </div>
     `;
@@ -2433,41 +2466,41 @@ function renderSimulationStructuredResult(content) {
   $('simulationResult').innerHTML = `
     <div class="simulation-summary-grid">
       <div>
-        <span>绉戠爺瀵硅薄</span>
+        <span>科研对象</span>
         <b>${escapeHtml(data.research_object || data.object || '-')}</b>
       </div>
       <div>
-        <span>鏄惁瀛樺湪</span>
-        <b>${presence.exists === true ? '瀛樺湪' : presence.exists === false ? '涓嶅瓨鍦? : '鏈垽鏂?}</b>
+        <span>是否存在</span>
+        <b>${presence.exists === true ? '存在' : presence.exists === false ? '不存在' : '未判断'}</b>
       </div>
       <div>
-        <span>瑙掕壊</span>
+        <span>角色</span>
         <b>${escapeHtml(presence.role_in_paper || '-')}</b>
       </div>
       <div>
-        <span>缃俊搴?/span>
+        <span>置信度</span>
         <b>${escapeHtml(presence.confidence || '-')}</b>
       </div>
     </div>
-    ${presence.judgement_reason ? `<section class="simulation-result-section"><h4>瀵硅薄鍒ゅ畾</h4><p>${escapeHtml(presence.judgement_reason)}</p>${renderEvidenceList(presence.evidence)}</section>` : ''}
+    ${presence.judgement_reason ? `<section class="simulation-result-section"><h4>对象判定</h4><p>${escapeHtml(presence.judgement_reason)}</p>${renderEvidenceList(presence.evidence)}</section>` : ''}
     <section class="simulation-result-section">
-      <h4>缁村害鎶藉彇</h4>
+      <h4>维度抽取</h4>
       <div class="simulation-dimension-list">
         ${dimensions.map(item => `
           <article class="simulation-dimension-item">
             <div class="simulation-dimension-head">
-              <b>${escapeHtml(item.dimension_name || item.dimension_id || '鏈懡鍚嶇淮搴?)}</b>
-              <span>${item.not_reported ? '鏈姤鍛? : escapeHtml(item.confidence || '宸叉娊鍙?)}</span>
+              <b>${escapeHtml(item.dimension_name || item.dimension_id || '未命名维度')}</b>
+              <span>${item.not_reported ? '未报告' : escapeHtml(item.confidence || '已抽取')}</span>
             </div>
             <div class="simulation-answer">${formatStructuredValue(item.answer)}</div>
             ${item.notes ? `<p class="muted">${escapeHtml(item.notes)}</p>` : ''}
             ${renderEvidenceList(item.evidence)}
           </article>
-        `).join('') || '<p class="muted">鏈繑鍥炵淮搴︽娊鍙栫粨鏋溿€?/p>'}
+        `).join('') || '<p class="muted">未返回维度抽取结果。</p>'}
       </div>
     </section>
-    ${tags.length ? `<section class="simulation-result-section"><h4>鑷姩鏍囩</h4><div class="tag-list">${tags.map(tag => `<span class="term-tag">${escapeHtml(tag)}</span>`).join('')}</div></section>` : ''}
-    ${data.summary_for_review ? `<section class="simulation-result-section"><h4>瀹℃煡鎽樿</h4><p>${escapeHtml(data.summary_for_review)}</p></section>` : ''}
+    ${tags.length ? `<section class="simulation-result-section"><h4>自动标签</h4><div class="tag-list">${tags.map(tag => `<span class="term-tag">${escapeHtml(tag)}</span>`).join('')}</div></section>` : ''}
+    ${data.summary_for_review ? `<section class="simulation-result-section"><h4>审查摘要</h4><p>${escapeHtml(data.summary_for_review)}</p></section>` : ''}
   `;
 }
 
@@ -2514,18 +2547,18 @@ function buildManagedConfigPreview(cfg) {
 async function runObjectSimulation() {
   collectObjectConfigFromForm();
   const inputText = $('simulationInput').value.trim();
-  if (!inputText) return toast('璇峰厛杈撳叆娴嬭瘯鍐呭');
+  if (!inputText) return toast('请先输入测试内容');
   const promptProfile = selectedSimulationPromptProfile(state.objectConfig);
   const promptContent = selectedSimulationPromptContent(state.objectConfig);
-  if (!promptContent.trim()) return toast('璇烽€夋嫨鎴栧～鍐?Prompt');
+  if (!promptContent.trim()) return toast('请选择或填写 Prompt');
   if (!state.config) await loadConfig();
   const resultBox = $('simulationResult');
   const status = $('simulationStatus');
   const btn = $('runSimulationBtn');
   state.simulationRawResult = '';
   $('simulationRawJsonBtn').hidden = true;
-  resultBox.innerHTML = '<div class="simulation-empty-state">娴嬭瘯涓?..</div>';
-  status.textContent = `姝ｅ湪璋冪敤澶фā鍨嬶細${promptProfile.name}`;
+  resultBox.innerHTML = '<div class="simulation-empty-state">测试中...</div>';
+  status.textContent = `正在调用大模型：${promptProfile.name}`;
   btn.disabled = true;
   try {
     const result = await api('/api/config/llm-test', {
@@ -2539,12 +2572,12 @@ async function runObjectSimulation() {
     });
     renderSimulationStructuredResult(result.content || '');
     generateObjectAdvisorSuggestions({silent: true});
-    status.textContent = `瀹屾垚锛岀敤鏃?${result.elapsed_seconds}s`;
+    status.textContent = `完成，用时 ${result.elapsed_seconds}s`;
   } catch (err) {
     state.simulationRawResult = err.message;
     $('simulationRawJsonBtn').hidden = false;
-    resultBox.innerHTML = `<div class="simulation-empty-state"><b>娴嬭瘯澶辫触</b><p>${escapeHtml(err.message)}</p></div>`;
-    status.textContent = '娴嬭瘯澶辫触';
+    resultBox.innerHTML = `<div class="simulation-empty-state"><b>测试失败</b><p>${escapeHtml(err.message)}</p></div>`;
+    status.textContent = '测试失败';
     toast(err.message);
   } finally {
     btn.disabled = false;
@@ -2553,15 +2586,15 @@ async function runObjectSimulation() {
 
 function renderObjectHealthCheck(cfg) {
   const checks = [
-    {ok: Boolean(cfg.object_definition.profile_id), text: '瀵硅薄妯℃澘 ID 宸插～鍐?},
-    {ok: Boolean(cfg.object_definition.display_name), text: '鏄剧ず鍚嶇О宸插～鍐?},
-    {ok: (cfg.dimensions || []).length > 0, text: '鑷冲皯閰嶇疆 1 涓娊鍙栫淮搴?},
-    {ok: (cfg.dimensions || []).every(d => d.dimension_id && d.name), text: '姣忎釜缁村害閮芥湁 ID 鍜屽悕绉?},
-    {ok: (cfg.dimensions || []).some(d => (d.fields || []).length), text: '鑷冲皯涓€涓淮搴﹂厤缃簡杈撳嚭瀛楁'},
-    {ok: cfg.evidence_rules.require_quote && cfg.evidence_rules.require_section, text: '璇佹嵁瑙勫垯鍖呭惈鍘熸枃鍜岀珷鑺傝姹?},
+    {ok: Boolean(cfg.object_definition.profile_id), text: '对象模板 ID 已填写'},
+    {ok: Boolean(cfg.object_definition.display_name), text: '显示名称已填写'},
+    {ok: (cfg.dimensions || []).length > 0, text: '至少配置 1 个抽取维度'},
+    {ok: (cfg.dimensions || []).every(d => d.dimension_id && d.name), text: '每个维度都有 ID 和名称'},
+    {ok: (cfg.dimensions || []).some(d => (d.fields || []).length), text: '至少一个维度配置了输出字段'},
+    {ok: cfg.evidence_rules.require_quote && cfg.evidence_rules.require_section, text: '证据规则包含原文和章节要求'},
   ];
   $('objectHealthCheck').innerHTML = checks.map(item => `
-    <div class="health-item ${item.ok ? 'ok' : 'bad'}">${item.ok ? '閫氳繃' : '寰呰ˉ'} 路 ${escapeHtml(item.text)}</div>
+    <div class="health-item ${item.ok ? 'ok' : 'bad'}">${item.ok ? '通过' : '待补'} · ${escapeHtml(item.text)}</div>
   `).join('');
 }
 
@@ -2611,35 +2644,50 @@ function buildObjectSystemPrompt(cfg) {
   const obj = cfg.object_definition || {};
   const concept = cfg.term_rules?.concept_policy || {};
   const dimensions = (cfg.dimensions || []).map((dim, index) => (
-    `${index + 1}. ${dim.name || dim.dimension_id}\n   - dimension_id: ${dim.dimension_id}\n   - 鎶藉彇闂: ${dim.question || dim.description || ''}`
+    `${index + 1}. ${dim.name || dim.dimension_id}\n   - dimension_id: ${dim.dimension_id}\n   - 抽取问题: ${dim.question || dim.description || ''}`
   )).join('\n');
-  return `浣犳槸涓€涓弗璋ㄧ殑绉戠爺鏂囩尞鐭ヨ瘑鎶藉彇鍔╂墜銆備綘鐨勪换鍔℃槸鍩轰簬鐢ㄦ埛鎻愪緵鐨勮鏂囧唴瀹癸紝鍥寸粫鎸囧畾鐮旂┒瀵硅薄杩涜缁撴瀯鍖栦俊鎭娊鍙栥€傝涓ユ牸渚濇嵁璁烘枃鍘熸枃锛屼笉瑕佺紪閫犱俊鎭€?
-# 涓€銆佺爺绌跺璞￠厤缃?
-## 鐮旂┒瀵硅薄
-- 鍚嶇О锛?{obj.display_name || ''}
-- 绫诲瀷锛?{obj.object_type || ''}
-- 璇存槑锛?{obj.description || ''}
+  return `你是一个严谨的科研文献知识抽取助手。你的任务是基于用户提供的论文内容，围绕指定研究对象进行结构化信息抽取。请严格依据论文原文，不要编造信息。
 
-## 宸ヤ綔瀹氫箟
+# 一、研究对象配置
+
+## 研究对象
+- 名称：${obj.display_name || ''}
+- 类型：${obj.object_type || ''}
+- 说明：${obj.description || ''}
+
+## 工作定义
 ${concept.working_definition || ''}
 
-## 鐩稿叧鏈
+## 相关术语
 ${(concept.include_terms || []).map(term => `- ${term}`).join('\n')}
 
-## 鎺掗櫎瑙勫垯
+## 排除规则
 ${(concept.exclude_rules || []).map(rule => `- ${rule}`).join('\n')}
 
-# 浜屻€佹娊鍙栦换鍔?
-璇峰厛鍒ゆ柇璁烘枃涓槸鍚﹀瓨鍦ㄢ€?{obj.display_name || '鐮旂┒瀵硅薄'}鈥濊繖涓€鐮旂┒瀵硅薄銆傛敞鎰忥細
-1. 濡傛灉鐩稿叧鍐呭鍙嚭鐜板湪 related work 涓紝涓斾笉鏄湰鏂囨柟娉曘€佸疄楠屽璞℃垨鍒嗘瀽瀵硅薄锛屼笉搴斿垽瀹氫负鏈枃鐮旂┒瀵硅薄銆?2. 濡傛灉璁烘枃娌℃湁浣跨敤閰嶇疆涓殑鏄剧ず鍚嶇О锛屼絾浣跨敤浜嗙浉鍏虫湳璇垨鍔熻兘绛変环鏈哄埗锛屼篃鍙互鍒ゅ畾涓哄瓨鍦ㄣ€?3. 濡傛灉鍙兘鏍规嵁涓婁笅鏂囨帹鏂紝璇锋槑纭爣璁?model_inferred=true銆?4. 濡傛灉璁烘枃鏈姤鍛婃煇涓€缁村害锛岃杩斿洖 not_reported锛屼笉瑕佸己琛岃ˉ鍏ㄣ€?
-# 涓夈€侀渶瑕佹娊鍙栫殑缁村害
+# 二、抽取任务
+
+请先判断论文中是否存在“${obj.display_name || '研究对象'}”这一研究对象。注意：
+1. 如果相关内容只出现在 related work 中，且不是本文方法、实验对象或分析对象，不应判定为本文研究对象。
+2. 如果论文没有使用配置中的显示名称，但使用了相关术语或功能等价机制，也可以判定为存在。
+3. 如果只能根据上下文推断，请明确标记 model_inferred=true。
+4. 如果论文未报告某一维度，请返回 not_reported，不要强行补全。
+
+# 三、需要抽取的维度
 
 ${dimensions}
 
-# 鍥涖€佽瘉鎹姹?
-- 姣忎釜闈?not_reported 鐨勬娊鍙栫粨鏋滈兘蹇呴』缁戝畾鍘熸枃璇佹嵁銆?- 璇佹嵁闇€瑕佸寘鍚?quote銆乻ection銆乸age 鎴?chunk_id銆?- 蹇呴』鍖哄垎浣滆€呮槑纭〃杩?author_explicit 涓庢ā鍨嬫帹鏂?model_inferred銆?- 璁烘枃鏈姤鍛婄殑淇℃伅蹇呴』鏍囪涓?not_reported=true銆?- 涓嶈鎶?abstract 涓殑瀹芥硾 claim 鐩存帴褰撴垚瀹為獙璇佹嵁銆?- 涓嶈鎶?related work 涓叾浠栬鏂囩殑鏂规硶璇涓烘湰鏂囨柟娉曘€?
-# 浜斻€佽緭鍑烘牸寮?
-璇峰彧杈撳嚭鍚堟硶 JSON锛屼笉瑕佽緭鍑?Markdown锛屼笉瑕佹坊鍔犻澶栬В閲娿€傝緭鍑虹粨鏋勫涓嬶細
+# 四、证据要求
+
+- 每个非 not_reported 的抽取结果都必须绑定原文证据。
+- 证据需要包含 quote、section、page 或 chunk_id。
+- 必须区分作者明确表述 author_explicit 与模型推断 model_inferred。
+- 论文未报告的信息必须标记为 not_reported=true。
+- 不要把 abstract 中的宽泛 claim 直接当成实验证据。
+- 不要把 related work 中其他论文的方法误认为本文方法。
+
+# 五、输出格式
+
+请只输出合法 JSON，不要输出 Markdown，不要添加额外解释。输出结构如下：
 
 {
   "profile_id": "${obj.profile_id || ''}",
@@ -2647,35 +2695,35 @@ ${dimensions}
   "object_presence": {
     "exists": true,
     "role_in_paper": "core_contribution | method_component | auxiliary_component | evaluation_object | discussion_only | not_present",
-    "local_terms": ["璁烘枃涓娇鐢ㄧ殑鏈湴鏈"],
-    "judgement_reason": "涓轰粈涔堝垽鏂瓨鍦ㄦ垨涓嶅瓨鍦ㄨ瀵硅薄",
+    "local_terms": ["论文中使用的本地术语"],
+    "judgement_reason": "为什么判断存在或不存在该对象",
     "confidence": "high | medium | low",
-    "evidence": [{"quote": "鍘熸枃璇佹嵁鐗囨", "section": "绔犺妭鍚嶇О", "page": "椤电爜鎴?null", "chunk_id": "chunk_id 鎴?null"}]
+    "evidence": [{"quote": "原文证据片段", "section": "章节名称", "page": "页码或 null", "chunk_id": "chunk_id 或 null"}]
   },
   "dimension_extractions": [
     {
       "dimension_id": "dimension_id",
-      "dimension_name": "缁村害鍚嶇О",
+      "dimension_name": "维度名称",
       "answer": "string | object | list | not_reported",
       "not_reported": false,
       "author_explicit": true,
       "model_inferred": false,
       "confidence": "high | medium | low",
-      "evidence": [{"quote": "鍘熸枃璇佹嵁鐗囨", "section": "绔犺妭鍚嶇О", "page": "椤电爜鎴?null", "chunk_id": "chunk_id 鎴?null", "evidence_type": "definition | method_description | experiment_result | discussion | other"}],
-      "notes": "蹇呰鏃惰鏄庢娊鍙栦緷鎹€佹涔夋垨闄愬埗"
+      "evidence": [{"quote": "原文证据片段", "section": "章节名称", "page": "页码或 null", "chunk_id": "chunk_id 或 null", "evidence_type": "definition | method_description | experiment_result | discussion | other"}],
+      "notes": "必要时说明抽取依据、歧义或限制"
     }
   ],
-  "auto_tags": ["绯荤粺鍙嚜鍔ㄧ敓鎴愮殑妫€绱㈡爣绛?],
-  "summary_for_review": "缁欎汉宸ュ鏌ヨ€呯湅鐨勭畝鐭€荤粨锛岃鏄庝富瑕佸彂鐜般€佺己澶遍」鍜岄渶瑕侀噸鐐规牳楠岀殑鍦版柟"
+  "auto_tags": ["系统可自动生成的检索标签"],
+  "summary_for_review": "给人工审查者看的简短总结，说明主要发现、缺失项和需要重点核验的地方"
 }`;
 }
 
 function validateObjectTemplateForPublish(template) {
   const issues = [];
-  if (!template.id) issues.push('瀵硅薄妯℃澘 ID');
-  if (!template.name) issues.push('鏄剧ず鍚嶇О');
-  if (!(template.dimensions || []).length) issues.push('鑷冲皯 1 涓娊鍙栫淮搴?);
-  if (!String(template.system_prompt || '').trim()) issues.push('婵€娲?Prompt 鍐呭');
+  if (!template.id) issues.push('对象模板 ID');
+  if (!template.name) issues.push('显示名称');
+  if (!(template.dimensions || []).length) issues.push('至少 1 个抽取维度');
+  if (!String(template.system_prompt || '').trim()) issues.push('激活 Prompt 内容');
   return issues;
 }
 
@@ -2688,14 +2736,14 @@ async function saveResearchObjectConfig(options = {}) {
   const template = objectConfigToTemplate(state.objectConfig, {publish: Boolean(options.publish)});
   if (options.requirePublishReady) {
     const issues = validateObjectTemplateForPublish(template);
-    if (issues.length) throw new Error(`鍙戝竷鍓嶈琛ュ叏锛?{issues.join('銆?)}`);
+    if (issues.length) throw new Error(`发布前请补全：${issues.join('、')}`);
   }
   const saved = await api('/api/templates', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(template),
   });
-  if (!options.silent) toast('瀵硅薄寤烘ā閰嶇疆宸蹭繚瀛?);
+  if (!options.silent) toast('对象建模配置已保存');
   await refreshAll();
   renderObjectConfigPanel();
   return saved;
@@ -2703,15 +2751,15 @@ async function saveResearchObjectConfig(options = {}) {
 
 async function publishObjectTemplate() {
   await saveResearchObjectConfig({silent: true, requirePublishReady: true, publish: true});
-  toast('妯℃澘宸插彂甯冿紝鍙湪璁烘枃绠＄悊涓彂璧锋娊鍙?);
+  toast('模板已发布，可在论文管理中发起抽取');
 }
 
 async function deleteCurrentObjectTemplate() {
   const select = $('objectTemplateSelect');
   const templateId = select?.value || '';
   const template = state.templates.find(item => item.id === templateId);
-  if (!template) return toast('璇峰厛閫夋嫨涓€涓凡淇濆瓨瀵硅薄');
-  const confirmed = confirm(`纭畾鍒犻櫎鈥?{template.name}鈥濆悧锛熻繖浼氫粠鐮旂┒瀵硅薄搴撶Щ闄よ瀵硅薄妯℃澘锛屼笉浼氬垹闄ゅ凡缁忎骇鐢熺殑鎶藉彇缁撴灉銆俙);
+  if (!template) return toast('请先选择一个已保存对象');
+  const confirmed = confirm(`确定删除“${template.name}”吗？这会从研究对象库移除该对象模板，不会删除已经产生的抽取结果。`);
   if (!confirmed) return;
   await api(`/api/templates/${encodeURIComponent(template.id)}`, {method: 'DELETE'});
   state.objectConfig = defaultResearchObjectConfig(null);
@@ -2720,7 +2768,7 @@ async function deleteCurrentObjectTemplate() {
   state.selectedPromptProfileId = null;
   state.selectedSimulationPromptId = null;
   resetObjectAdvisorSuggestions();
-  toast(`宸插垹闄ゅ璞★細${template.name}`);
+  toast(`已删除对象：${template.name}`);
   await refreshAll();
   renderObjectConfigPanel();
 }
@@ -2733,12 +2781,12 @@ async function importResearchObjectConfig() {
     imported = JSON.parse($('objectImportJson').value.trim());
   } catch (err) {
     status.className = 'test-result bad';
-    status.textContent = `JSON 瑙ｆ瀽澶辫触锛?{err.message}`;
+    status.textContent = `JSON 解析失败：${err.message}`;
     return;
   }
   btn.disabled = true;
   status.className = 'test-result muted';
-  status.textContent = '姝ｅ湪瀵煎叆骞朵繚瀛?..';
+  status.textContent = '正在导入并保存...';
   try {
     state.objectConfig = objectConfigFromImportedJson(imported);
     state.objectDimensionIndex = 0;
@@ -2755,8 +2803,8 @@ async function importResearchObjectConfig() {
       body: JSON.stringify(template),
     });
     status.className = 'test-result ok';
-    status.textContent = `宸插鍏ュ苟淇濆瓨锛?{template.name}`;
-    toast('瀵煎叆閰嶇疆宸蹭繚瀛橈紝骞剁敓鎴愭縺娲?Prompt');
+    status.textContent = `已导入并保存：${template.name}`;
+    toast('导入配置已保存，并生成激活 Prompt');
     closeObjectImportModal();
     await refreshAll();
     openObjectConfigModal();
@@ -2780,8 +2828,8 @@ function addArxivInput(value = '') {
   const row = document.createElement('div');
   row.className = 'multi-input-row';
   row.innerHTML = `
-    <input class="arxivInput" placeholder="渚嬪 2401.12345 鎴?https://arxiv.org/abs/..." value="${escapeHtml(value)}" />
-    <button type="button" aria-label="绉婚櫎姝?arXiv 杈撳叆">-</button>
+    <input class="arxivInput" placeholder="例如 2401.12345 或 https://arxiv.org/abs/..." value="${escapeHtml(value)}" />
+    <button type="button" aria-label="移除此 arXiv 输入">-</button>
   `;
   row.querySelector('button').onclick = () => row.remove();
   $('arxivInputs').appendChild(row);
@@ -2805,11 +2853,11 @@ function startImportProgress(initialLabel, onProgress) {
   const percent = $('importProgressPercent');
   const bar = $('importProgressBar');
   const stages = [
-    '杩炴帴鏁版嵁婧?..',
-    '涓嬭浇璁烘枃鏂囦欢...',
-    '瑙ｆ瀽 PDF 姝ｆ枃...',
-    '璇嗗埆绔犺妭銆佸浘琛ㄥ拰鍙傝€冩枃鐚?..',
-    '鍐欏叆璁烘枃搴?..'
+    '连接数据源...',
+    '下载论文文件...',
+    '解析 PDF 正文...',
+    '识别章节、图表和参考文献...',
+    '写入论文库...'
   ];
   let value = 6;
   let stageIndex = 0;
@@ -2833,7 +2881,7 @@ function startImportProgress(initialLabel, onProgress) {
   return timer;
 }
 
-function finishImportProgress(timer, message = '瀵煎叆瀹屾垚') {
+function finishImportProgress(timer, message = '导入完成') {
   clearInterval(timer);
   $('importProgress').classList.add('done');
   $('importProgressLabel').textContent = message;
@@ -2847,7 +2895,7 @@ function failImportProgress(timer, message) {
   clearInterval(timer);
   $('importProgress').classList.add('error');
   $('importProgressLabel').textContent = message;
-  $('importProgressPercent').textContent = '澶辫触';
+  $('importProgressPercent').textContent = '失败';
   setImportBusy(false);
 }
 
@@ -2864,7 +2912,7 @@ function addPaperJob(title, source) {
     id: `job_${Date.now()}_${Math.random().toString(16).slice(2)}`,
     title,
     source,
-    status: '瑙ｆ瀽涓?,
+    status: '解析中',
     percent: 0,
     startedAt: new Date().toLocaleTimeString()
   };
@@ -2887,12 +2935,12 @@ function removePaperJob(jobId) {
 
 function paperStatus(p) {
   const op = state.paperOps[p.id];
-  if (op) return {label: `${op.status || '瑙ｆ瀽涓?} ${Math.round(op.percent || 0)}%`, className: 'pending', parser: p.metadata?.extra?.parser, op};
+  if (op) return {label: `${op.status || '解析中'} ${Math.round(op.percent || 0)}%`, className: 'pending', parser: p.metadata?.extra?.parser, op};
   const parser = p.metadata?.extra?.parser;
-  if (p.metadata?.extra?.review_status === 'verified') return {label: '宸叉牎楠?, className: 'verified', parser};
-  if ((p.chunks || []).length) return {label: '寰呮牎楠?, className: 'needs_revision', parser};
-  if (p.full_text) return {label: '鏈夋鏂?, className: 'pending', parser};
-  return {label: '浠呭厓鏁版嵁', className: 'needs_revision', parser};
+  if (p.metadata?.extra?.review_status === 'verified') return {label: '已校验', className: 'verified', parser};
+  if ((p.chunks || []).length) return {label: '待校验', className: 'needs_revision', parser};
+  if (p.full_text) return {label: '有正文', className: 'pending', parser};
+  return {label: '仅元数据', className: 'needs_revision', parser};
 }
 
 function updatePaperOp(paperId, patch) {
@@ -2905,7 +2953,7 @@ function removePaperOp(paperId) {
   renderPapers();
 }
 
-function startPaperOpProgress(paperId, initialLabel = '瑙ｆ瀽涓?) {
+function startPaperOpProgress(paperId, initialLabel = '解析中') {
   let value = 6;
   updatePaperOp(paperId, {percent: value, status: initialLabel});
   return setInterval(() => {
@@ -2923,9 +2971,9 @@ async function runPaperImport(label, pendingTitle, source, action) {
     const result = await action();
     const papers = Array.isArray(result) ? result : (result?.id ? [result] : []);
     rememberRecentImports(papers.map(paper => paper.id));
-    updatePaperJob(jobId, {percent: 100, status: '瑙ｆ瀽瀹屾垚'});
+    updatePaperJob(jobId, {percent: 100, status: '解析完成'});
     finishImportProgress(timer);
-    toast('瀵煎叆瀹屾垚');
+    toast('导入完成');
     state.paperPage = 1;
     await refreshAll();
   } catch (err) {
@@ -2938,7 +2986,7 @@ async function runPaperImport(label, pendingTitle, source, action) {
 
 async function runArxivBatchImport(values) {
   const total = values.length;
-  const jobId = addPaperJob(`鎵归噺 arXiv 瀵煎叆锛?{total} 绡囷級`, 'arxiv');
+  const jobId = addPaperJob(`批量 arXiv 导入（${total} 篇）`, 'arxiv');
   const importedPapers = [];
   setImportBusy(true);
   $('importProgress').hidden = false;
@@ -2949,13 +2997,13 @@ async function runArxivBatchImport(values) {
       const start = Math.floor((index / total) * 100);
       const cap = Math.floor(((index + 0.85) / total) * 100);
       let current = start;
-      const label = `绗?${index + 1}/${total} 绡囷細姝ｅ湪瀵煎叆 ${value}`;
+      const label = `第 ${index + 1}/${total} 篇：正在导入 ${value}`;
       setImportProgressValue(current, label);
-      updatePaperJob(jobId, {percent: current, status: `绗?${index + 1}/${total} 绡囪В鏋愪腑`});
+      updatePaperJob(jobId, {percent: current, status: `第 ${index + 1}/${total} 篇解析中`});
       const timer = setInterval(() => {
         current = Math.min(cap, current + Math.max(1, Math.round((cap - current) * 0.18)));
         setImportProgressValue(current, label);
-        updatePaperJob(jobId, {percent: current, status: `绗?${index + 1}/${total} 绡囪В鏋愪腑`});
+        updatePaperJob(jobId, {percent: current, status: `第 ${index + 1}/${total} 篇解析中`});
       }, 850);
       try {
         const paper = await api('/api/papers/import/arxiv', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({arxiv_id_or_url: value})});
@@ -2964,13 +3012,13 @@ async function runArxivBatchImport(values) {
         clearInterval(timer);
       }
       const completed = Math.floor(((index + 1) / total) * 100);
-      const completedLabel = `宸插畬鎴?${index + 1}/${total} 绡嘸;
+      const completedLabel = `已完成 ${index + 1}/${total} 篇`;
       setImportProgressValue(completed, completedLabel);
       updatePaperJob(jobId, {percent: completed, status: completedLabel});
     }
     rememberRecentImports(importedPapers.map(paper => paper.id));
     $('importProgress').classList.add('done');
-    toast(`鎵归噺瀵煎叆瀹屾垚锛?{total} 绡嘸);
+    toast(`批量导入完成：${total} 篇`);
     state.paperPage = 1;
     await refreshAll();
     setTimeout(() => { $('importProgress').hidden = true; }, 900);
@@ -2978,7 +3026,7 @@ async function runArxivBatchImport(values) {
     if (importedPapers.length) rememberRecentImports(importedPapers.map(paper => paper.id));
     $('importProgress').classList.add('error');
     $('importProgressLabel').textContent = err.message;
-    $('importProgressPercent').textContent = '澶辫触';
+    $('importProgressPercent').textContent = '失败';
     toast(err.message);
   } finally {
     setImportBusy(false);
@@ -3039,7 +3087,7 @@ function renderRecentImports() {
   const list = $('recentImportList');
   if (!list) return;
   const papers = recentImportPapers();
-  $('recentImportCount').textContent = papers.length ? `${papers.length} 绡嘸 : '鏆傛棤璁板綍';
+  $('recentImportCount').textContent = papers.length ? `${papers.length} 篇` : '暂无记录';
   list.innerHTML = papers.map(paper => {
     const status = paperStatus(paper);
     return `
@@ -3051,7 +3099,7 @@ function renderRecentImports() {
         <button type="button" onclick="openPaperDetail('${escapeHtml(paper.id)}')">${escapeHtml(status.label)}</button>
       </article>
     `;
-  }).join('') || '<p class="muted">瀹屾垚瀵煎叆鍚庝細鍦ㄨ繖閲屾樉绀烘渶杩?5 绡囪鏂囥€?/p>';
+  }).join('') || '<p class="muted">完成导入后会在这里显示最近 5 篇论文。</p>';
 }
 
 function latestPaperTime() {
@@ -3113,9 +3161,9 @@ function extractionStatsForPaper(paperId) {
 
 function extractionStatusForPaper(paperId) {
   const stats = extractionStatsForPaper(paperId);
-  if (!stats.runCount || !stats.itemCount) return {label: '寰呮娊鍙?, className: 'extraction_todo'};
-  if (stats.reviewedItemCount >= stats.itemCount) return {label: '宸插鏌?, className: 'extraction_reviewed'};
-  return {label: '寰呭鏌?, className: 'extraction_pending_review'};
+  if (!stats.runCount || !stats.itemCount) return {label: '待抽取', className: 'extraction_todo'};
+  if (stats.reviewedItemCount >= stats.itemCount) return {label: '已审查', className: 'extraction_reviewed'};
+  return {label: '待审查', className: 'extraction_pending_review'};
 }
 
 function extractionJobProgress(job) {
@@ -3144,11 +3192,11 @@ function paperTaskProgress(paper) {
   const op = state.paperOps[paper.id];
   if (op) {
     const percent = Math.max(0, Math.min(100, Math.round(op.percent || 0)));
-    const failed = /澶辫触/.test(op.status || '');
-    const completed = percent >= 100 && /瀹屾垚/.test(op.status || '');
+    const failed = /失败/.test(op.status || '');
+    const completed = percent >= 100 && /完成/.test(op.status || '');
     return {
-      label: op.status || '瑙ｆ瀽涓?,
-      detail: '姝ｅ湪鏇存柊鏂囦欢瑙ｆ瀽缁撴灉',
+      label: op.status || '解析中',
+      detail: '正在更新文件解析结果',
       percent,
       className: failed ? 'failed' : (completed ? 'completed' : 'running'),
     };
@@ -3156,14 +3204,14 @@ function paperTaskProgress(paper) {
   const job = paperActiveExtractionJob(paper.id);
   if (!job) return null;
   const label = {
-    queued: '鎶藉彇鎺掗槦涓?,
-    running: '鎶藉彇涓?,
-    completed: '鎶藉彇瀹屾垚',
-    failed: '鎶藉彇澶辫触',
-  }[job.status] || '鎶藉彇涓?;
+    queued: '抽取排队中',
+    running: '抽取中',
+    completed: '抽取完成',
+    failed: '抽取失败',
+  }[job.status] || '抽取中';
   return {
     label,
-    detail: job.message || '姝ｅ湪鏇存柊鍐呭鎶藉彇缁撴灉',
+    detail: job.message || '正在更新内容抽取结果',
     percent: extractionJobProgress(job),
     className: job.status || 'running',
   };
@@ -3175,7 +3223,7 @@ function renderPaperTaskProgress(task) {
   return `
     <div class="paper-row-task ${escapeHtml(task.className || 'running')}">
       <div class="paper-row-task-head">
-        <span>${escapeHtml(task.label || '澶勭悊涓?)}</span>
+        <span>${escapeHtml(task.label || '处理中')}</span>
         <b>${percent}%</b>
       </div>
       <div class="paper-row-progress">
@@ -3227,20 +3275,20 @@ function renderPaperJobRow(job) {
       <div class="paper-row-main">
         <div class="paper-title-line">
           <h3 class="paper-title" title="${escapeHtml(job.title)}">${escapeHtml(job.title)}</h3>
-          <span class="badge pending">瑙ｆ瀽涓?${percent}%</span>
+          <span class="badge pending">解析中 ${percent}%</span>
         </div>
-        <div class="meta">${escapeHtml(sourceLabel(job.source))} 路 ${escapeHtml(job.status || '瑙ｆ瀽涓?)} 路 寮€濮嬩簬 ${escapeHtml(job.startedAt)}</div>
+        <div class="meta">${escapeHtml(sourceLabel(job.source))} · ${escapeHtml(job.status || '解析中')} · 开始于 ${escapeHtml(job.startedAt)}</div>
         <div class="paper-row-progress">
           <div class="paper-row-progress-bar" style="width: ${percent}%"></div>
         </div>
       </div>
       <div class="paper-actions">
-        <button disabled>鏌ョ湅璇︽儏</button>
-        <button disabled>瀵煎嚭 JSON</button>
-        <button disabled>鍒犻櫎</button>
+        <button disabled>查看详情</button>
+        <button disabled>导出 JSON</button>
+        <button disabled>删除</button>
       </div>
       <div class="paper-stats">
-        ${listStat('Status', '瑙ｆ瀽涓?)}
+        ${listStat('Status', '解析中')}
         ${listStat('Progress', `${percent}%`)}
       </div>
     </div>
@@ -3251,13 +3299,13 @@ function renderPaperRow(p, selectable = false) {
   const status = paperStatus(p);
   const extractionStats = extractionStatsForPaper(p.id);
   const extractionStatus = extractionStatusForPaper(p.id);
-  const parser = status.parser ? ` 路 parser ${status.parser}` : '';
+  const parser = status.parser ? ` · parser ${status.parser}` : '';
   const checked = state.selectedPaperIds.includes(p.id);
   const taskProgress = renderPaperTaskProgress(paperTaskProgress(p));
   return `
     <div class="paper-row ${selectable ? 'selectable' : ''} ${p.id === state.selectedPaperId ? 'active' : ''}" data-paper-id="${escapeHtml(p.id)}">
       ${selectable ? `
-        <label class="paper-row-check" title="閫夋嫨璁烘枃">
+        <label class="paper-row-check" title="选择论文">
           <input type="checkbox" class="paperBatchCheck" value="${escapeHtml(p.id)}" ${checked ? 'checked' : ''} onchange="togglePaperSelection('${escapeHtml(p.id)}', this.checked)" />
         </label>
       ` : ''}
@@ -3267,36 +3315,36 @@ function renderPaperRow(p, selectable = false) {
           <span class="badge ${status.className}">${status.label}</span>
           <span class="badge ${extractionStatus.className}">${extractionStatus.label}</span>
         </div>
-        <div class="paper-authors-line">${escapeHtml((p.metadata.authors || []).slice(0, 4).join(', ') || '浣滆€呮湭鐭?)} ${p.metadata.year || ''}</div>
-        <div class="paper-meta-line"><span>鏉ユ簮锛?/span><b>${escapeHtml(sourceLabel(p.source))}${escapeHtml(parser)}</b></div>
+        <div class="paper-authors-line">${escapeHtml((p.metadata.authors || []).slice(0, 4).join(', ') || '作者未知')} ${p.metadata.year || ''}</div>
+        <div class="paper-meta-line"><span>来源：</span><b>${escapeHtml(sourceLabel(p.source))}${escapeHtml(parser)}</b></div>
         <div class="paper-meta-line">
-          <span>瀵煎叆锛?/span><b>${escapeHtml(fmtTime(p.created_at))}</b>
-          <span> 路 瑙ｆ瀽锛?/span><b>${escapeHtml(fmtTime(p.updated_at))}</b>
-          <span> 路 鑰楁椂锛?/span><b>${escapeHtml(fmtDuration(p.metadata?.extra?.parse_duration_seconds))}</b>
+          <span>导入：</span><b>${escapeHtml(fmtTime(p.created_at))}</b>
+          <span> · 解析：</span><b>${escapeHtml(fmtTime(p.updated_at))}</b>
+          <span> · 耗时：</span><b>${escapeHtml(fmtDuration(p.metadata?.extra?.parse_duration_seconds))}</b>
         </div>
         ${taskProgress}
       </div>
       <div class="paper-actions">
-        <button onclick="openPaperDetail('${escapeHtml(p.id)}')">鏌ョ湅璇︽儏</button>
-        <button ${extractionStats.latestRun ? '' : 'disabled'} onclick="openLatestExtractionResult('${escapeHtml(p.id)}')">鏌ョ湅鎶藉彇缁撴灉</button>
-        <button onclick="exportPaper('${escapeHtml(p.id)}')">瀵煎嚭 JSON</button>
-        <button onclick="deletePaper('${escapeHtml(p.id)}')">鍒犻櫎</button>
+        <button onclick="openPaperDetail('${escapeHtml(p.id)}')">查看详情</button>
+        <button ${extractionStats.latestRun ? '' : 'disabled'} onclick="openLatestExtractionResult('${escapeHtml(p.id)}')">查看抽取结果</button>
+        <button onclick="exportPaper('${escapeHtml(p.id)}')">导出 JSON</button>
+        <button onclick="deletePaper('${escapeHtml(p.id)}')">删除</button>
       </div>
       <div class="paper-stats compact">
         <section class="paper-stat-group">
-          <b>鏂囦欢瑙ｆ瀽</b>
+          <b>文件解析</b>
           <div>
-            <span>绔犺妭 ${p.sections.length}</span>
+            <span>章节 ${p.sections.length}</span>
             <span>Chunks ${p.chunks.length}</span>
-            <span>鍥捐〃 ${p.figures.length}</span>
+            <span>图表 ${p.figures.length}</span>
           </div>
         </section>
         <section class="paper-stat-group">
-          <b>鍐呭鎶藉彇</b>
+          <b>内容抽取</b>
           <div>
-            <span>瀵硅薄 ${extractionStats.objectCount}</span>
-            <span>缁撴灉 ${extractionStats.itemCount}</span>
-            <span>宸插 ${extractionStats.reviewedItemCount}</span>
+            <span>对象 ${extractionStats.objectCount}</span>
+            <span>结果 ${extractionStats.itemCount}</span>
+            <span>已审 ${extractionStats.reviewedItemCount}</span>
           </div>
         </section>
       </div>
@@ -3314,11 +3362,11 @@ function renderPaperLibraryHeader(filteredCount = state.papers.length) {
   const total = state.papers.length;
   const setCount = validCustomPaperSets().length;
   const verified = verifiedPaperCount(state.papers);
-  $('paperLibraryTitle').textContent = '璁烘枃搴?;
-  $('paperLibrarySubtitle').textContent = `鍏?${total} 绡囪鏂囷紝${setCount} 涓泦鍚堬紝${verified} 绡囧凡瀹℃牳`;
+  $('paperLibraryTitle').textContent = '论文库';
+  $('paperLibrarySubtitle').textContent = `共 ${total} 篇论文，${setCount} 个集合，${verified} 篇已审核`;
   $('paperCount').textContent = state.paperLibraryTab === 'all'
-    ? `褰撳墠 ${filteredCount} 绡嘸
-    : `${setCount} 涓泦鍚坄;
+    ? `当前 ${filteredCount} 篇`
+    : `${setCount} 个集合`;
   $('createPaperSetBtn').hidden = state.paperLibraryTab !== 'sets';
 }
 
@@ -3350,26 +3398,26 @@ function renderPaperLibraryFilters() {
   const queryInput = $('paperSearchInput');
   if (queryInput && document.activeElement !== queryInput) queryInput.value = state.paperFilters.query || '';
   state.paperFilters.year = applySelectOptions($('paperYearFilter'), [
-    {value: 'all', label: '鍏ㄩ儴骞翠唤'},
+    {value: 'all', label: '全部年份'},
     ...years.map(year => ({value: year, label: year})),
   ], state.paperFilters.year);
   state.paperFilters.paperSet = applySelectOptions($('paperCollectionFilter'), [
-    {value: 'all', label: '鍏ㄩ儴闆嗗悎'},
-    {value: 'none', label: '鏈姞鍏ラ泦鍚?},
+    {value: 'all', label: '全部集合'},
+    {value: 'none', label: '未加入集合'},
     ...validCustomPaperSets().map(item => ({value: item.id, label: item.name})),
   ], state.paperFilters.paperSet);
   state.paperFilters.parseStatus = applySelectOptions($('paperParseStatusFilter'), [
-    {value: 'all', label: '鍏ㄩ儴瑙ｆ瀽鐘舵€?},
-    {value: 'verified', label: '宸叉牎楠?},
-    {value: 'needs_revision', label: '寰呮牎楠?},
-    {value: 'parsed', label: '鏈夋鏂?},
-    {value: 'metadata_only', label: '浠呭厓鏁版嵁'},
-    {value: 'pending', label: '瑙ｆ瀽涓?},
+    {value: 'all', label: '全部解析状态'},
+    {value: 'verified', label: '已校验'},
+    {value: 'needs_revision', label: '待校验'},
+    {value: 'parsed', label: '有正文'},
+    {value: 'metadata_only', label: '仅元数据'},
+    {value: 'pending', label: '解析中'},
   ], state.paperFilters.parseStatus);
   state.paperFilters.extractionStatus = applySelectOptions($('paperExtractionStatusFilter'), [
-    {value: 'all', label: '鍏ㄩ儴鎶藉彇鐘舵€?},
-    {value: 'extracted', label: '宸叉娊鍙?},
-    {value: 'not_extracted', label: '鏈娊鍙?},
+    {value: 'all', label: '全部抽取状态'},
+    {value: 'extracted', label: '已抽取'},
+    {value: 'not_extracted', label: '未抽取'},
   ], state.paperFilters.extractionStatus);
 }
 
@@ -3404,21 +3452,21 @@ function renderPaperSetCards() {
           <div class="paper-set-folder" aria-hidden="true"><span></span></div>
           <div>
             <h3>${escapeHtml(item.name)}</h3>
-            <p>${escapeHtml(item.detail || '鏆傛棤璇︽儏銆?)}</p>
+            <p>${escapeHtml(item.detail || '暂无详情。')}</p>
           </div>
         </div>
         <div class="paper-set-meta-grid">
-          ${listStat('璁烘枃鏁?, papers.length)}
-          ${listStat('宸插鏍?, verifiedPaperCount(papers))}
+          ${listStat('论文数', papers.length)}
+          ${listStat('已审核', verifiedPaperCount(papers))}
         </div>
-        <div class="paper-set-updated"><span>鏇存柊鏃堕棿</span><b>${escapeHtml(fmtTime(item.updated_at || item.created_at))}</b></div>
+        <div class="paper-set-updated"><span>更新时间</span><b>${escapeHtml(fmtTime(item.updated_at || item.created_at))}</b></div>
         <div class="paper-set-card-actions">
-          <button type="button" onclick="viewPaperSetPapers('${escapeHtml(item.id)}')">璇︽儏</button>
-          <button type="button" onclick="deletePaperSet('${escapeHtml(item.id)}')">鍒犻櫎</button>
+          <button type="button" onclick="viewPaperSetPapers('${escapeHtml(item.id)}')">详情</button>
+          <button type="button" onclick="deletePaperSet('${escapeHtml(item.id)}')">删除</button>
         </div>
       </article>
     `;
-  }).join('') || '<p class="muted">鏆傛棤璁烘枃闆嗐€?/p>';
+  }).join('') || '<p class="muted">暂无论文集。</p>';
   $('paperPagination').innerHTML = '';
 }
 
@@ -3431,13 +3479,13 @@ function selectedPaperIdsInPapers(papers) {
 function updateBatchMoveTargetTitle() {
   const select = $('batchMovePaperSetSelect');
   if (!select) return;
-  select.title = select.selectedOptions[0]?.textContent || '鏆傛棤璁烘枃闆?;
+  select.title = select.selectedOptions[0]?.textContent || '暂无论文集';
 }
 
 function updateLibraryBatchTemplateTitle() {
   const select = $('libraryBatchTemplateSelect');
   if (!select) return;
-  select.title = select.selectedOptions[0]?.textContent || '鏆傛棤妯℃澘';
+  select.title = select.selectedOptions[0]?.textContent || '暂无模板';
 }
 
 function renderPaperSetBatchActions(papers) {
@@ -3448,15 +3496,15 @@ function renderPaperSetBatchActions(papers) {
   const busy = state.libraryBatchExtractionBusy;
   collectionActions.hidden = false;
   processingActions.hidden = false;
-  $('paperSelectionCount').textContent = selected.length ? `宸查€?${selected.length} 绡嘸 : '鏈€夋嫨';
-  $('selectAllPaperSetPapersBtn').textContent = selected.length && selected.length === papers.length ? '鍙栨秷鍏ㄩ€? : '鍏ㄩ€?;
+  $('paperSelectionCount').textContent = selected.length ? `已选 ${selected.length} 篇` : '未选择';
+  $('selectAllPaperSetPapersBtn').textContent = selected.length && selected.length === papers.length ? '取消全选' : '全选';
   $('selectAllPaperSetPapersBtn').disabled = !papers.length || busy;
   const paperSets = validCustomPaperSets();
   const moveSelect = $('batchMovePaperSetSelect');
   const moveValue = moveSelect?.value || '';
   applySelectOptions(moveSelect, paperSets.length
     ? paperSets.map(item => ({value: item.id, label: item.name}))
-    : [{value: '', label: '鏆傛棤璁烘枃闆?}], moveValue);
+    : [{value: '', label: '暂无论文集'}], moveValue);
   moveSelect.disabled = !paperSets.length || !selected.length || busy;
   $('batchMovePapersBtn').disabled = !paperSets.length || !selected.length || busy;
   const templateSelect = $('libraryBatchTemplateSelect');
@@ -3464,10 +3512,10 @@ function renderPaperSetBatchActions(papers) {
   const readyTemplates = extractionReadyTemplates();
   applySelectOptions(templateSelect, readyTemplates.length
     ? readyTemplates.map(item => ({value: item.id, label: `${item.name} (${item.version})`}))
-    : [{value: '', label: '鏆傛棤宸插彂甯冩ā鏉?}], templateValue);
+    : [{value: '', label: '暂无已发布模板'}], templateValue);
   templateSelect.disabled = !readyTemplates.length || !selected.length || busy;
   $('batchRunExtractionBtn').disabled = !readyTemplates.length || !selected.length || busy;
-  $('batchRunExtractionBtn').textContent = busy ? '鎶藉彇涓? : '鍙戣捣鎶藉彇';
+  $('batchRunExtractionBtn').textContent = busy ? '抽取中' : '发起抽取';
   $('batchDeletePapersBtn').disabled = !selected.length || busy;
   $('batchReparsePapersBtn').disabled = !selected.length || busy;
   $('batchExportPapersBtn').disabled = !selected.length || busy;
@@ -3500,12 +3548,12 @@ function renderPaperLibraryAll() {
   const start = (state.paperPage - 1) * PAPER_PAGE_SIZE;
   const pageItems = items.slice(start, start + PAPER_PAGE_SIZE);
   list.innerHTML = pageItems.map(item => item.type === 'job' ? renderPaperJobRow(item.job) : renderPaperRow(item.paper, true)).join('')
-    || '<p class="muted">鏆傛棤绗﹀悎鏉′欢鐨勮鏂囥€?/p>';
+    || '<p class="muted">暂无符合条件的论文。</p>';
 
   $('paperPagination').innerHTML = total > PAPER_PAGE_SIZE ? `
-    <button ${state.paperPage === 1 ? 'disabled' : ''} onclick="goPaperPage(${state.paperPage - 1})">涓婁竴椤?/button>
-    <span class="meta">绗?${state.paperPage} / ${pageCount} 椤?/span>
-    <button ${state.paperPage === pageCount ? 'disabled' : ''} onclick="goPaperPage(${state.paperPage + 1})">涓嬩竴椤?/button>
+    <button ${state.paperPage === 1 ? 'disabled' : ''} onclick="goPaperPage(${state.paperPage - 1})">上一页</button>
+    <span class="meta">第 ${state.paperPage} / ${pageCount} 页</span>
+    <button ${state.paperPage === pageCount ? 'disabled' : ''} onclick="goPaperPage(${state.paperPage + 1})">下一页</button>
   ` : '';
   renderPaperSetBatchActions(papers);
   return papers.length;
@@ -3523,8 +3571,8 @@ function renderPaperImportLayout() {
   layout.classList.toggle('paper-import-collapsed', Boolean(state.paperImportCollapsed));
   const toggle = $('paperImportToggleBtn');
   if (toggle) {
-    toggle.textContent = state.paperImportCollapsed ? '鈥? : '鈥?;
-    toggle.title = state.paperImportCollapsed ? '灞曞紑瀵煎叆闈㈡澘' : '鏀惰捣瀵煎叆闈㈡澘';
+    toggle.textContent = state.paperImportCollapsed ? '›' : '‹';
+    toggle.title = state.paperImportCollapsed ? '展开导入面板' : '收起导入面板';
   }
 }
 
@@ -3626,7 +3674,7 @@ async function moveSelectedPapersToSet() {
   const ids = uniqueIds(state.selectedPaperIds);
   if (!targetId || !ids.length) return;
   const target = state.paperSets.find(item => item.id === targetId);
-  if (!target) return toast('璇烽€夋嫨鐩爣璁烘枃闆?);
+  if (!target) return toast('请选择目标论文集');
   for (const paperSet of validCustomPaperSets()) {
     if (paperSet.id === target.id) {
       await savePaperSetRecord(paperSet, [...(paperSet.paper_ids || []), ...ids]);
@@ -3638,7 +3686,7 @@ async function moveSelectedPapersToSet() {
     }
   }
   state.selectedPaperIds = [];
-  toast(`宸茬Щ鍔?${ids.length} 绡囪鏂嘸);
+  toast(`已移动 ${ids.length} 篇论文`);
   await refreshAll();
 }
 
@@ -3646,17 +3694,17 @@ async function runLibraryBatchExtraction() {
   const ids = uniqueIds(state.selectedPaperIds);
   const templateId = $('libraryBatchTemplateSelect').value;
   const template = extractionReadyTemplates().find(item => item.id === templateId);
-  if (!ids.length) return toast('璇峰厛閫夋嫨璁烘枃');
-  if (!template) return toast('璇烽€夋嫨宸插彂甯冩娊鍙栨ā鏉?);
+  if (!ids.length) return toast('请先选择论文');
+  if (!template) return toast('请选择已发布抽取模板');
   const dims = (template.dimensions || []).map(dim => dim.name || dim.dimension_id || dim.label).filter(Boolean);
-  if (!dims.length) return toast('褰撳墠妯℃澘娌℃湁鍙敤缁村害');
+  if (!dims.length) return toast('当前模板没有可用维度');
   state.libraryBatchExtractionBusy = true;
   const startedAt = new Date().toISOString();
   ids.forEach((paperId, index) => {
     updateExtractionJob(jobKey(paperId, templateId), {
       status: 'queued',
       percent: Math.max(4, Math.round((index / Math.max(ids.length, 1)) * 10)),
-      message: `绛夊緟鎶藉彇 ${index + 1}/${ids.length} 路 ${template.name}`,
+      message: `等待抽取 ${index + 1}/${ids.length} · ${template.name}`,
       startedAt,
       templateName: template.name,
     }, false);
@@ -3667,7 +3715,7 @@ async function runLibraryBatchExtraction() {
     for (let index = 0; index < ids.length; index += 1) {
       const paperId = ids[index];
       const key = jobKey(paperId, templateId);
-      const timer = startExtractionJobProgress(key, `姝ｅ湪鎶藉彇 ${index + 1}/${ids.length} 路 ${template.name}`);
+      const timer = startExtractionJobProgress(key, `正在抽取 ${index + 1}/${ids.length} · ${template.name}`);
       try {
         const run = await api('/api/extractions/run', {
           method: 'POST',
@@ -3675,7 +3723,7 @@ async function runLibraryBatchExtraction() {
           body: JSON.stringify({paper_id: paperId, template_id: templateId, dimension_names: dims}),
         });
         state.runs = [run, ...state.runs.filter(item => item.id !== run.id)];
-        updateExtractionJob(key, {status: 'completed', percent: 100, message: `${run.items.length} 鏉＄粨鏋滐紝${run.errors.length} 涓敊璇痐, run});
+        updateExtractionJob(key, {status: 'completed', percent: 100, message: `${run.items.length} 条结果，${run.errors.length} 个错误`, run});
         completed += 1;
       } catch (err) {
         updateExtractionJob(key, {status: 'failed', percent: 100, message: err.message});
@@ -3687,14 +3735,14 @@ async function runLibraryBatchExtraction() {
     state.libraryBatchExtractionBusy = false;
   }
   state.selectedPaperIds = [];
-  toast(`鎵归噺鎶藉彇瀹屾垚锛?{completed}/${ids.length} 绡囨垚鍔焋);
+  toast(`批量抽取完成：${completed}/${ids.length} 篇成功`);
   await refreshAll();
 }
 
 async function deleteSelectedPapers() {
   const ids = uniqueIds(state.selectedPaperIds);
   if (!ids.length) return;
-  if (!confirm(`纭畾鍒犻櫎閫変腑鐨?${ids.length} 绡囪鏂囧悧锛熺浉鍏虫娊鍙栬褰曞拰绱犳潗涔熶細鍒犻櫎銆俙)) return;
+  if (!confirm(`确定删除选中的 ${ids.length} 篇论文吗？相关抽取记录和素材也会删除。`)) return;
   for (const id of ids) {
     await api(`/api/papers/${id}`, {method: 'DELETE'});
     removePaperOp(id);
@@ -3704,7 +3752,7 @@ async function deleteSelectedPapers() {
     }
   }
   state.selectedPaperIds = [];
-  toast(`宸插垹闄?${ids.length} 绡囪鏂嘸);
+  toast(`已删除 ${ids.length} 篇论文`);
   await refreshAll();
 }
 
@@ -3713,17 +3761,17 @@ async function reparseSelectedPapers() {
   if (!ids.length) return;
   let success = 0;
   const failures = [];
-  toast(`寮€濮嬮噸鏂拌В鏋?${ids.length} 绡囪鏂嘸);
+  toast(`开始重新解析 ${ids.length} 篇论文`);
   for (const id of ids) {
-    const timer = startPaperOpProgress(id, '閲嶆柊瑙ｆ瀽涓?);
+    const timer = startPaperOpProgress(id, '重新解析中');
     try {
       const paper = await api(`/api/papers/${id}/reparse`, {method: 'POST'});
       upsertPaperInState(paper);
-      updatePaperOp(id, {percent: 100, status: '瑙ｆ瀽瀹屾垚'});
+      updatePaperOp(id, {percent: 100, status: '解析完成'});
       success += 1;
     } catch (err) {
       failures.push(err.message);
-      updatePaperOp(id, {percent: 100, status: '瑙ｆ瀽澶辫触'});
+      updatePaperOp(id, {percent: 100, status: '解析失败'});
     } finally {
       clearInterval(timer);
       setTimeout(() => removePaperOp(id), 700);
@@ -3731,7 +3779,7 @@ async function reparseSelectedPapers() {
   }
   state.selectedPaperIds = [];
   await refreshAll();
-  toast(failures.length ? `閲嶆柊瑙ｆ瀽瀹屾垚锛?{success} 绡囨垚鍔燂紝${failures.length} 绡囧け璐 : `閲嶆柊瑙ｆ瀽瀹屾垚锛?{success} 绡囨垚鍔焋);
+  toast(failures.length ? `重新解析完成：${success} 篇成功，${failures.length} 篇失败` : `重新解析完成：${success} 篇成功`);
 }
 
 function exportSelectedPapers() {
@@ -3757,7 +3805,7 @@ function exportSelectedPapers() {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
-  toast(`宸插鍑?${papers.length} 绡囪鏂囧拰 ${extractionRuns.length} 鏉℃娊鍙栫粨鏋渀);
+  toast(`已导出 ${papers.length} 篇论文和 ${extractionRuns.length} 条抽取结果`);
 }
 
 function togglePaperSetCreate(open = !state.paperSetCreateOpen) {
@@ -3772,24 +3820,24 @@ function togglePaperSetCreate(open = !state.paperSetCreateOpen) {
 async function createPaperSet() {
   const name = $('paperSetNameInput').value.trim();
   const detail = $('paperSetDetailInput').value.trim();
-  if (!name) return toast('璇峰厛濉啓璁烘枃闆嗗悕绉?);
+  if (!name) return toast('请先填写论文集名称');
   await createPaperSetRecord(name, detail, []);
   state.paperSetCreateOpen = false;
   setValue('paperSetNameInput', '');
   setValue('paperSetDetailInput', '');
-  toast('璁烘枃闆嗗凡鍒涘缓');
+  toast('论文集已创建');
   renderPapers();
 }
 
 window.deletePaperSet = async function(id) {
   const paperSet = (state.paperSets || []).find(item => item.id === id);
   if (!paperSet) return;
-  if (!confirm(`纭畾鍒犻櫎璁烘枃闆嗐€?{paperSet.name}銆嶅悧锛熻鏂囨枃浠朵笉浼氳鍒犻櫎銆俙)) return;
+  if (!confirm(`确定删除论文集「${paperSet.name}」吗？论文文件不会被删除。`)) return;
   await api(`/api/paper-sets/${id}`, {method: 'DELETE'});
   state.paperSets = state.paperSets.filter(item => item.id !== id);
   if (state.paperFilters.paperSet === id) state.paperFilters.paperSet = 'all';
   renderPapers();
-  toast('璁烘枃闆嗗凡鍒犻櫎');
+  toast('论文集已删除');
 };
 
 function renderPaperDetail(p) {
@@ -3798,9 +3846,9 @@ function renderPaperDetail(p) {
   const extra = meta.extra || {};
   const published = extra.published ? String(extra.published).slice(0, 10) : '';
   const links = [
-    linkButton(meta.url, meta.arxiv_id ? 'arXiv 椤甸潰' : '鏉ユ簮椤甸潰'),
+    linkButton(meta.url, meta.arxiv_id ? 'arXiv 页面' : '来源页面'),
     linkButton(meta.pdf_url, 'PDF'),
-    p.file_path ? linkButton(`/api/papers/${p.id}/file`, '鏈湴鏂囦欢') : ''
+    p.file_path ? linkButton(`/api/papers/${p.id}/file`, '本地文件') : ''
   ].filter(Boolean).join('');
   const sections = p.sections || [];
   const figures = p.figures || [];
@@ -3814,18 +3862,18 @@ function renderPaperDetail(p) {
           ${meta.year ? `<span>${meta.year}</span>` : ''}
         </div>
         <h3>${escapeHtml(meta.title || 'Untitled')}</h3>
-        <p class="paper-authors">${authors.length ? escapeHtml(authors.join(', ')) : '浣滆€呮湭鐭?}</p>
+        <p class="paper-authors">${authors.length ? escapeHtml(authors.join(', ')) : '作者未知'}</p>
         ${links ? `<div class="paper-links">${links}</div>` : ''}
       </header>
 
       <section class="paper-abstract">
         <h4>Abstract</h4>
-        <p>${escapeHtml(meta.abstract || '鏆傛棤鎽樿銆?)}</p>
+        <p>${escapeHtml(meta.abstract || '暂无摘要。')}</p>
       </section>
 
       <div class="paper-info-grid">
         <section class="paper-info-card">
-          <h4>璁烘枃淇℃伅</h4>
+          <h4>论文信息</h4>
           <dl>
             ${metaRow('Paper ID', escapeHtml(p.id))}
             ${metaRow('DOI', escapeHtml(meta.doi || ''))}
@@ -3833,13 +3881,13 @@ function renderPaperDetail(p) {
             ${metaRow('Published', escapeHtml(published))}
             ${metaRow('Parser', escapeHtml(extra.parser || ''))}
             ${metaRow('MinerU', extra.mineru_error ? escapeHtml(fmt(extra.mineru_error, 220)) : '')}
-            ${metaRow('瑙ｆ瀽鑰楁椂', escapeHtml(fmtDuration(extra.parse_duration_seconds)))}
+            ${metaRow('解析耗时', escapeHtml(fmtDuration(extra.parse_duration_seconds)))}
             ${metaRow('Created', escapeHtml((p.created_at || '').slice(0, 19).replace('T', ' ')))}
           </dl>
         </section>
 
         <section class="paper-info-card">
-          <h4>瑙ｆ瀽姒傝</h4>
+          <h4>解析概览</h4>
           <div class="paper-metrics">
             ${paperMetric('Sections', sections.length)}
             ${paperMetric('Chunks', (p.chunks || []).length)}
@@ -3852,7 +3900,7 @@ function renderPaperDetail(p) {
       <section class="paper-content-block">
         <div class="section-heading">
           <h4>Sections</h4>
-          <span class="meta">瀹屾暣灞曠ず ${sections.length} 涓珷鑺?/span>
+          <span class="meta">完整展示 ${sections.length} 个章节</span>
         </div>
         <div class="section-list">
           ${sections.map((s, index) => `
@@ -3861,35 +3909,35 @@ function renderPaperDetail(p) {
                 <span>${escapeHtml(s.title || 'Untitled section')}</span>
                 <small>page ${s.start_page || '?'}-${s.end_page || '?'}</small>
               </summary>
-              <p>${escapeHtml(s.text || '鏆傛棤绔犺妭鏂囨湰銆?)}</p>
+              <p>${escapeHtml(s.text || '暂无章节文本。')}</p>
             </details>
-          `).join('') || '<p class="muted">鏈瘑鍒埌绔犺妭銆?/p>'}
+          `).join('') || '<p class="muted">未识别到章节。</p>'}
         </div>
       </section>
 
       <section class="paper-content-block">
         <div class="section-heading">
           <h4>Figures & Tables</h4>
-          <span class="meta">灞曠ず鍓?${Math.min(figures.length, 20)} / ${figures.length}</span>
+          <span class="meta">展示前 ${Math.min(figures.length, 20)} / ${figures.length}</span>
         </div>
         <div class="evidence-list">
           ${figures.slice(0, 20).map(f => `
             <div class="evidence">
               ${f.image_path ? `<img class="evidence-image" src="/api/papers/${p.id}/figures/${f.id}/image" alt="${escapeHtml(f.label || 'Figure/Table')}" loading="lazy" />` : ''}
-              <b>${escapeHtml(f.label || 'Figure/Table')}</b>${f.page ? ` 路 page ${f.page}` : ''}<br>
-              ${escapeHtml(fmt(f.caption, 1600) || '鏆傛棤鏍囬銆?)}
+              <b>${escapeHtml(f.label || 'Figure/Table')}</b>${f.page ? ` · page ${f.page}` : ''}<br>
+              ${escapeHtml(fmt(f.caption, 1600) || '暂无标题。')}
             </div>
-          `).join('') || '<p class="muted">鏈瘑鍒埌鍥捐〃鏍囬銆?/p>'}
+          `).join('') || '<p class="muted">未识别到图表标题。</p>'}
         </div>
       </section>
 
       <section class="paper-content-block">
         <div class="section-heading">
           <h4>References</h4>
-          <span class="meta">灞曠ず鍓?${Math.min(references.length, 30)} / ${references.length}</span>
+          <span class="meta">展示前 ${Math.min(references.length, 30)} / ${references.length}</span>
         </div>
         <ol class="reference-list">
-          ${references.slice(0, 30).map(r => `<li>${escapeHtml(fmt(r.raw, 600))}</li>`).join('') || '<li class="muted">鏈瘑鍒埌鍙傝€冩枃鐚€?/li>'}
+          ${references.slice(0, 30).map(r => `<li>${escapeHtml(fmt(r.raw, 600))}</li>`).join('') || '<li class="muted">未识别到参考文献。</li>'}
         </ol>
       </section>
     </article>
@@ -3903,13 +3951,13 @@ window.openPaperDetail = function(id) {
   document.querySelectorAll('.paper-row').forEach(item => {
     item.classList.toggle('active', item.dataset.paperId === id);
   });
-  $('paperModalTitle').textContent = p.metadata?.title || '璁烘枃瑙ｆ瀽璇︽儏';
-  $('paperModalMeta').textContent = `鏉ユ簮锛?{sourceLabel(p.source)} 路 瀵煎叆锛?{fmtTime(p.created_at)} 路 瑙ｆ瀽锛?{fmtTime(p.updated_at)} 路 瑙ｆ瀽鑰楁椂锛?{fmtDuration(p.metadata?.extra?.parse_duration_seconds)}`;
+  $('paperModalTitle').textContent = p.metadata?.title || '论文解析详情';
+  $('paperModalMeta').textContent = `来源：${sourceLabel(p.source)} · 导入：${fmtTime(p.created_at)} · 解析：${fmtTime(p.updated_at)} · 解析耗时：${fmtDuration(p.metadata?.extra?.parse_duration_seconds)}`;
   $('paperReparseBtn').disabled = Boolean(state.paperOps[p.id]);
-  $('paperReparseBtn').textContent = state.paperOps[p.id] ? '閲嶆柊瑙ｆ瀽涓? : '閲嶆柊瑙ｆ瀽';
+  $('paperReparseBtn').textContent = state.paperOps[p.id] ? '重新解析中' : '重新解析';
   $('paperReparseBtn').onclick = () => reparsePaper(p.id);
   $('paperVerifyBtn').disabled = p.metadata?.extra?.review_status === 'verified';
-  $('paperVerifyBtn').textContent = p.metadata?.extra?.review_status === 'verified' ? '宸叉牎楠? : '鏍￠獙閫氳繃';
+  $('paperVerifyBtn').textContent = p.metadata?.extra?.review_status === 'verified' ? '已校验' : '校验通过';
   $('paperVerifyBtn').onclick = () => verifyPaper(p.id);
   $('paperDetail').innerHTML = renderPaperDetail(p);
 
@@ -3942,30 +3990,30 @@ window.closePaperDetail = closePaperDetail;
 window.reparsePaper = async function(id) {
   const p = state.papers.find(x => x.id === id);
   if (!p) return;
-  const timer = startPaperOpProgress(id, '閲嶆柊瑙ｆ瀽涓?);
+  const timer = startPaperOpProgress(id, '重新解析中');
   if (state.selectedPaperId === id && !$('paperDetailModal').hidden) {
     $('paperReparseBtn').disabled = true;
-    $('paperReparseBtn').textContent = '閲嶆柊瑙ｆ瀽涓?;
+    $('paperReparseBtn').textContent = '重新解析中';
   }
-  toast('姝ｅ湪閲嶆柊瑙ｆ瀽璁烘枃...');
+  toast('正在重新解析论文...');
   try {
     const paper = await api(`/api/papers/${id}/reparse`, {method: 'POST'});
     upsertPaperInState(paper);
-    updatePaperOp(id, {percent: 100, status: '瑙ｆ瀽瀹屾垚'});
-    toast('閲嶆柊瑙ｆ瀽瀹屾垚');
+    updatePaperOp(id, {percent: 100, status: '解析完成'});
+    toast('重新解析完成');
     await refreshAll();
     if (state.selectedPaperId === id && !$('paperDetailModal').hidden) {
       openPaperDetail(id);
     }
   } catch (err) {
-    updatePaperOp(id, {percent: 100, status: '瑙ｆ瀽澶辫触'});
+    updatePaperOp(id, {percent: 100, status: '解析失败'});
     toast(err.message);
   } finally {
     clearInterval(timer);
     setTimeout(() => removePaperOp(id), 900);
     if (state.selectedPaperId === id && !$('paperDetailModal').hidden) {
       $('paperReparseBtn').disabled = false;
-      $('paperReparseBtn').textContent = '閲嶆柊瑙ｆ瀽';
+      $('paperReparseBtn').textContent = '重新解析';
     }
   }
 };
@@ -3973,7 +4021,7 @@ window.reparsePaper = async function(id) {
 window.verifyPaper = async function(id) {
   const paper = await api(`/api/papers/${id}/verify`, {method: 'POST'});
   upsertPaperInState(paper);
-  toast('璁烘枃宸叉爣璁颁负宸叉牎楠?);
+  toast('论文已标记为已校验');
   renderPapers();
   renderExtractionPanel();
   openPaperDetail(id);
@@ -3986,14 +4034,14 @@ window.exportPaper = function(id) {
 window.deletePaper = async function(id) {
   const p = state.papers.find(x => x.id === id);
   if (!p) return;
-  if (!confirm(`纭畾鍒犻櫎銆?{p.metadata?.title || id}銆嬪悧锛熺浉鍏虫娊鍙栬褰曞拰绱犳潗涔熶細鍒犻櫎銆俙)) return;
+  if (!confirm(`确定删除《${p.metadata?.title || id}》吗？相关抽取记录和素材也会删除。`)) return;
   await api(`/api/papers/${id}`, {method: 'DELETE'});
   removePaperOp(id);
   if (state.selectedPaperId === id) {
     state.selectedPaperId = null;
     closePaperDetail();
   }
-  toast('璁烘枃宸插垹闄?);
+  toast('论文已删除');
   await refreshAll();
 };
 
@@ -4004,7 +4052,7 @@ function renderExtractionPanel() {
   state.confirmedExtractPaperIds = state.confirmedExtractPaperIds.filter(id => verifiedIds.has(id));
   state.extractDraftPaperIds = state.extractDraftPaperIds.filter(id => verifiedIds.has(id));
   if (!state.confirmedExtractPaperIds.length) state.extractSelectionMode = 'selecting';
-  $('verifiedPaperCount').textContent = verified.length ? `${verified.length} 绡囧凡鏍￠獙` : '鏆傛棤宸叉牎楠岃鏂?;
+  $('verifiedPaperCount').textContent = verified.length ? `${verified.length} 篇已校验` : '暂无已校验论文';
   const readyTemplates = extractionReadyTemplates();
   $('templateSelect').innerHTML = readyTemplates.map(t => `<option value="${t.id}">${escapeHtml(t.name)} (${t.version})</option>`).join('');
   if (selectedTemplateId && readyTemplates.some(t => t.id === selectedTemplateId)) {
@@ -4049,13 +4097,13 @@ function renderExtractPaperChecks() {
   const draft = new Set(state.extractDraftPaperIds.length ? state.extractDraftPaperIds : state.confirmedExtractPaperIds);
   const verified = verifiedPapers();
   const isSelecting = state.extractSelectionMode !== 'confirmed';
-  $('extractPaperSelectionLabel').textContent = isSelecting ? '閫夋嫨宸叉牎楠岃鏂? : '宸查€夎鏂?;
+  $('extractPaperSelectionLabel').textContent = isSelecting ? '选择已校验论文' : '已选论文';
   $('confirmExtractPapersBtn').disabled = !isSelecting || !verified.length;
   $('addExtractPapersBtn').disabled = isSelecting || !verified.length;
   $('selectAllVerifiedPapersBtn').hidden = !isSelecting;
   $('clearSelectedPapersBtn').hidden = !isSelecting;
   if (!verified.length) {
-    $('extractPaperChecks').innerHTML = '<p class="muted">鏆傛棤宸叉牎楠岃鏂囥€傝鍏堝湪鈥滆鏂囩鐞嗏€濅腑鎵撳紑璁烘枃璇︽儏骞剁偣鍑烩€滄牎楠岄€氳繃鈥濄€?/p>';
+    $('extractPaperChecks').innerHTML = '<p class="muted">暂无已校验论文。请先在“论文管理”中打开论文详情并点击“校验通过”。</p>';
     return;
   }
   if (!isSelecting) {
@@ -4065,11 +4113,11 @@ function renderExtractPaperChecks() {
       return `<div class="selected-extract-paper">
         <div>
           <b>${escapeHtml(fmt(p.metadata?.title || p.id, 92))}</b>
-          <span class="muted">${latest ? `鏈€杩戞娊鍙?${fmtTime(latest.created_at)}` : '鏈娊鍙?}</span>
+          <span class="muted">${latest ? `最近抽取 ${fmtTime(latest.created_at)}` : '未抽取'}</span>
         </div>
-        <button type="button" class="selected-extract-remove" aria-label="鍒犻櫎宸查€夎鏂? onclick="removeConfirmedExtractPaper('${escapeHtml(p.id)}')">脳</button>
+        <button type="button" class="selected-extract-remove" aria-label="删除已选论文" onclick="removeConfirmedExtractPaper('${escapeHtml(p.id)}')">×</button>
       </div>`;
-    }).join('') || '<p class="muted">鏆傛棤宸茬‘璁よ鏂囥€傜偣鍑烩€滄柊澧炩€濋€夋嫨璁烘枃鍚庡啀纭畾銆?/p>';
+    }).join('') || '<p class="muted">暂无已确认论文。点击“新增”选择论文后再确定。</p>';
     return;
   }
   $('extractPaperChecks').innerHTML = verified.map(p => {
@@ -4077,7 +4125,7 @@ function renderExtractPaperChecks() {
     return `<label>
       <input type="checkbox" class="extractPaperCheck" value="${escapeHtml(p.id)}" ${draft.has(p.id) || confirmed.has(p.id) ? 'checked' : ''} />
       <span>${escapeHtml(fmt(p.metadata?.title || p.id, 92))}</span>
-      <span class="muted">${latest ? `鏈€杩戞娊鍙?${fmtTime(latest.created_at)}` : '鏈娊鍙?}</span>
+      <span class="muted">${latest ? `最近抽取 ${fmtTime(latest.created_at)}` : '未抽取'}</span>
     </label>`;
   }).join('');
   document.querySelectorAll('.extractPaperCheck').forEach(input => {
@@ -4091,13 +4139,13 @@ function renderTemplateSummary() {
   const readyTemplates = extractionReadyTemplates();
   const t = readyTemplates.find(x => x.id === $('templateSelect').value) || readyTemplates[0];
   if (!t) {
-    $('templateSummary').textContent = '鏆傛棤宸插彂甯冩娊鍙栨ā鏉裤€傝鍏堝湪鈥滃璞″缓妯″伐浣滃彴鈥濅腑鍙戝竷妯℃澘銆?;
+    $('templateSummary').textContent = '暂无已发布抽取模板。请先在“对象建模工作台”中发布模板。';
     return;
   }
   $('templateSummary').innerHTML = `
     <b>${escapeHtml(t.name)}</b>
-    <span>${escapeHtml(t.description || '鏃犺鏄?)}</span>
-    <span>${(t.dimensions || []).length} 涓淮搴?路 婵€娲?Prompt锛?{escapeHtml(t.active_prompt_id || '榛樿')}</span>
+    <span>${escapeHtml(t.description || '无说明')}</span>
+    <span>${(t.dimensions || []).length} 个维度 · 激活 Prompt：${escapeHtml(t.active_prompt_id || '默认')}</span>
   `;
 }
 
@@ -4106,7 +4154,7 @@ function renderDimensionChecks() {
   const t = readyTemplates.find(x => x.id === $('templateSelect').value) || readyTemplates[0];
   $('dimensionChecks').innerHTML = t ? t.dimensions.map(d => `
     <label><input type="checkbox" class="dimCheck" value="${d.name}" checked /> ${escapeHtml(d.label)} <span class="muted">${escapeHtml(d.name)}</span></label>
-  `).join('') : '<p class="muted">鏆傛棤妯℃澘銆?/p>';
+  `).join('') : '<p class="muted">暂无模板。</p>';
 }
 
 function latestRunForPaper(paperId, templateId = '') {
@@ -4131,7 +4179,7 @@ function updateExtractionJob(key, patch, shouldRender = true) {
   if (shouldRender) renderExtractionProgressViews();
 }
 
-function startExtractionJobProgress(key, message = '鎶藉彇涓?) {
+function startExtractionJobProgress(key, message = '抽取中') {
   let value = 12;
   updateExtractionJob(key, {status: 'running', percent: value, message});
   return setInterval(() => {
@@ -4145,37 +4193,37 @@ function renderExtractionPaperRuns() {
   const ids = selectedExtractPaperIds();
   const templateId = $('templateSelect')?.value || '';
   const isSelecting = state.extractSelectionMode !== 'confirmed';
-  $('selectedExtractionCount').textContent = ids.length ? `${ids.length} 绡囧緟澶勭悊` : (isSelecting ? '寰呯‘璁よ鏂? : '璇烽€夋嫨璁烘枃');
+  $('selectedExtractionCount').textContent = ids.length ? `${ids.length} 篇待处理` : (isSelecting ? '待确认论文' : '请选择论文');
   const papers = ids.map(id => state.papers.find(p => p.id === id)).filter(Boolean);
   $('extractionPaperRuns').innerHTML = papers.map(p => {
     const job = state.extractionJobs[jobKey(p.id, templateId)];
     const run = job?.run || latestRunForPaper(p.id, templateId);
     const status = job?.status || (run ? 'completed' : 'idle');
     const statusText = {
-      queued: '绛夊緟鎶藉彇',
-      running: '鎶藉彇涓?,
-      completed: '宸插畬鎴?,
-      failed: '澶辫触',
-      idle: '鏈娊鍙?,
+      queued: '等待抽取',
+      running: '抽取中',
+      completed: '已完成',
+      failed: '失败',
+      idle: '未抽取',
     }[status] || status;
     const progress = extractionJobProgress(job || {status});
     return `<article class="extraction-paper-card ${escapeHtml(status)}">
       <div class="extraction-paper-main">
         <h3>${escapeHtml(p.metadata?.title || p.id)}</h3>
-        <div class="meta">宸叉牎楠?路 ${escapeHtml(sourceLabel(p.source))} 路 ${run ? `鏈€杩戣繍琛?${fmtTime(run.created_at)}` : '鏆傛棤杩愯璁板綍'}</div>
+        <div class="meta">已校验 · ${escapeHtml(sourceLabel(p.source))} · ${run ? `最近运行 ${fmtTime(run.created_at)}` : '暂无运行记录'}</div>
         <div class="extraction-progress-track">
           <div class="extraction-progress-bar" style="width:${progress}%"></div>
         </div>
-        <div class="meta">${escapeHtml(statusText)}${job?.message ? ` 路 ${escapeHtml(job.message)}` : ''}</div>
+        <div class="meta">${escapeHtml(statusText)}${job?.message ? ` · ${escapeHtml(job.message)}` : ''}</div>
         ${run?.errors?.length ? `<pre>${escapeHtml(run.errors.slice(0, 3).join('\n'))}</pre>` : ''}
       </div>
       <div class="extraction-paper-actions">
-        <button type="button" ${run ? '' : 'disabled'} onclick="openExtractionResult('${escapeHtml(run?.id || '')}')">鏌ョ湅缁撴灉</button>
-        <button type="button" ${run ? '' : 'disabled'} onclick="selectRunForReview('${escapeHtml(run?.id || '')}')">浜烘満瀹℃煡</button>
-        <button type="button" ${run ? '' : 'disabled'} onclick="window.open('/api/export/run/${escapeHtml(run?.id || '')}', '_blank')">瀵煎嚭</button>
+        <button type="button" ${run ? '' : 'disabled'} onclick="openExtractionResult('${escapeHtml(run?.id || '')}')">查看结果</button>
+        <button type="button" ${run ? '' : 'disabled'} onclick="selectRunForReview('${escapeHtml(run?.id || '')}')">人机审查</button>
+        <button type="button" ${run ? '' : 'disabled'} onclick="window.open('/api/export/run/${escapeHtml(run?.id || '')}', '_blank')">导出</button>
       </div>
     </article>`;
-  }).join('') || `<p class="muted">${isSelecting ? '璇峰湪宸︿晶鍕鹃€夎鏂囧苟鐐瑰嚮鈥滅‘瀹氣€濄€? : '璇蜂粠宸︿晶閫夋嫨涓€绡囨垨澶氱瘒宸叉牎楠岃鏂囥€?}</p>`;
+  }).join('') || `<p class="muted">${isSelecting ? '请在左侧勾选论文并点击“确定”。' : '请从左侧选择一篇或多篇已校验论文。'}</p>`;
 }
 
 function renderRunList() {
@@ -4184,13 +4232,13 @@ function renderRunList() {
     const t = state.templates.find(x => x.id === r.template_id);
     return `<div class="item">
       <h3>${escapeHtml(p?.metadata.title || r.paper_id)}</h3>
-      <div class="meta">${escapeHtml(t?.name || r.template_id)} 路 run ${r.id} 路 ${r.status} 路 items ${r.items.length} 路 errors ${r.errors.length}</div>
+      <div class="meta">${escapeHtml(t?.name || r.template_id)} · run ${r.id} · ${r.status} · items ${r.items.length} · errors ${r.errors.length}</div>
       ${r.errors.length ? `<pre>${escapeHtml(r.errors.join('\n'))}</pre>` : ''}
-      <button onclick="openExtractionResult('${r.id}')">鏌ョ湅缁撴灉</button>
-      <button onclick="selectRunForReview('${r.id}')">瀹℃煡姝ょ粨鏋?/button>
-      <button onclick="window.open('/api/export/run/${r.id}', '_blank')">瀵煎嚭 JSON</button>
+      <button onclick="openExtractionResult('${r.id}')">查看结果</button>
+      <button onclick="selectRunForReview('${r.id}')">审查此结果</button>
+      <button onclick="window.open('/api/export/run/${r.id}', '_blank')">导出 JSON</button>
     </div>`;
-  }).join('') || '<p class="muted">鏆傛棤鎶藉彇璁板綍銆?/p>';
+  }).join('') || '<p class="muted">暂无抽取记录。</p>';
 }
 
 window.selectRunForReview = function(id) {
@@ -4210,32 +4258,32 @@ window.selectRunForReview = function(id) {
 
 window.openLatestExtractionResult = function(paperId) {
   const run = paperRuns(paperId)[0];
-  if (!run) return toast('杩欑瘒璁烘枃鏆傛棤鎶藉彇缁撴灉');
+  if (!run) return toast('这篇论文暂无抽取结果');
   openExtractionResult(run.id);
 };
 
 window.openExtractionResult = function(id) {
   const run = state.runs.find(r => r.id === id);
-  if (!run) return toast('鏈壘鍒版娊鍙栫粨鏋?);
+  if (!run) return toast('未找到抽取结果');
   state.selectedExtractionRunId = id;
   const paper = state.papers.find(p => p.id === run.paper_id);
   const template = state.templates.find(t => t.id === run.template_id);
   $('extractionResultTitle').textContent = paper?.metadata?.title || run.paper_id;
-  $('extractionResultMeta').textContent = `${template?.name || run.template_id} 路 ${run.status} 路 ${run.items.length} 鏉＄粨鏋?路 ${run.errors.length} 涓敊璇?路 ${fmtTime(run.created_at)}`;
+  $('extractionResultMeta').textContent = `${template?.name || run.template_id} · ${run.status} · ${run.items.length} 条结果 · ${run.errors.length} 个错误 · ${fmtTime(run.created_at)}`;
   $('extractionResultBody').innerHTML = `
-    ${run.errors.length ? `<section class="extraction-result-errors"><h3>閿欒</h3><pre>${escapeHtml(run.errors.join('\n'))}</pre></section>` : ''}
+    ${run.errors.length ? `<section class="extraction-result-errors"><h3>错误</h3><pre>${escapeHtml(run.errors.join('\n'))}</pre></section>` : ''}
     <section class="extraction-result-grid">
       ${run.items.map(item => `
         <article class="extraction-result-item">
           <header>
             <h3>${escapeHtml(item.dimension_label || item.dimension_name)} <span class="badge ${item.review_status}">${escapeHtml(reviewStatusLabel(item.review_status))}</span></h3>
-            <div class="meta">${escapeHtml(item.dimension_name)} 路 缃俊搴?${Number(item.confidence || 0).toFixed(2)}</div>
+            <div class="meta">${escapeHtml(item.dimension_name)} · 置信度 ${Number(item.confidence || 0).toFixed(2)}</div>
           </header>
-          <h4>${escapeHtml(item.edited_title || item.title || '鏈懡鍚嶇粨鏋?)}</h4>
-          <p>${escapeHtml(item.edited_content || item.content || '鏃犲唴瀹?)}</p>
-          ${(item.evidence || []).slice(0, 3).map(ev => `<div class="evidence"><b>${escapeHtml(ev.section_title || 'Unknown')}</b> 路 page ${ev.page_start || '?'}-${ev.page_end || '?'}<br/>${escapeHtml(ev.quote)}</div>`).join('') || '<p class="muted">鏃犺瘉鎹粦瀹氥€?/p>'}
+          <h4>${escapeHtml(item.edited_title || item.title || '未命名结果')}</h4>
+          <p>${escapeHtml(item.edited_content || item.content || '无内容')}</p>
+          ${(item.evidence || []).slice(0, 3).map(ev => `<div class="evidence"><b>${escapeHtml(ev.section_title || 'Unknown')}</b> · page ${ev.page_start || '?'}-${ev.page_end || '?'}<br/>${escapeHtml(ev.quote)}</div>`).join('') || '<p class="muted">无证据绑定。</p>'}
         </article>
-      `).join('') || '<p class="muted">鏆傛棤鎶藉彇鏉＄洰銆?/p>'}
+      `).join('') || '<p class="muted">暂无抽取条目。</p>'}
     </section>
   `;
   $('extractionResultReviewBtn').onclick = () => selectRunForReview(id);
@@ -4253,18 +4301,18 @@ async function runSelectedExtractions() {
   const paperIds = selectedExtractPaperIds();
   const templateId = $('templateSelect').value;
   const dims = [...document.querySelectorAll('.dimCheck:checked')].map(x => x.value);
-  if (!paperIds.length) return toast('璇峰厛閫夋嫨璁烘枃骞剁偣鍑烩€滅‘瀹氣€?);
-  if (!templateId) return toast('璇烽€夋嫨鎶藉彇妯℃澘');
-  if (!dims.length) return toast('璇疯嚦灏戦€夋嫨涓€涓娊鍙栫淮搴?);
+  if (!paperIds.length) return toast('请先选择论文并点击“确定”');
+  if (!templateId) return toast('请选择抽取模板');
+  if (!dims.length) return toast('请至少选择一个抽取维度');
   $('runExtractionBtn').disabled = true;
   paperIds.forEach(id => {
-    updateExtractionJob(jobKey(id, templateId), {status: 'queued', percent: 8, message: '绛夊緟寮€濮?}, false);
+    updateExtractionJob(jobKey(id, templateId), {status: 'queued', percent: 8, message: '等待开始'}, false);
   });
   renderExtractionProgressViews();
   let completed = 0;
   for (const paperId of paperIds) {
     const key = jobKey(paperId, templateId);
-    const timer = startExtractionJobProgress(key, '姝ｅ湪璋冪敤澶фā鍨?);
+    const timer = startExtractionJobProgress(key, '正在调用大模型');
     try {
       const run = await api('/api/extractions/run', {
         method: 'POST',
@@ -4272,7 +4320,7 @@ async function runSelectedExtractions() {
         body: JSON.stringify({paper_id: paperId, template_id: templateId, dimension_names: dims}),
       });
       state.runs = [run, ...state.runs.filter(item => item.id !== run.id)];
-      updateExtractionJob(key, {status: 'completed', percent: 100, message: `${run.items.length} 鏉＄粨鏋滐紝${run.errors.length} 涓敊璇痐, run}, false);
+      updateExtractionJob(key, {status: 'completed', percent: 100, message: `${run.items.length} 条结果，${run.errors.length} 个错误`, run}, false);
       completed += 1;
     } catch (err) {
       updateExtractionJob(key, {status: 'failed', percent: 100, message: err.message}, false);
@@ -4283,7 +4331,7 @@ async function runSelectedExtractions() {
     renderExtractionProgressViews();
   }
   $('runExtractionBtn').disabled = false;
-  toast(`鎶藉彇浠诲姟瀹屾垚锛?{completed}/${paperIds.length} 绡囨垚鍔焋);
+  toast(`抽取任务完成：${completed}/${paperIds.length} 篇成功`);
   await refreshAll();
   paperIds.forEach(id => {
     const key = jobKey(id, templateId);
@@ -4296,71 +4344,71 @@ async function runSelectedExtractions() {
 }
 
 const REVIEW_ACTIONS = [
-  {value: 'confirm', label: '纭姝ｇ‘', hint: '鎶藉彇缁撴灉姝ｇ‘锛屽彲鍏ュ簱', tone: 'accept'},
-  {value: 'revise', label: '淇敼鍚庢帴鍙?, hint: '缁撴灉閮ㄥ垎姝ｇ‘锛屼汉宸ヤ慨鏀瑰悗鍏ュ簱', tone: 'accept'},
-  {value: 'reject', label: '椹冲洖', hint: '缁撴灉閿欒锛屼笉鍏ュ簱', tone: 'reject'},
-  {value: 'mark_not_reported', label: '搴斾负鏈姤鍛?, hint: '璁烘枃娌℃湁鎶ュ憡璇ヤ俊鎭紝妯″瀷涓嶅簲鐢熸垚', tone: 'warn'},
-  {value: 'mark_evidence_insufficient', label: '璇佹嵁涓嶈冻', hint: '绛旀鍙兘瀵癸紝浣嗚瘉鎹笉澶?, tone: 'warn'},
-  {value: 'mark_over_inferred', label: '杩囧害鎺ㄦ柇', hint: '妯″瀷鎺ㄦ柇杩囧', tone: 'warn'},
-  {value: 'mark_wrong_dimension', label: '缁村害褰掔被閿欒', hint: '鎶藉埌浜嗕俊鎭紝浣嗘斁閿欑淮搴?, tone: 'warn'},
-  {value: 'mark_wrong_object', label: '瀵硅薄鍒ゆ柇閿欒', hint: '鏍规湰涓嶅睘浜庡綋鍓嶇爺绌跺璞?, tone: 'reject'},
+  {value: 'confirm', label: '确认正确', hint: '抽取结果正确，可入库', tone: 'accept'},
+  {value: 'revise', label: '修改后接受', hint: '结果部分正确，人工修改后入库', tone: 'accept'},
+  {value: 'reject', label: '驳回', hint: '结果错误，不入库', tone: 'reject'},
+  {value: 'mark_not_reported', label: '应为未报告', hint: '论文没有报告该信息，模型不应生成', tone: 'warn'},
+  {value: 'mark_evidence_insufficient', label: '证据不足', hint: '答案可能对，但证据不够', tone: 'warn'},
+  {value: 'mark_over_inferred', label: '过度推断', hint: '模型推断过多', tone: 'warn'},
+  {value: 'mark_wrong_dimension', label: '维度归类错误', hint: '抽到了信息，但放错维度', tone: 'warn'},
+  {value: 'mark_wrong_object', label: '对象判断错误', hint: '根本不属于当前研究对象', tone: 'reject'},
 ];
 
 const REVIEW_ERROR_TAGS = [
-  {value: 'answer_too_generic', label: '绛旀杩囨硾'},
-  {value: 'answer_too_verbose', label: '绛旀澶暱'},
-  {value: 'missing_key_information', label: '閬楁紡鍏抽敭淇℃伅'},
-  {value: 'wrong_object_boundary', label: '瀵硅薄杈圭晫閿欒'},
-  {value: 'wrong_dimension', label: '缁村害閿欒'},
-  {value: 'wrong_section_evidence', label: '璇佹嵁绔犺妭涓嶅悎閫?},
-  {value: 'evidence_missing', label: '缂哄皯璇佹嵁'},
-  {value: 'evidence_not_support_answer', label: '璇佹嵁涓嶆敮鎾戠瓟妗?},
-  {value: 'over_inference', label: '杩囧害鎺ㄦ柇'},
-  {value: 'not_reported_should_be_used', label: '搴旇鏍囪鏈姤鍛?},
-  {value: 'related_work_misused', label: '璇敤 related work'},
-  {value: 'experiment_result_misused', label: '璇妸瀹為獙缁撴灉褰撴満鍒舵垨缁忛獙'},
-  {value: 'definition_confused', label: '瀹氫箟娣锋穯'},
-  {value: 'method_step_confused', label: '鏂规硶姝ラ娣锋穯'},
-  {value: 'effect_claim_overstated', label: '鏁堟灉 claim 澶稿ぇ'},
+  {value: 'answer_too_generic', label: '答案过泛'},
+  {value: 'answer_too_verbose', label: '答案太长'},
+  {value: 'missing_key_information', label: '遗漏关键信息'},
+  {value: 'wrong_object_boundary', label: '对象边界错误'},
+  {value: 'wrong_dimension', label: '维度错误'},
+  {value: 'wrong_section_evidence', label: '证据章节不合适'},
+  {value: 'evidence_missing', label: '缺少证据'},
+  {value: 'evidence_not_support_answer', label: '证据不支撑答案'},
+  {value: 'over_inference', label: '过度推断'},
+  {value: 'not_reported_should_be_used', label: '应该标记未报告'},
+  {value: 'related_work_misused', label: '误用 related work'},
+  {value: 'experiment_result_misused', label: '误把实验结果当机制或经验'},
+  {value: 'definition_confused', label: '定义混淆'},
+  {value: 'method_step_confused', label: '方法步骤混淆'},
+  {value: 'effect_claim_overstated', label: '效果 claim 夸大'},
 ];
 
 const REVIEW_STATUS_LABELS = {
-  pending: '寰呭鏌?,
-  confirm: '纭姝ｇ‘',
-  revise: '淇敼鍚庢帴鍙?,
-  reject: '椹冲洖',
-  mark_not_reported: '搴斾负鏈姤鍛?,
-  mark_evidence_insufficient: '璇佹嵁涓嶈冻',
-  mark_over_inferred: '杩囧害鎺ㄦ柇',
-  mark_wrong_dimension: '缁村害褰掔被閿欒',
-  mark_wrong_object: '瀵硅薄鍒ゆ柇閿欒',
-  confirmed: '宸茬‘璁?,
-  needs_revision: '闇€淇敼',
-  rejected: '宸查┏鍥?,
+  pending: '待审查',
+  confirm: '确认正确',
+  revise: '修改后接受',
+  reject: '驳回',
+  mark_not_reported: '应为未报告',
+  mark_evidence_insufficient: '证据不足',
+  mark_over_inferred: '过度推断',
+  mark_wrong_dimension: '维度归类错误',
+  mark_wrong_object: '对象判断错误',
+  confirmed: '已确认',
+  needs_revision: '需修改',
+  rejected: '已驳回',
 };
 
 const REVIEW_ROOT_CAUSES = [
-  {value: '', label: '涓嶅綊鍥?},
-  {value: 'result_error', label: '缁撴灉鏈韩閿欒'},
-  {value: 'dimension_definition_unclear', label: '缁村害瀹氫箟涓嶆竻'},
-  {value: 'prompt_instruction_unclear', label: 'Prompt 娌¤娓呮'},
-  {value: 'object_boundary_unclear', label: '瀵硅薄杈圭晫涓嶆竻'},
-  {value: 'evidence_policy_unclear', label: '璇佹嵁瑙勫垯涓嶆竻'},
+  {value: '', label: '不归因'},
+  {value: 'result_error', label: '结果本身错误'},
+  {value: 'dimension_definition_unclear', label: '维度定义不清'},
+  {value: 'prompt_instruction_unclear', label: 'Prompt 没说清楚'},
+  {value: 'object_boundary_unclear', label: '对象边界不清'},
+  {value: 'evidence_policy_unclear', label: '证据规则不清'},
 ];
 
 const REVIEW_SUGGESTED_TARGETS = [
-  {value: '', label: '鏆備笉鎸囧畾'},
-  {value: 'dimension.question', label: '缁村害闂'},
-  {value: 'dimension.boundary', label: '缁村害杈圭晫'},
-  {value: 'dimension.output_schema', label: '缁村害杈撳嚭缁撴瀯'},
-  {value: 'prompt.dimension_instruction', label: 'Prompt 缁村害璇存槑'},
-  {value: 'prompt.evidence_policy', label: 'Prompt 璇佹嵁瑙勫垯'},
-  {value: 'prompt.not_reported_policy', label: 'Prompt 鏈姤鍛婅鍒?},
-  {value: 'prompt.inference_policy', label: 'Prompt 鎺ㄦ柇瑙勫垯'},
-  {value: 'object_definition.working_definition', label: '瀵硅薄宸ヤ綔瀹氫箟'},
-  {value: 'object_definition.inclusion_criteria', label: '瀵硅薄绾冲叆鏍囧噯'},
-  {value: 'object_definition.exclusion_criteria', label: '瀵硅薄鎺掗櫎鏍囧噯'},
-  {value: 'object_definition.observation_signals', label: '瀵硅薄瑙傚療淇″彿'},
+  {value: '', label: '暂不指定'},
+  {value: 'dimension.question', label: '维度问题'},
+  {value: 'dimension.boundary', label: '维度边界'},
+  {value: 'dimension.output_schema', label: '维度输出结构'},
+  {value: 'prompt.dimension_instruction', label: 'Prompt 维度说明'},
+  {value: 'prompt.evidence_policy', label: 'Prompt 证据规则'},
+  {value: 'prompt.not_reported_policy', label: 'Prompt 未报告规则'},
+  {value: 'prompt.inference_policy', label: 'Prompt 推断规则'},
+  {value: 'object_definition.working_definition', label: '对象工作定义'},
+  {value: 'object_definition.inclusion_criteria', label: '对象纳入标准'},
+  {value: 'object_definition.exclusion_criteria', label: '对象排除标准'},
+  {value: 'object_definition.observation_signals', label: '对象观察信号'},
 ];
 
 function reviewableRunItems(run) {
@@ -4481,8 +4529,8 @@ function renderReviewSidebarLayout() {
   layout.classList.toggle('review-sidebar-collapsed', Boolean(state.reviewSidebarCollapsed));
   const toggle = $('reviewSidebarToggleBtn');
   if (toggle) {
-    toggle.textContent = state.reviewSidebarCollapsed ? '鈥? : '鈥?;
-    toggle.title = state.reviewSidebarCollapsed ? '灞曞紑宸︿晶闈㈡澘' : '鏀惰捣宸︿晶闈㈡澘';
+    toggle.textContent = state.reviewSidebarCollapsed ? '›' : '‹';
+    toggle.title = state.reviewSidebarCollapsed ? '展开左侧面板' : '收起左侧面板';
   }
 }
 
@@ -4490,7 +4538,7 @@ function reviewDropdownLabel(selectedIds, options, emptyLabel) {
   const names = options.filter(option => selectedIds.includes(option.id)).map(option => option.label);
   if (!names.length) return emptyLabel;
   if (names.length === 1) return names[0];
-  return `${names.length} 椤瑰凡閫夋嫨`;
+  return `${names.length} 项已选择`;
 }
 
 function renderReviewCheckDropdown(kind, options, selectedIds, open, emptyLabel) {
@@ -4514,7 +4562,7 @@ function renderReviewCheckDropdown(kind, options, selectedIds, open, emptyLabel)
     <div class="review-check-dropdown ${open ? 'open' : ''}">
       <button type="button" class="review-check-trigger" onclick="${toggleFn}()" title="${escapeHtml(label)}">
         <span>${escapeHtml(fmt(label, 36))}</span>
-        <b>${open ? '鏀惰捣' : '閫夋嫨'}</b>
+        <b>${open ? '收起' : '选择'}</b>
       </button>
       ${menu}
     </div>
@@ -4538,14 +4586,14 @@ function renderReviewPanel() {
     state.reviewSelectedPaperIds = [];
     state.reviewSelectedPaperSetIds = [];
     if (templateSelect) {
-      templateSelect.innerHTML = '<option value="">鏆傛棤鍙鏌ュ璞?/option>';
+      templateSelect.innerHTML = '<option value="">暂无可审查对象</option>';
       templateSelect.disabled = true;
     }
-    if (paperDropdown) paperDropdown.innerHTML = renderReviewCheckDropdown('paper', [], [], false, '鏆傛棤鍙鏌ヨ鏂?);
-    if (paperSetDropdown) paperSetDropdown.innerHTML = renderReviewCheckDropdown('paperSet', [], [], false, '鏆傛棤鍙鏌ヨ鏂囬泦鍚?);
-    if (summary) summary.textContent = '鏆傛棤鍙鏌ョ粨鏋?;
+    if (paperDropdown) paperDropdown.innerHTML = renderReviewCheckDropdown('paper', [], [], false, '暂无可审查论文');
+    if (paperSetDropdown) paperSetDropdown.innerHTML = renderReviewCheckDropdown('paperSet', [], [], false, '暂无可审查论文集合');
+    if (summary) summary.textContent = '暂无可审查结果';
     if (scopeBody) scopeBody.hidden = !state.reviewScopePanelOpen;
-    if (scopeIcon) scopeIcon.textContent = state.reviewScopePanelOpen ? '鏀惰捣' : '灞曞紑';
+    if (scopeIcon) scopeIcon.textContent = state.reviewScopePanelOpen ? '收起' : '展开';
     renderReviewFilters();
     renderReviewWorkbench();
     return;
@@ -4594,8 +4642,8 @@ function renderReviewPanel() {
     return {id: run.paper_id, label: paper?.metadata?.title || run.paper_id};
   });
   const setOptions = paperSetOptions.map(item => ({id: item.id, label: item.name}));
-  if (paperDropdown) paperDropdown.innerHTML = renderReviewCheckDropdown('paper', paperOptions, draftPaperIds, state.reviewPaperDropdownOpen, '璇烽€夋嫨璁烘枃');
-  if (paperSetDropdown) paperSetDropdown.innerHTML = renderReviewCheckDropdown('paperSet', setOptions, draftSetIds, state.reviewPaperSetDropdownOpen, '璇烽€夋嫨璁烘枃闆嗗悎');
+  if (paperDropdown) paperDropdown.innerHTML = renderReviewCheckDropdown('paper', paperOptions, draftPaperIds, state.reviewPaperDropdownOpen, '请选择论文');
+  if (paperSetDropdown) paperSetDropdown.innerHTML = renderReviewCheckDropdown('paperSet', setOptions, draftSetIds, state.reviewPaperSetDropdownOpen, '请选择论文集合');
 
   const scopedRuns = reviewScopedRuns();
   state.reviewRunId = (scopedRuns.find(run => run.id === state.reviewRunId) || scopedRuns[0])?.id || null;
@@ -4605,11 +4653,11 @@ function renderReviewPanel() {
     const draftPaperCount = reviewDraftSelectedPaperIds(state.reviewDraftTemplateId).length;
     const draftResultCount = reviewDraftScopedRuns().reduce((total, run) => total + reviewableRunItems(run).length, 0);
     summary.textContent = state.reviewDraftDirty
-      ? `寰呭簲鐢細${draftPaperCount} 绡囪鏂?路 ${draftSetIds.length} 涓泦鍚?路 ${draftResultCount} 鏉＄粨鏋渀
-      : `${appliedPaperCount} 绡囪鏂?路 ${state.reviewSelectedPaperSetIds.length} 涓泦鍚?路 ${appliedResultCount} 鏉＄粨鏋渀;
+      ? `待应用：${draftPaperCount} 篇论文 · ${draftSetIds.length} 个集合 · ${draftResultCount} 条结果`
+      : `${appliedPaperCount} 篇论文 · ${state.reviewSelectedPaperSetIds.length} 个集合 · ${appliedResultCount} 条结果`;
   }
   if (scopeBody) scopeBody.hidden = !state.reviewScopePanelOpen;
-  if (scopeIcon) scopeIcon.textContent = state.reviewScopePanelOpen ? '鏀惰捣' : '灞曞紑';
+  if (scopeIcon) scopeIcon.textContent = state.reviewScopePanelOpen ? '收起' : '展开';
 
   renderReviewFilters();
   renderReviewWorkbench();
@@ -4633,7 +4681,7 @@ function confidenceLevelText(value) {
 }
 
 function reviewStatusLabel(status) {
-  return REVIEW_STATUS_LABELS[status] || status || '寰呭鏌?;
+  return REVIEW_STATUS_LABELS[status] || status || '待审查';
 }
 
 function reviewStatusGroup(status) {
@@ -4664,35 +4712,35 @@ function deepBooleanFlag(value, key) {
 
 function itemModelInferred(item) {
   if (deepBooleanFlag(item.normalized_value, 'model_inferred')) return true;
-  return /妯″瀷鎺ㄦ柇|model[_ -]?inferred|inference|infer/i.test(item.model_notes || '');
+  return /模型推断|model[_ -]?inferred|inference|infer/i.test(item.model_notes || '');
 }
 
 function evidenceSourceHint(ev, dimensionLabel = '') {
   const section = String(ev?.section_title || '').toLowerCase();
-  if (/related work|background/.test(section)) return {tone: 'warn', text: '鐩稿叧宸ヤ綔鎴栬儗鏅珷鑺傦紝瀹规槗璇妸浠栦汉鏂规硶褰撴垚鏈鏂囧璞°€?};
-  if (/conclusion|discussion/.test(section)) return {tone: 'warn', text: '鎬荤粨鎬х珷鑺傦紝寤鸿鏍稿 Method銆丒xperiment 鎴?Results 鏄惁鏈夌洿鎺ユ敮鎾戙€?};
-  if (/method|approach|system|framework|implementation|鏂规硶/.test(section)) return {tone: 'good', text: `鏂规硶绔犺妭锛岄€傚悎浣滀负鈥?{dimensionLabel || '褰撳墠缁村害'}鈥濈殑鐩存帴璇佹嵁銆俙};
-  if (/experiment|result|evaluation|ablation|瀹為獙|缁撴灉|璇勪及|娑堣瀺/.test(section)) return {tone: 'good', text: '瀹為獙鎴栫粨鏋滅珷鑺傦紝閫傚悎楠岃瘉鏁堟灉绫讳俊鎭紝涔熷彲杈呭姪鍒ゆ柇鏂规硶鏄惁鐪熷疄浣跨敤銆?};
-  return {tone: 'neutral', text: '璇风粨鍚堜笂涓嬫枃鍒ゆ柇璇ヨ瘉鎹槸鍚︾洿鎺ユ敮鎾戞ā鍨嬬粨鏋溿€?};
+  if (/related work|background/.test(section)) return {tone: 'warn', text: '相关工作或背景章节，容易误把他人方法当成本论文对象。'};
+  if (/conclusion|discussion/.test(section)) return {tone: 'warn', text: '总结性章节，建议核对 Method、Experiment 或 Results 是否有直接支撑。'};
+  if (/method|approach|system|framework|implementation|方法/.test(section)) return {tone: 'good', text: `方法章节，适合作为“${dimensionLabel || '当前维度'}”的直接证据。`};
+  if (/experiment|result|evaluation|ablation|实验|结果|评估|消融/.test(section)) return {tone: 'good', text: '实验或结果章节，适合验证效果类信息，也可辅助判断方法是否真实使用。'};
+  return {tone: 'neutral', text: '请结合上下文判断该证据是否直接支撑模型结果。'};
 }
 
 function reviewQualityHint(entry) {
   const item = entry.item;
   const evidence = item.evidence || [];
   if (!evidence.length) {
-    return {tone: 'warn', text: '璇ョ粨鏋滄病鏈夌粦瀹氳瘉鎹紝寤鸿浼樺厛閫夋嫨鈥滆瘉鎹笉瓒斥€濇垨杩涘叆淇敼銆?};
+    return {tone: 'warn', text: '该结果没有绑定证据，建议优先选择“证据不足”或进入修改。'};
   }
   if (itemModelInferred(item)) {
-    return {tone: 'warn', text: '璇ョ粨鏋滃寘鍚ā鍨嬫帹鏂紝寤鸿閲嶇偣鏍搁獙璇佹嵁鏄惁鏄庣‘鏀拺鍏抽敭鏈哄埗銆?};
+    return {tone: 'warn', text: '该结果包含模型推断，建议重点核验证据是否明确支撑关键机制。'};
   }
   const risky = evidence.find(ev => /related work|conclusion|discussion/i.test(ev.section_title || ''));
   if (risky) return evidenceSourceHint(risky, item.dimension_label || item.dimension_name);
-  const method = evidence.find(ev => /method|approach|system|framework|implementation|鏂规硶/i.test(ev.section_title || ''));
+  const method = evidence.find(ev => /method|approach|system|framework|implementation|方法/i.test(ev.section_title || ''));
   if (method) return evidenceSourceHint(method, item.dimension_label || item.dimension_name);
   if (Number(item.confidence || 0) < 0.45) {
-    return {tone: 'warn', text: '妯″瀷缃俊搴﹀亸浣庯紝寤鸿浼樺厛鏍稿绛旀鏄惁杩囧害姒傛嫭鎴栫己灏戠洿鎺ヨ瘉鎹€?};
+    return {tone: 'warn', text: '模型置信度偏低，建议优先核对答案是否过度概括或缺少直接证据。'};
   }
-  return {tone: 'neutral', text: '璇峰垽鏂瘉鎹槸鍚︾洿鎺ュ洖绛旀娊鍙栭棶棰橈紝骞剁‘璁ょ瓟妗堟病鏈夎秺杩囪鏂囧師鏂囥€?};
+  return {tone: 'neutral', text: '请判断证据是否直接回答抽取问题，并确认答案没有越过论文原文。'};
 }
 
 function reviewRun() {
@@ -4724,7 +4772,7 @@ function reviewRisk(entry) {
 }
 
 function riskLabel(risk) {
-  return {high: '楂橀闄?, medium: '涓闄?, low: '浣庨闄?}[risk] || risk;
+  return {high: '高风险', medium: '中风险', low: '低风险'}[risk] || risk;
 }
 
 function reviewQueueItems() {
@@ -4794,16 +4842,16 @@ function reviewDimensionQuestion(entry) {
 
 function reviewDimensionDefinition(entry) {
   const dim = (entry.template?.dimensions || []).find(d => d.name === entry.item.dimension_name);
-  if (!dim) return '褰撳墠妯℃澘鏈彁渚涙洿璇︾粏鐨勭淮搴﹀畾涔夈€?;
+  if (!dim) return '当前模板未提供更详细的维度定义。';
   const fields = (dim.fields || []).map(field => typeof field === 'string' ? field : (field.name || field.label || JSON.stringify(field)));
   const parsed = splitImportedDescription(dim.description || '');
-  const description = combineDimensionText(parsed.description, parsed.question, '鎶藉彇闂锛?);
+  const description = combineDimensionText(parsed.description, parsed.question, '抽取问题：');
   const parts = [
-    description ? `璇存槑锛?{description}` : '',
-    dim.output_type ? `杈撳嚭绫诲瀷锛?{dim.output_type}` : '',
-    dim.required_evidence ? '闇€瑕佽瘉鎹細鏄? : '闇€瑕佽瘉鎹細鍚?,
-    dim.allow_not_found ? '鍏佽鏈姤鍛婏細鏄? : '鍏佽鏈姤鍛婏細鍚?,
-    fields.length ? `瀛楁锛?{fields.join('銆?)}` : '',
+    description ? `说明：${description}` : '',
+    dim.output_type ? `输出类型：${dim.output_type}` : '',
+    dim.required_evidence ? '需要证据：是' : '需要证据：否',
+    dim.allow_not_found ? '允许未报告：是' : '允许未报告：否',
+    fields.length ? `字段：${fields.join('、')}` : '',
   ].filter(Boolean);
   return parts.join('\n');
 }
@@ -4813,7 +4861,7 @@ function renderReviewFilters() {
   const dimensions = [...new Map(reviewDraftScopedRuns()
     .flatMap(run => reviewableRunItems(run))
     .map(item => [item.dimension_name, item.dimension_label || item.dimension_name])).entries()];
-  $('reviewDimensionFilter').innerHTML = '<option value="all">鍏ㄩ儴缁村害</option>' + dimensions.map(([id, label]) => `<option value="${escapeHtml(id)}">${escapeHtml(label)}</option>`).join('');
+  $('reviewDimensionFilter').innerHTML = '<option value="all">全部维度</option>' + dimensions.map(([id, label]) => `<option value="${escapeHtml(id)}">${escapeHtml(label)}</option>`).join('');
   const dimensionValue = dimensions.some(([id]) => id === draftFilters.dimension) ? draftFilters.dimension : 'all';
   state.reviewDraftFilters = {...draftFilters, dimension: dimensionValue};
   $('reviewDimensionFilter').value = dimensionValue;
@@ -4835,7 +4883,7 @@ function updateReviewDraftFiltersFromInputs() {
     const draftRuns = reviewDraftScopedRuns();
     const draftPaperCount = reviewDraftSelectedPaperIds(state.reviewDraftTemplateId).length;
     const draftResultCount = draftRuns.reduce((total, run) => total + reviewableRunItems(run).length, 0);
-    summary.textContent = `寰呭簲鐢細${draftPaperCount} 绡囪鏂?路 ${(state.reviewDraftPaperSetIds || []).length} 涓泦鍚?路 ${draftResultCount} 鏉＄粨鏋渀;
+    summary.textContent = `待应用：${draftPaperCount} 篇论文 · ${(state.reviewDraftPaperSetIds || []).length} 个集合 · ${draftResultCount} 条结果`;
   }
 }
 
@@ -4860,11 +4908,11 @@ function renderReviewWorkbench() {
   const template = reviewTemplate(run);
   const prompt = activePromptForTemplate(template);
   if (!run) {
-    $('reviewTemplateName').textContent = '浜烘満鍗忓悓瀹℃煡';
-    $('reviewTemplateMeta').textContent = '鏆傛棤鎶藉彇缁撴灉';
-    $('reviewQueueCount').textContent = '0 鏉?;
-    $('reviewQueueList').innerHTML = '<p class="muted">鏆傛棤瀹℃煡闃熷垪銆?/p>';
-    $('reviewMainPane').innerHTML = '<div class="review-empty">鏆傛棤鍙鏌ョ殑鎶藉彇缁撴灉銆?/div>';
+    $('reviewTemplateName').textContent = '人机协同审查';
+    $('reviewTemplateMeta').textContent = '暂无抽取结果';
+    $('reviewQueueCount').textContent = '0 条';
+    $('reviewQueueList').innerHTML = '<p class="muted">暂无审查队列。</p>';
+    $('reviewMainPane').innerHTML = '<div class="review-empty">暂无可审查的抽取结果。</div>';
     $('reviewEvidencePane').innerHTML = '';
     renderReviewTopbar();
     return;
@@ -4888,17 +4936,17 @@ function renderReviewTopbar(entry = null, prompt = null) {
     const title = entry.paper?.metadata?.title || entry.run.paper_id;
     $('reviewTemplateName').textContent = fmt(title, 72);
     $('reviewTemplateMeta').textContent = [
-      `鐮旂┒瀵硅薄锛?{entry.template?.name || entry.run.template_id}`,
-      `缁村害锛?{entry.item.dimension_label || entry.item.dimension_name}`,
-      `妯℃澘 v${entry.template?.version || '-'}`,
+      `研究对象：${entry.template?.name || entry.run.template_id}`,
+      `维度：${entry.item.dimension_label || entry.item.dimension_name}`,
+      `模板 v${entry.template?.version || '-'}`,
       `Prompt ${prompt?.name || prompt?.id || entry.template?.active_prompt_id || '-'}`,
-      entry.run.model || '鏈煡妯″瀷',
-    ].join(' 路 ');
+      entry.run.model || '未知模型',
+    ].join(' · ');
   } else {
     const run = reviewRun();
     const template = reviewTemplate(run);
-    $('reviewTemplateName').textContent = template?.name || run?.template_id || '浜烘満鍗忓悓瀹℃煡';
-    $('reviewTemplateMeta').textContent = run ? `褰撳墠绛涢€夋潯浠朵笅娌℃湁寰呭鏌ユ潯鐩?路 妯℃澘 v${template?.version || '-'}` : '鏆傛棤鎶藉彇缁撴灉';
+    $('reviewTemplateName').textContent = template?.name || run?.template_id || '人机协同审查';
+    $('reviewTemplateMeta').textContent = run ? `当前筛选条件下没有待审查条目 · 模板 v${template?.version || '-'}` : '暂无抽取结果';
   }
   $('reviewProgressText').textContent = `${done} / ${total}`;
   $('reviewProgressBar').style.width = `${pct}%`;
@@ -4908,7 +4956,7 @@ function renderReviewTopbar(entry = null, prompt = null) {
 }
 
 function renderReviewQueue(entries = filteredReviewEntries()) {
-  $('reviewQueueCount').textContent = `${entries.length} 鏉;
+  $('reviewQueueCount').textContent = `${entries.length} 条`;
   $('reviewQueueList').innerHTML = entries.map((entry, index) => {
     const item = entry.item;
     const active = index === state.reviewItemIndex;
@@ -4917,7 +4965,7 @@ function renderReviewQueue(entries = filteredReviewEntries()) {
         <b>${escapeHtml(item.dimension_label || item.dimension_name)}</b>
         <em class="${entry.risk}">${riskLabel(entry.risk)}</em>
       </span>
-      <span class="review-queue-title">${escapeHtml(fmt(item.edited_title || item.title || '鏈懡鍚嶇粨鏋?, 72))}</span>
+      <span class="review-queue-title">${escapeHtml(fmt(item.edited_title || item.title || '未命名结果', 72))}</span>
       <span class="review-queue-paper">${escapeHtml(fmt(entry.paper?.metadata?.title || entry.run.paper_id, 84))}</span>
       <span class="review-queue-tags">
         <i class="${escapeHtml(item.review_status || 'pending')}">${escapeHtml(reviewStatusLabel(item.review_status || 'pending'))}</i>
@@ -4925,12 +4973,12 @@ function renderReviewQueue(entries = filteredReviewEntries()) {
         ${(item.tags || []).slice(0, 2).map(tag => `<i>${escapeHtml(tag)}</i>`).join('')}
       </span>
     </button>`;
-  }).join('') || '<div class="review-empty small">娌℃湁绗﹀悎绛涢€夋潯浠剁殑寰呭鏌ュ唴瀹广€?/div>';
+  }).join('') || '<div class="review-empty small">没有符合筛选条件的待审查内容。</div>';
 }
 
 function renderReviewMain(entry) {
   if (!entry) {
-    $('reviewMainPane').innerHTML = '<div class="review-empty">璇烽€夋嫨宸︿晶闃熷垪涓殑涓€鏉℃娊鍙栫粨鏋溿€?/div>';
+    $('reviewMainPane').innerHTML = '<div class="review-empty">请选择左侧队列中的一条抽取结果。</div>';
     return;
   }
   const item = entry.item;
@@ -4942,43 +4990,43 @@ function renderReviewMain(entry) {
   $('reviewMainPane').innerHTML = `
     <section class="review-focus-card review-question-card">
       <div class="review-card-header-line">
-        <span class="review-dimension-chip">缁村害锛?{escapeHtml(item.dimension_label || item.dimension_name)}</span>
-        <span class="review-index-chip">绗?${entry.index + 1} 鏉?/span>
+        <span class="review-dimension-chip">维度：${escapeHtml(item.dimension_label || item.dimension_name)}</span>
+        <span class="review-index-chip">第 ${entry.index + 1} 条</span>
       </div>
-      <h3>鎶藉彇闂</h3>
+      <h3>抽取问题</h3>
       <p class="review-question-text">${escapeHtml(question)}</p>
       <details class="review-dimension-detail">
-        <summary>鏌ョ湅缁村害瀹氫箟</summary>
+        <summary>查看维度定义</summary>
         <p>${escapeHtml(reviewDimensionDefinition(entry))}</p>
       </details>
     </section>
 
     <section class="review-focus-card review-result-card">
       <div class="review-card-header-line">
-        <h3>妯″瀷鎶藉彇缁撴灉</h3>
+        <h3>模型抽取结果</h3>
         <span class="badge ${escapeHtml(item.review_status || 'pending')}">${escapeHtml(reviewStatusLabel(item.review_status || 'pending'))}</span>
       </div>
-      <div class="review-answer lead">${escapeHtml(item.edited_content || item.content || '鏃犲唴瀹?)}</div>
+      <div class="review-answer lead">${escapeHtml(item.edited_content || item.content || '无内容')}</div>
       <div class="review-result-meta">
-        <span>缃俊搴︼細<b>${confidenceLevelText(item.confidence)}</b></span>
-        <span>璇佹嵁锛?b>${evidenceCount} 鏉?/b></span>
-        <span>妯″瀷鎺ㄦ柇锛?b>${modelInferred ? '鏄? : '鍚?}</b></span>
-        <span>鐘舵€侊細<b>${escapeHtml(reviewStatusLabel(item.review_status || 'pending'))}</b></span>
+        <span>置信度：<b>${confidenceLevelText(item.confidence)}</b></span>
+        <span>证据：<b>${evidenceCount} 条</b></span>
+        <span>模型推断：<b>${modelInferred ? '是' : '否'}</b></span>
+        <span>状态：<b>${escapeHtml(reviewStatusLabel(item.review_status || 'pending'))}</b></span>
       </div>
       <div class="review-quality-hint ${escapeHtml(qualityHint.tone)}">
-        <b>绯荤粺鎻愮ず</b>
+        <b>系统提示</b>
         <span>${escapeHtml(qualityHint.text)}</span>
       </div>
     </section>
 
     <section class="review-action-zone">
-      <nav class="review-primary-actions" aria-label="瀹℃煡鎿嶄綔">
-        <button type="button" class="primary good ${item.review_status === 'confirm' ? 'active' : ''}" onclick="saveCurrentReview('confirm')" ${savingAttr}>${state.reviewSaving ? '淇濆瓨涓?..' : '纭姝ｇ‘'}</button>
-        <button type="button" class="${state.reviewActionMode === 'revise' ? 'active' : ''}" onclick="openReviewMode('revise')" ${savingAttr}>淇敼</button>
-        <button type="button" class="danger ${state.reviewActionMode === 'reject' || item.review_status === 'reject' ? 'active' : ''}" onclick="openReviewMode('reject')" ${savingAttr}>椹冲洖</button>
-        <button type="button" class="warn ${state.reviewActionMode === 'evidence' || item.review_status === 'mark_evidence_insufficient' ? 'active' : ''}" onclick="openReviewMode('evidence')" ${savingAttr}>璇佹嵁涓嶈冻</button>
-        <button type="button" class="${state.reviewActionMode === 'not_reported' || item.review_status === 'mark_not_reported' ? 'active' : ''}" onclick="openReviewMode('not_reported')" ${savingAttr}>搴斾负鏈姤鍛?/button>
-        <button type="button" class="ghost" onclick="skipReviewItem()" ${savingAttr}>璺宠繃</button>
+      <nav class="review-primary-actions" aria-label="审查操作">
+        <button type="button" class="primary good ${item.review_status === 'confirm' ? 'active' : ''}" onclick="saveCurrentReview('confirm')" ${savingAttr}>${state.reviewSaving ? '保存中...' : '确认正确'}</button>
+        <button type="button" class="${state.reviewActionMode === 'revise' ? 'active' : ''}" onclick="openReviewMode('revise')" ${savingAttr}>修改</button>
+        <button type="button" class="danger ${state.reviewActionMode === 'reject' || item.review_status === 'reject' ? 'active' : ''}" onclick="openReviewMode('reject')" ${savingAttr}>驳回</button>
+        <button type="button" class="warn ${state.reviewActionMode === 'evidence' || item.review_status === 'mark_evidence_insufficient' ? 'active' : ''}" onclick="openReviewMode('evidence')" ${savingAttr}>证据不足</button>
+        <button type="button" class="${state.reviewActionMode === 'not_reported' || item.review_status === 'mark_not_reported' ? 'active' : ''}" onclick="openReviewMode('not_reported')" ${savingAttr}>应为未报告</button>
+        <button type="button" class="ghost" onclick="skipReviewItem()" ${savingAttr}>跳过</button>
       </nav>
       ${renderReviewSecondaryPanel(entry)}
     </section>
@@ -4994,8 +5042,8 @@ function renderReviewPanelActions(confirmLabel, status) {
   const savingAttr = state.reviewSaving ? 'disabled aria-busy="true"' : '';
   return `
     <div class="review-panel-actions">
-      <button type="button" onclick="closeReviewMode()" ${savingAttr}>鍙栨秷</button>
-      <button type="button" class="primary" title="${escapeHtml(confirmLabel)}" onclick="saveCurrentReview('${escapeHtml(status)}')" ${savingAttr}>${state.reviewSaving ? '鎻愪氦涓?..' : '鎻愪氦'}</button>
+      <button type="button" onclick="closeReviewMode()" ${savingAttr}>取消</button>
+      <button type="button" class="primary" title="${escapeHtml(confirmLabel)}" onclick="saveCurrentReview('${escapeHtml(status)}')" ${savingAttr}>${state.reviewSaving ? '提交中...' : '提交'}</button>
     </div>
   `;
 }
@@ -5005,80 +5053,80 @@ function renderReviewSecondaryPanel(entry) {
   const item = entry.item;
   if (state.reviewActionMode === 'revise') {
     const tags = [
-      ['answer_too_generic', '绛旀杩囨硾'],
-      ['missing_key_information', '缂哄皯鍏抽敭淇℃伅'],
-      ['missing_usage_mechanism', '缂哄皯浣跨敤鏈哄埗'],
-      ['evidence_insufficient', '璇佹嵁涓嶈冻'],
-      ['wrong_dimension', '缁村害褰掔被涓嶅噯'],
-      ['other', '鍏朵粬'],
+      ['answer_too_generic', '答案过泛'],
+      ['missing_key_information', '缺少关键信息'],
+      ['missing_usage_mechanism', '缺少使用机制'],
+      ['evidence_insufficient', '证据不足'],
+      ['wrong_dimension', '维度归类不准'],
+      ['other', '其他'],
     ];
     return `
       <section class="review-secondary-panel">
-        <h4>淇绛旀</h4>
+        <h4>修订答案</h4>
         <textarea id="reviewEditContent" class="review-textarea review-edit-compact" rows="4">${escapeHtml(state.reviewDraftContent)}</textarea>
         <div class="review-panel-block">
-          <span>淇敼鍘熷洜</span>
+          <span>修改原因</span>
           <div class="review-panel-tags">${tags.map(([value, label]) => reviewTagButton(value, label)).join('')}</div>
         </div>
-        <textarea id="reviewModeNote" class="review-textarea review-note-editor" rows="2" placeholder="琛ュ厖璇存槑锛屽彲閫?>${escapeHtml(state.reviewDraftNote)}</textarea>
-        ${renderReviewPanelActions('淇濆瓨淇敼骞剁‘璁?, 'revise')}
+        <textarea id="reviewModeNote" class="review-textarea review-note-editor" rows="2" placeholder="补充说明，可选">${escapeHtml(state.reviewDraftNote)}</textarea>
+        ${renderReviewPanelActions('保存修改并确认', 'revise')}
       </section>
     `;
   }
   if (state.reviewActionMode === 'reject') {
     const tags = [
-      ['wrong_object_boundary', '瀵硅薄涓嶅尮閰?],
-      ['wrong_dimension', '缁村害涓嶅尮閰?],
-      ['evidence_not_support_answer', '璇佹嵁涓嶆敮鎸?],
-      ['over_inference', '杩囧害鎺ㄦ柇'],
-      ['related_work_misused', '璇敤 Related Work'],
-      ['not_reported_should_be_used', '搴斾负鏈姤鍛?],
-      ['other', '鍏朵粬'],
+      ['wrong_object_boundary', '对象不匹配'],
+      ['wrong_dimension', '维度不匹配'],
+      ['evidence_not_support_answer', '证据不支持'],
+      ['over_inference', '过度推断'],
+      ['related_work_misused', '误用 Related Work'],
+      ['not_reported_should_be_used', '应为未报告'],
+      ['other', '其他'],
     ];
     return `
       <section class="review-secondary-panel">
-        <h4>璇烽€夋嫨椹冲洖鍘熷洜</h4>
+        <h4>请选择驳回原因</h4>
         <div class="review-panel-tags">${tags.map(([value, label]) => reviewTagButton(value, label)).join('')}</div>
-        <textarea id="reviewModeNote" class="review-textarea review-note-editor" rows="2" placeholder="琛ュ厖璇存槑锛屽彲閫?>${escapeHtml(state.reviewDraftNote)}</textarea>
-        ${renderReviewPanelActions('纭椹冲洖', 'reject')}
+        <textarea id="reviewModeNote" class="review-textarea review-note-editor" rows="2" placeholder="补充说明，可选">${escapeHtml(state.reviewDraftNote)}</textarea>
+        ${renderReviewPanelActions('确认驳回', 'reject')}
       </section>
     `;
   }
   if (state.reviewActionMode === 'evidence') {
     const savingAttr = state.reviewSaving ? 'disabled aria-busy="true"' : '';
     const tags = [
-      ['evidence_missing', '缂哄皯璇佹嵁'],
-      ['evidence_not_support_answer', '璇佹嵁涓嶆敮鎸佺瓟妗?],
-      ['wrong_section_evidence', '璇佹嵁绔犺妭涓嶅悎閫?],
-      ['evidence_too_generic', '璇佹嵁澶硾'],
-      ['need_more_context', '闇€瑕佹洿澶氫笂涓嬫枃'],
-      ['over_inference', '杩囧害鎺ㄦ柇'],
+      ['evidence_missing', '缺少证据'],
+      ['evidence_not_support_answer', '证据不支持答案'],
+      ['wrong_section_evidence', '证据章节不合适'],
+      ['evidence_too_generic', '证据太泛'],
+      ['need_more_context', '需要更多上下文'],
+      ['over_inference', '过度推断'],
     ];
     return `
       <section class="review-secondary-panel">
-        <h4>璇佹嵁闂</h4>
+        <h4>证据问题</h4>
         <div class="review-panel-tags">${tags.map(([value, label]) => reviewTagButton(value, label)).join('')}</div>
-        <textarea id="reviewModeNote" class="review-textarea review-note-editor" rows="2" placeholder="琛ュ厖璇存槑锛屽彲閫?>${escapeHtml(state.reviewDraftNote)}</textarea>
+        <textarea id="reviewModeNote" class="review-textarea review-note-editor" rows="2" placeholder="补充说明，可选">${escapeHtml(state.reviewDraftNote)}</textarea>
         <div class="review-panel-actions">
-          <button type="button" onclick="saveCurrentReview('pending')" ${savingAttr}>浠呰褰曡瘉鎹棶棰?/button>
-          <button type="button" onclick="closeReviewMode()" ${savingAttr}>鍙栨秷</button>
-          <button type="button" class="primary" title="纭鏍囪璇佹嵁涓嶈冻" onclick="saveCurrentReview('mark_evidence_insufficient')" ${savingAttr}>${state.reviewSaving ? '鎻愪氦涓?..' : '鎻愪氦'}</button>
+          <button type="button" onclick="saveCurrentReview('pending')" ${savingAttr}>仅记录证据问题</button>
+          <button type="button" onclick="closeReviewMode()" ${savingAttr}>取消</button>
+          <button type="button" class="primary" title="确认标记证据不足" onclick="saveCurrentReview('mark_evidence_insufficient')" ${savingAttr}>${state.reviewSaving ? '提交中...' : '提交'}</button>
         </div>
       </section>
     `;
   }
   if (state.reviewActionMode === 'not_reported') {
     const tags = [
-      ['not_reported_should_be_used', '璁烘枃鏈姤鍛?],
-      ['evidence_insufficient', '璇佹嵁涓嶈冻锛屼笉鑳芥帹鏂?],
-      ['over_inference', '妯″瀷寮鸿琛ュ叏'],
+      ['not_reported_should_be_used', '论文未报告'],
+      ['evidence_insufficient', '证据不足，不能推断'],
+      ['over_inference', '模型强行补全'],
     ];
     return `
       <section class="review-secondary-panel compact">
-        <h4>纭灏嗚缁村害鏍囪涓?not_reported锛?/h4>
+        <h4>确认将该维度标记为 not_reported？</h4>
         <div class="review-panel-tags">${tags.map(([value, label]) => reviewTagButton(value, label)).join('')}</div>
-        <textarea id="reviewModeNote" class="review-textarea review-note-editor" rows="2" placeholder="琛ュ厖璇存槑锛屽彲閫?>${escapeHtml(state.reviewDraftNote)}</textarea>
-        ${renderReviewPanelActions('纭骞朵笅涓€鏉?, 'mark_not_reported')}
+        <textarea id="reviewModeNote" class="review-textarea review-note-editor" rows="2" placeholder="补充说明，可选">${escapeHtml(state.reviewDraftNote)}</textarea>
+        ${renderReviewPanelActions('确认并下一条', 'mark_not_reported')}
       </section>
     `;
   }
@@ -5096,29 +5144,29 @@ function renderReviewEvidence(entry) {
   const candidates = pool?.feedback_pool?.upgrade_candidates || [];
   $('reviewEvidencePane').innerHTML = `
     <section class="review-side-section">
-      <header><h3>璇佹嵁鏄惁鏀拺妯″瀷缁撴灉锛?/h3><span>${(item.evidence || []).length} 鏉¤瘉鎹?/span></header>
-      ${(item.evidence || []).map((ev, index) => renderEvidenceCard(ev, entry, index)).join('') || '<p class="muted">鏃犺瘉鎹粦瀹氥€?/p>'}
+      <header><h3>证据是否支撑模型结果？</h3><span>${(item.evidence || []).length} 条证据</span></header>
+      ${(item.evidence || []).map((ev, index) => renderEvidenceCard(ev, entry, index)).join('') || '<p class="muted">无证据绑定。</p>'}
     </section>
     <details class="review-side-details">
-      <summary>鏌ョ湅鍚庡彴鍙嶉娌夋穩</summary>
+      <summary>查看后台反馈沉淀</summary>
       <section class="review-side-section subtle">
-        <header><h3>鏈淮搴﹀弽棣堢粺璁?/h3><button type="button" onclick="refreshReviewFeedback().catch(err => toast(err.message))">鍒锋柊</button></header>
+        <header><h3>本维度反馈统计</h3><button type="button" onclick="refreshReviewFeedback().catch(err => toast(err.message))">刷新</button></header>
         <div class="review-side-stats">
-          <div><span>纭鐜?/span><b>${Math.round((metrics.confirm_rate || 0) * 100)}%</b></div>
-          <div><span>淇敼鐜?/span><b>${Math.round((metrics.revise_rate || 0) * 100)}%</b></div>
-          <div><span>椹冲洖鐜?/span><b>${Math.round((metrics.reject_rate || 0) * 100)}%</b></div>
-          <div><span>璇佹嵁闂</span><b>${Math.round((metrics.evidence_issue_rate || 0) * 100)}%</b></div>
+          <div><span>确认率</span><b>${Math.round((metrics.confirm_rate || 0) * 100)}%</b></div>
+          <div><span>修改率</span><b>${Math.round((metrics.revise_rate || 0) * 100)}%</b></div>
+          <div><span>驳回率</span><b>${Math.round((metrics.reject_rate || 0) * 100)}%</b></div>
+          <div><span>证据问题</span><b>${Math.round((metrics.evidence_issue_rate || 0) * 100)}%</b></div>
         </div>
         <div class="feedback-tag-row">
-          ${Object.entries(pool?.feedback_pool?.common_error_tags || {}).slice(0, 5).map(([tag, count]) => `<span>${escapeHtml(tag)} <b>${count}</b></span>`).join('') || '<span>鏆傛棤楂橀閿欒</span>'}
+          ${Object.entries(pool?.feedback_pool?.common_error_tags || {}).slice(0, 5).map(([tag, count]) => `<span>${escapeHtml(tag)} <b>${count}</b></span>`).join('') || '<span>暂无高频错误</span>'}
         </div>
       </section>
       <section class="review-side-section subtle">
-        <header><h3>妯℃澘鍗囩骇鍊欓€?/h3></header>
-        ${candidates.slice(0, 2).map(item => `<div class="review-upgrade-card"><b>${escapeHtml(item.target_level)} 路 ${escapeHtml(item.suggested_target)}</b><p>${escapeHtml(item.recommended_change)}</p></div>`).join('') || '<p class="muted">褰撳墠缁村害鏆傛棤鏄庢樉鍗囩骇鍊欓€夈€?/p>'}
+        <header><h3>模板升级候选</h3></header>
+        ${candidates.slice(0, 2).map(item => `<div class="review-upgrade-card"><b>${escapeHtml(item.target_level)} · ${escapeHtml(item.suggested_target)}</b><p>${escapeHtml(item.recommended_change)}</p></div>`).join('') || '<p class="muted">当前维度暂无明显升级候选。</p>'}
       </section>
       <section class="review-side-section subtle">
-        <header><h3>褰撳墠璁板綍棰勮</h3></header>
+        <header><h3>当前记录预览</h3></header>
         <pre class="review-record-preview">${escapeHtml(JSON.stringify(buildReviewPreview(entry), null, 2))}</pre>
       </section>
     </details>
@@ -5138,21 +5186,21 @@ function renderEvidenceCard(ev, entry, index) {
   const expanded = Boolean(state.reviewExpandedEvidence[contextKey]);
   return `<article class="review-evidence-card ${risky ? 'risky' : ''}">
     <header>
-      <b>璇佹嵁 ${index + 1}</b>
-      <span>${escapeHtml(ev.section_title || 'Unknown')} 路 p.${ev.page_start || '?'}</span>
+      <b>证据 ${index + 1}</b>
+      <span>${escapeHtml(ev.section_title || 'Unknown')} · p.${ev.page_start || '?'}</span>
     </header>
     <p class="review-evidence-hint ${escapeHtml(hint.tone)}">${escapeHtml(hint.text)}</p>
-    <blockquote>${escapeHtml(ev.quote || '鏃犺瘉鎹師鏂?)}</blockquote>
+    <blockquote>${escapeHtml(ev.quote || '无证据原文')}</blockquote>
     <div class="review-evidence-actions">
-      <button type="button" onclick="markEvidenceJudgement(${index}, 'support')">鏀寔绛旀</button>
-      <button type="button" onclick="markEvidenceJudgement(${index}, 'partial')">閮ㄥ垎鏀寔</button>
-      <button type="button" onclick="markEvidenceJudgement(${index}, 'not_support')">涓嶆敮鎸?/button>
-      <button type="button" onclick="toggleEvidenceContext(${index})">${expanded ? '鏀惰捣涓婁笅鏂? : '鐪嬩笂涓嬫枃'}</button>
+      <button type="button" onclick="markEvidenceJudgement(${index}, 'support')">支持答案</button>
+      <button type="button" onclick="markEvidenceJudgement(${index}, 'partial')">部分支持</button>
+      <button type="button" onclick="markEvidenceJudgement(${index}, 'not_support')">不支持</button>
+      <button type="button" onclick="toggleEvidenceContext(${index})">${expanded ? '收起上下文' : '看上下文'}</button>
     </div>
     <div class="review-context-stack ${expanded ? '' : 'collapsed'}">
-      ${prev ? `<div><b>涓婁竴娈?/b><p>${escapeHtml(fmt(prev.text, 320))}</p></div>` : ''}
-      <div class="current"><b>褰撳墠娈?/b><p>${escapeHtml(fmt(current?.text || ev.quote || '', 420))}</p></div>
-      ${next ? `<div><b>涓嬩竴娈?/b><p>${escapeHtml(fmt(next.text, 320))}</p></div>` : ''}
+      ${prev ? `<div><b>上一段</b><p>${escapeHtml(fmt(prev.text, 320))}</p></div>` : ''}
+      <div class="current"><b>当前段</b><p>${escapeHtml(fmt(current?.text || ev.quote || '', 420))}</p></div>
+      ${next ? `<div><b>下一段</b><p>${escapeHtml(fmt(next.text, 320))}</p></div>` : ''}
     </div>
   </article>`;
 }
@@ -5410,7 +5458,7 @@ window.saveCurrentReview = async function(status) {
   };
   state.reviewSaving = true;
   renderReviewMain(entry);
-  toast('姝ｅ湪淇濆瓨瀹℃煡缁撴灉...');
+  toast('正在保存审查结果...');
   try {
     const updatedRun = await api(`/api/extractions/${entry.run.id}/items/${entry.item.id}/review`, {
       method: 'PUT',
@@ -5427,13 +5475,13 @@ window.saveCurrentReview = async function(status) {
     const total = updatedRun.items.length;
     const done = updatedRun.items.filter(item => (item.review_status || 'pending') !== 'pending').length;
     const message = status === 'pending'
-      ? `宸茶褰曡瘉鎹棶棰橈紝褰撳墠鏉＄洰浠嶅緟瀹℃煡銆傝繘搴?${done}/${total}`
-      : `瀹℃煡宸蹭繚瀛橈紝杩涘害 ${done}/${total}`;
+      ? `已记录证据问题，当前条目仍待审查。进度 ${done}/${total}`
+      : `审查已保存，进度 ${done}/${total}`;
     toast(message);
   } catch (err) {
     state.reviewSaving = false;
     renderReviewMain(currentReviewEntry());
-    toast(`淇濆瓨澶辫触锛?{err.message}`);
+    toast(`保存失败：${err.message}`);
   }
 };
 
@@ -5445,16 +5493,16 @@ window.markEvidenceJudgement = function(index, judgement) {
   const entry = currentReviewEntry();
   if (!entry) return;
   if (judgement === 'support') {
-    toast(`璇佹嵁 ${index + 1} 宸插垽鏂负鏀寔绛旀锛屽彲缁х画纭缁撴灉`);
+    toast(`证据 ${index + 1} 已判断为支持答案，可继续确认结果`);
     return;
   }
   if (judgement === 'partial') {
     window.openReviewMode('evidence', ['evidence_too_generic', 'need_more_context']);
-    toast(`璇佹嵁 ${index + 1} 宸叉爣璁颁负閮ㄥ垎鏀寔锛岃纭鏄惁璁板綍璇佹嵁闂`);
+    toast(`证据 ${index + 1} 已标记为部分支持，请确认是否记录证据问题`);
     return;
   }
   window.openReviewMode('evidence', ['evidence_not_support_answer']);
-  toast(`璇佹嵁 ${index + 1} 涓嶆敮鎸佺瓟妗堬紝璇风‘璁ゆ槸鍚︽爣璁颁负璇佹嵁涓嶈冻`);
+  toast(`证据 ${index + 1} 不支持答案，请确认是否标记为证据不足`);
 };
 
 window.toggleEvidenceContext = function(index) {
@@ -5481,8 +5529,8 @@ async function exportReviewRecords() {
 
 function renderMaterialsPanel() {
   const dims = [...new Set(state.materials.map(m => m.dimension_name))].sort();
-  $('materialDimension').innerHTML = '<option value="">鍏ㄩ儴缁村害</option>' + dims.map(d => `<option value="${d}">${d}</option>`).join('');
-  $('comparePaperChecks').innerHTML = state.papers.map(p => `<label><input type="checkbox" class="comparePaper" value="${p.id}" /> ${escapeHtml(fmt(p.metadata.title, 90))}</label>`).join('') || '<p class="muted">鏆傛棤璁烘枃銆?/p>';
+  $('materialDimension').innerHTML = '<option value="">全部维度</option>' + dims.map(d => `<option value="${d}">${d}</option>`).join('');
+  $('comparePaperChecks').innerHTML = state.papers.map(p => `<label><input type="checkbox" class="comparePaper" value="${p.id}" /> ${escapeHtml(fmt(p.metadata.title, 90))}</label>`).join('') || '<p class="muted">暂无论文。</p>';
 }
 
 async function searchMaterials() {
@@ -5493,19 +5541,19 @@ async function searchMaterials() {
   const data = await api('/api/materials/search?' + params.toString());
   $('materialResults').innerHTML = data.items.map(m => `
     <div class="item">
-      <h3>${escapeHtml(m.dimension_label)} 路 ${escapeHtml(m.title)} <span class="badge ${m.review_status}">${escapeHtml(reviewStatusLabel(m.review_status))}</span></h3>
+      <h3>${escapeHtml(m.dimension_label)} · ${escapeHtml(m.title)} <span class="badge ${m.review_status}">${escapeHtml(reviewStatusLabel(m.review_status))}</span></h3>
       <p>${escapeHtml(fmt(m.content, 700))}</p>
       ${(m.evidence || []).slice(0, 2).map(e => `<div class="evidence">${escapeHtml(fmt(e.quote, 260))}</div>`).join('')}
-      <div class="meta">paper ${m.paper_id} 路 tags ${(m.tags || []).join(', ')}</div>
-    </div>`).join('') || '<p class="muted">娌℃湁鍖归厤绱犳潗銆?/p>';
+      <div class="meta">paper ${m.paper_id} · tags ${(m.tags || []).join(', ')}</div>
+    </div>`).join('') || '<p class="muted">没有匹配素材。</p>';
 }
 
 async function comparePapers() {
   const ids = selectedAnalysisPaperIds();
-  if (!ids.length) { toast('璇疯嚦灏戦€夋嫨涓€绡囪鏂?); return; }
+  if (!ids.length) { toast('请至少选择一篇论文'); return; }
   const data = await api('/api/analysis/compare?paper_ids=' + encodeURIComponent(ids.join(',')) + '&template_id=tmpl_experience_v2');
   const cols = ['title', 'year', ...data.dimensions];
-  $('analysisOutput').innerHTML = `<div class="table-wrap"><table><thead><tr>${cols.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead><tbody>${data.matrix.map(row => `<tr>${cols.map(c => `<td>${escapeHtml(fmt(row[c], 600))}</td>`).join('')}</tr>`).join('')}</tbody></table></div><h4>缂哄彛</h4><pre>${escapeHtml(JSON.stringify(data.gaps, null, 2))}</pre>`;
+  $('analysisOutput').innerHTML = `<div class="table-wrap"><table><thead><tr>${cols.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead><tbody>${data.matrix.map(row => `<tr>${cols.map(c => `<td>${escapeHtml(fmt(row[c], 600))}</td>`).join('')}</tr>`).join('')}</tbody></table></div><h4>缺口</h4><pre>${escapeHtml(JSON.stringify(data.gaps, null, 2))}</pre>`;
 }
 
 async function gapAnalysis() {
@@ -5519,11 +5567,11 @@ function selectedAnalysisPaperIds() {
 
 function evidenceGraphTypeLabel(type) {
   return {
-    paper: '璁烘枃',
-    material: '鎶藉彇缁撴灉',
-    dimension: '缁村害',
-    evidence: '璇佹嵁',
-  }[type] || type || '鑺傜偣';
+    paper: '论文',
+    material: '抽取结果',
+    dimension: '维度',
+    evidence: '证据',
+  }[type] || type || '节点';
 }
 
 function evidenceGraphNodeCounts(data) {
@@ -5570,10 +5618,10 @@ function evidenceGraphLayout(data) {
   const width = 1120;
   const height = Math.max(560, maxLayerSize * 38 + 120);
   const columns = {
-    paper: {x: 110, label: '璁烘枃'},
-    material: {x: 400, label: '鎶藉彇缁撴灉'},
-    dimension: {x: 700, label: '缁村害'},
-    evidence: {x: 990, label: '璇佹嵁'},
+    paper: {x: 110, label: '论文'},
+    material: {x: 400, label: '抽取结果'},
+    dimension: {x: 700, label: '维度'},
+    evidence: {x: 990, label: '证据'},
   };
   const positions = new Map();
   Object.entries(layers).forEach(([type, items]) => {
@@ -5630,22 +5678,22 @@ function renderEvidenceGraphSvg(data) {
     return `<path class="evidence-svg-edge evidence-edge-${escapeHtml(link.type || 'unknown')}" d="M ${startX} ${source.y} C ${midX} ${source.y}, ${midX} ${target.y}, ${endX} ${target.y}"><title>${escapeHtml(link.type || '')}</title></path>`;
   }).join('');
   const layerLabels = Object.entries(layout.columns).map(([type, col]) => `
-    <text class="evidence-svg-layer-label" x="${col.x}" y="32">${escapeHtml(col.label)} 路 ${layout.layers[type]?.length || 0}</text>
+    <text class="evidence-svg-layer-label" x="${col.x}" y="32">${escapeHtml(col.label)} · ${layout.layers[type]?.length || 0}</text>
   `).join('');
   const nodes = Object.values(layout.layers)
     .flat()
     .map(node => evidenceGraphNodeShape(node, layout.positions.get(node.id)))
     .join('');
   const omittedNotes = [
-    visible.omitted_visible_evidence_count ? `鍙︽湁 ${visible.omitted_visible_evidence_count} 涓瘉鎹妭鐐逛繚鐣欏湪鈥滃師濮嬫暟鎹€濅腑銆俙 : '',
-    visible.omitted_server_evidence_count ? `鎺ュ彛鏈鐪佺暐 ${visible.omitted_server_evidence_count} 涓瘉鎹妭鐐广€俙 : '',
+    visible.omitted_visible_evidence_count ? `另有 ${visible.omitted_visible_evidence_count} 个证据节点保留在“原始数据”中。` : '',
+    visible.omitted_server_evidence_count ? `接口本次省略 ${visible.omitted_server_evidence_count} 个证据节点。` : '',
   ].filter(Boolean).join(' ');
   const omitted = omittedNotes ? `
-    <div class="evidence-graph-note">涓轰繚鎸佹祻瑙堝櫒娴佺晠锛屽浘涓渶澶氬睍寮€ ${EVIDENCE_GRAPH_MAX_EVIDENCE_NODES} 涓瘉鎹妭鐐广€?{escapeHtml(omittedNotes)}</div>
+    <div class="evidence-graph-note">为保持浏览器流畅，图中最多展开 ${EVIDENCE_GRAPH_MAX_EVIDENCE_NODES} 个证据节点。${escapeHtml(omittedNotes)}</div>
   ` : '';
   return `
     ${omitted}
-    <svg class="evidence-graph-svg" viewBox="0 0 ${layout.width} ${layout.height}" width="${layout.width}" height="${layout.height}" role="img" aria-label="璇佹嵁鍥?>
+    <svg class="evidence-graph-svg" viewBox="0 0 ${layout.width} ${layout.height}" width="${layout.width}" height="${layout.height}" role="img" aria-label="证据图">
       <defs>
         <marker id="evidenceGraphArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
           <path d="M 0 0 L 8 4 L 0 8 z"></path>
@@ -5666,29 +5714,29 @@ function renderEvidenceGraphShell(data, paperIds) {
     <section class="evidence-graph-panel">
       <header class="evidence-graph-header">
         <div>
-          <h3>璇佹嵁鍥?/h3>
-          <p>浣跨敤杞婚噺鍒嗗眰鍥惧睍绀?${paperIds.length} 绡囪鏂囩殑鎶藉彇缁撴灉璇佹嵁缃戠粶锛岄€傚悎杈冨鑺傜偣鏃跺揩閫熸祻瑙堛€?/p>
+          <h3>证据图</h3>
+          <p>使用轻量分层图展示 ${paperIds.length} 篇论文的抽取结果证据网络，适合较多节点时快速浏览。</p>
         </div>
         <div class="evidence-graph-actions">
-          <button type="button" onclick="fitEvidenceGraph()">閫傞厤瑙嗗浘</button>
-          <button type="button" onclick="toggleEvidenceGraphRaw()">鍘熷鏁版嵁</button>
+          <button type="button" onclick="fitEvidenceGraph()">适配视图</button>
+          <button type="button" onclick="toggleEvidenceGraphRaw()">原始数据</button>
         </div>
       </header>
       <div class="evidence-graph-stats">
-        <span>鑺傜偣 <b>${(data.nodes || []).length}</b></span>
-        <span>杈?<b>${(data.links || []).length}</b></span>
-        <span>璁烘枃 <b>${counts.paper || 0}</b></span>
-        <span>鎶藉彇缁撴灉 <b>${counts.material || 0}</b></span>
-        <span>璇佹嵁 <b>${counts.evidence || 0}</b></span>
+        <span>节点 <b>${(data.nodes || []).length}</b></span>
+        <span>边 <b>${(data.links || []).length}</b></span>
+        <span>论文 <b>${counts.paper || 0}</b></span>
+        <span>抽取结果 <b>${counts.material || 0}</b></span>
+        <span>证据 <b>${counts.evidence || 0}</b></span>
       </div>
       <div class="evidence-graph-legend">
-        <span><i class="paper"></i>璁烘枃</span>
-        <span><i class="material"></i>鎶藉彇缁撴灉</span>
-        <span><i class="dimension"></i>缁村害</span>
-        <span><i class="evidence"></i>璇佹嵁</span>
+        <span><i class="paper"></i>论文</span>
+        <span><i class="material"></i>抽取结果</span>
+        <span><i class="dimension"></i>维度</span>
+        <span><i class="evidence"></i>证据</span>
       </div>
       <div id="evidenceGraphCanvas" class="evidence-graph-canvas">
-        <div class="graph-loading">姝ｅ湪鐢熸垚璇佹嵁鍥?..</div>
+        <div class="graph-loading">正在生成证据图...</div>
       </div>
       <pre id="evidenceGraphRaw" class="evidence-graph-raw" hidden></pre>
     </section>
@@ -5707,7 +5755,7 @@ function bindEvidenceGraphNodeEvents(data) {
     nodeEl.onclick = () => {
       const node = byId.get(nodeEl.dataset.graphNode);
       if (!node) return;
-      toast(`${evidenceGraphTypeLabel(node.type)}锛?{node.label || node.id}`);
+      toast(`${evidenceGraphTypeLabel(node.type)}：${node.label || node.id}`);
     };
   });
 }
@@ -5716,7 +5764,7 @@ function renderEvidenceGraphVisualization(data) {
   const canvas = $('evidenceGraphCanvas');
   if (!canvas) return;
   if (!(data.nodes || []).length) {
-    renderEvidenceGraphFallback('娌℃湁鍙鍖栬妭鐐广€傝纭鎵€閫夎鏂囧凡鏈夋娊鍙栫粨鏋滃拰璇佹嵁銆?);
+    renderEvidenceGraphFallback('没有可视化节点。请确认所选论文已有抽取结果和证据。');
     return;
   }
   canvas.innerHTML = renderEvidenceGraphSvg(data);
@@ -5725,7 +5773,7 @@ function renderEvidenceGraphVisualization(data) {
 
 async function evidenceGraph() {
   const ids = selectedAnalysisPaperIds();
-  if (!ids.length) { toast('璇疯嚦灏戦€夋嫨涓€绡囪鏂?); return; }
+  if (!ids.length) { toast('请至少选择一篇论文'); return; }
   const data = await api('/api/analysis/evidence-graph?paper_ids=' + encodeURIComponent(ids.join(',')));
   renderEvidenceGraphShell(data, ids);
   renderEvidenceGraphVisualization(data);
@@ -5743,7 +5791,7 @@ window.toggleEvidenceGraphRaw = function() {
 window.fitEvidenceGraph = function() {
   const canvas = $('evidenceGraphCanvas');
   if (!canvas) {
-    toast('璇佹嵁鍥惧皻鏈敓鎴?);
+    toast('证据图尚未生成');
     return;
   }
   canvas.scrollTo({left: 0, top: 0, behavior: 'smooth'});
@@ -5892,7 +5940,7 @@ async function bindEvents() {
   };
   $('confirmExtractPapersBtn').onclick = () => {
     const ids = draftExtractPaperIds();
-    if (!ids.length) return toast('璇疯嚦灏戦€夋嫨涓€绡囧凡鏍￠獙璁烘枃');
+    if (!ids.length) return toast('请至少选择一篇已校验论文');
     state.confirmedExtractPaperIds = ids;
     state.extractDraftPaperIds = ids;
     setExtractionSelectionMode('confirmed');
@@ -5935,26 +5983,26 @@ async function bindEvents() {
   $('exportReviewRecordsBtn').onclick = () => exportReviewRecords().catch(err => toast(err.message));
   $('uploadBtn').onclick = async () => {
     const file = $('paperFile').files[0];
-    if (!file) return toast('璇烽€夋嫨鏂囦欢');
+    if (!file) return toast('请选择文件');
     const form = new FormData(); form.append('file', file);
-    await runPaperImport('姝ｅ湪涓婁紶骞惰В鏋?..', file.name, 'upload', () => api('/api/papers/upload', {method:'POST', body: form}));
+    await runPaperImport('正在上传并解析...', file.name, 'upload', () => api('/api/papers/upload', {method:'POST', body: form}));
   };
   $('arxivBtn').onclick = async () => {
-    const values = getArxivValues(); if (!values.length) return toast('璇疯緭鍏?arXiv ID');
+    const values = getArxivValues(); if (!values.length) return toast('请输入 arXiv ID');
     if (values.length > 1) {
       await runArxivBatchImport(values);
       return;
     }
-    const title = values.length === 1 ? values[0] : `鎵归噺 arXiv 瀵煎叆锛?{values.length} 绡囷級`;
-    await runPaperImport('姝ｅ湪浠?arXiv 瀵煎叆...', title, 'arxiv', () => api('/api/papers/import/arxiv', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({arxiv_id_or_url: values[0]})}));
+    const title = values.length === 1 ? values[0] : `批量 arXiv 导入（${values.length} 篇）`;
+    await runPaperImport('正在从 arXiv 导入...', title, 'arxiv', () => api('/api/papers/import/arxiv', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({arxiv_id_or_url: values[0]})}));
   };
   $('doiBtn').onclick = async () => {
-    const v = $('doiInput').value.trim(); if (!v) return toast('璇疯緭鍏?DOI');
-    await runPaperImport('姝ｅ湪浠?DOI 瀵煎叆...', v, 'doi', () => api('/api/papers/import/doi', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({doi: v, try_download_pdf: $('doiPdf').checked})}));
+    const v = $('doiInput').value.trim(); if (!v) return toast('请输入 DOI');
+    await runPaperImport('正在从 DOI 导入...', v, 'doi', () => api('/api/papers/import/doi', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({doi: v, try_download_pdf: $('doiPdf').checked})}));
   };
   $('bibtexBtn').onclick = async () => {
-    const v = $('bibtexInput').value.trim(); if (!v) return toast('璇疯緭鍏?BibTeX');
-    await runPaperImport('姝ｅ湪瀵煎叆 BibTeX...', 'BibTeX 鍏冩暟鎹?, 'bibtex', () => api('/api/papers/import/bibtex', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({bibtex_text: v})}));
+    const v = $('bibtexInput').value.trim(); if (!v) return toast('请输入 BibTeX');
+    await runPaperImport('正在导入 BibTeX...', 'BibTeX 元数据', 'bibtex', () => api('/api/papers/import/bibtex', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({bibtex_text: v})}));
   };
   $('runExtractionBtn').onclick = runSelectedExtractions;
   $('searchMaterialsBtn').onclick = searchMaterials;
