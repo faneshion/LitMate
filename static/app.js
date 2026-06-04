@@ -5662,9 +5662,6 @@ function selectedCheckboxValues(selector) {
 }
 
 function materialDropdownLabel(selectedLabels, total) {
-  if (!selectedLabels.length) return '未选择';
-  if (selectedLabels.length === total) return '全部';
-  if (selectedLabels.length <= 2) return selectedLabels.join('、');
   return `${selectedLabels.length} 项`;
 }
 
