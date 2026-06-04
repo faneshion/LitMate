@@ -192,6 +192,7 @@ class ExtractionRun(BaseModel):
     template_id: str
     status: str = "created"
     model: str = ""
+    duration_seconds: Optional[float] = None
     items: List[ExtractedItem] = Field(default_factory=list)
     errors: List[str] = Field(default_factory=list)
     created_at: str = Field(default_factory=now_iso)

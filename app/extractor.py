@@ -3,11 +3,12 @@ from __future__ import annotations
 import json
 import math
 import re
+import time
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .config import settings
 from .llm_client import LLMClient
-from .models import DimensionConfig, Evidence, ExtractedItem, ExtractionRun, ExtractionTemplate, Paper, ReviewStatus
+from .models import DimensionConfig, Evidence, ExtractedItem, ExtractionRun, ExtractionTemplate, Paper, ReviewStatus, now_iso
 from .section_policy import (
     default_section_policy_for_dimension,
     normalize_section_policy,
@@ -216,6 +217,7 @@ class ExperienceExtractor:
         self.llm = llm_client or LLMClient()
 
     async def run(self, paper: Paper, template: ExtractionTemplate, selected_dimensions: Optional[List[str]] = None) -> ExtractionRun:
+        started_at = time.perf_counter()
         dimensions = template.dimensions
         if selected_dimensions:
             selected = set(selected_dimensions)
@@ -228,6 +230,8 @@ class ExperienceExtractor:
             except Exception as exc:
                 run.errors.append(f"{dimension.name}: {exc}")
         run.status = "completed_with_errors" if run.errors else "completed"
+        run.duration_seconds = round(time.perf_counter() - started_at, 3)
+        run.updated_at = now_iso()
         return run
 
     async def extract_dimension(self, paper: Paper, template: ExtractionTemplate, dimension: DimensionConfig) -> List[ExtractedItem]:
