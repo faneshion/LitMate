@@ -4720,6 +4720,14 @@ body.review-sidebar-resizing {
   font-size: 15px;
   line-height: 1.75;
 }
+.review-answer.lead.highlighted {
+  border-color: #93c5fd;
+  border-left: 4px solid #2563eb;
+  background: #eff6ff;
+  color: #0f172a;
+  font-weight: 650;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.08);
+}
 .review-result-meta {
   display: flex;
   flex-wrap: wrap;
@@ -5039,6 +5047,10 @@ body.review-sidebar-resizing {
   border-color: #bfdbfe;
   background: #eff6ff;
 }
+.review-context-stack .review-context-combined {
+  border-color: #bfdbfe;
+  background: #f8fbff;
+}
 .review-context-stack b {
   display: block;
   margin-bottom: 4px;
@@ -5050,6 +5062,15 @@ body.review-sidebar-resizing {
   color: #334155;
   font-size: 12px;
   line-height: 1.55;
+  white-space: pre-wrap;
+}
+.review-context-evidence {
+  color: #0f172a;
+  font-weight: 800;
+  text-decoration-line: underline;
+  text-decoration-thickness: 2px;
+  text-decoration-color: #2563eb;
+  text-underline-offset: 3px;
 }
 .review-side-stats {
   display: grid;
