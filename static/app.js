@@ -5338,15 +5338,61 @@ function evidenceRangeInText(text, quote) {
   return {start, end};
 }
 
+function mergeEvidenceRanges(ranges) {
+  return ranges
+    .filter(range => Number.isFinite(range.start) && Number.isFinite(range.end) && range.end > range.start)
+    .sort((a, b) => a.start - b.start)
+    .reduce((merged, range) => {
+      const last = merged[merged.length - 1];
+      if (!last || range.start > last.end) merged.push({...range});
+      else last.end = Math.max(last.end, range.end);
+      return merged;
+    }, []);
+}
+
+function evidenceQuoteFragments(quote) {
+  return String(quote || '')
+    .split(/\s*(?:\[\s*(?:\.{3,}|…+)\s*\]|\(\s*(?:\.{3,}|…+)\s*\)|\.{3,}|…+)\s*/g)
+    .map(fragment => fragment.trim())
+    .filter(fragment => fragment.length >= 4);
+}
+
+function evidenceRangesInText(text, quote) {
+  const value = String(text || '');
+  const needle = String(quote || '').trim();
+  const fullRange = evidenceRangeInText(value, needle);
+  if (fullRange) return [fullRange];
+
+  const fragments = evidenceQuoteFragments(needle);
+  if (fragments.length < 2) return [];
+  const source = normalizeTextWithMap(value);
+  const ranges = [];
+  let searchFrom = 0;
+  fragments.forEach(fragment => {
+    const target = normalizeTextWithMap(fragment).text.trim();
+    if (!target) return;
+    const normalizedIndex = source.text.indexOf(target, searchFrom);
+    if (normalizedIndex < 0) return;
+    const lastNormalizedIndex = normalizedIndex + target.length - 1;
+    const start = source.map[normalizedIndex];
+    const end = source.map[lastNormalizedIndex] + 1;
+    if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+      ranges.push({start, end});
+      searchFrom = normalizedIndex + target.length;
+    }
+  });
+  return ranges.length ? mergeEvidenceRanges(ranges) : [];
+}
+
 function compactCurrentContext(text, quote) {
   const value = String(text || '').trim();
   const needle = String(quote || '').trim();
   if (!value) return needle;
   if (!needle) return compactContextSnippet(value, 1600);
-  const range = evidenceRangeInText(value, needle);
-  if (!range) return compactContextSnippet(value, 1600);
-  const start = Math.max(0, range.start - 720);
-  const end = Math.min(value.length, range.end + 900);
+  const ranges = evidenceRangesInText(value, needle);
+  if (!ranges.length) return compactContextSnippet(value, 1600);
+  const start = Math.max(0, ranges[0].start - 720);
+  const end = Math.min(value.length, ranges[ranges.length - 1].end + 900);
   return `${start > 0 ? '...' : ''}${value.slice(start, end).trim()}${end < value.length ? '...' : ''}`;
 }
 
@@ -5354,9 +5400,15 @@ function renderUnderlinedEvidenceContext(text, quote) {
   const value = String(text || '').trim();
   const needle = String(quote || '').trim();
   if (!needle) return escapeHtml(value);
-  const range = evidenceRangeInText(value, needle);
-  if (!range) return escapeHtml(value);
-  return `${escapeHtml(value.slice(0, range.start))}<span class="review-context-evidence">${escapeHtml(value.slice(range.start, range.end))}</span>${escapeHtml(value.slice(range.end))}`;
+  const ranges = evidenceRangesInText(value, needle);
+  if (!ranges.length) return escapeHtml(value);
+  let cursor = 0;
+  return ranges.map(range => {
+    const before = escapeHtml(value.slice(cursor, range.start));
+    const current = `<span class="review-context-evidence">${escapeHtml(value.slice(range.start, range.end))}</span>`;
+    cursor = range.end;
+    return before + current;
+  }).join('') + escapeHtml(value.slice(cursor));
 }
 
 function renderEvidenceContextHtml(prev, current, next, ev) {
