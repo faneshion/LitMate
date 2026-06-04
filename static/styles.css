@@ -1198,7 +1198,7 @@ hr { border: none; border-top: 1px solid var(--line); margin: 18px 0; }
 }
 .materials-layout {
   display: grid;
-  grid-template-columns: minmax(280px, var(--materials-sidebar-width, 320px)) 14px minmax(520px, 1fr) minmax(300px, 340px);
+  grid-template-columns: minmax(280px, var(--materials-sidebar-width, 320px)) 14px minmax(0, 1fr) minmax(300px, 340px);
   column-gap: 0;
   row-gap: 12px;
   align-items: stretch;
@@ -1206,7 +1206,7 @@ hr { border: none; border-top: 1px solid var(--line); margin: 18px 0; }
   --materials-sidebar-width: 320px;
 }
 .materials-layout.materials-sidebar-collapsed {
-  grid-template-columns: 0 14px minmax(520px, 1fr) minmax(300px, 340px);
+  grid-template-columns: 0 14px minmax(0, 1fr) minmax(300px, 340px);
 }
 .materials-layout.materials-sidebar-collapsed .materials-sidebar {
   display: none;
@@ -1224,6 +1224,7 @@ hr { border: none; border-top: 1px solid var(--line); margin: 18px 0; }
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.035);
 }
 .materials-sidebar {
+  grid-column: 1;
   display: grid;
   align-content: start;
   gap: 12px;
@@ -1231,6 +1232,7 @@ hr { border: none; border-top: 1px solid var(--line); margin: 18px 0; }
   padding: 14px;
 }
 .materials-sidebar-resize {
+  grid-column: 2;
   position: relative;
   z-index: 20;
   height: calc(100vh - 252px);
@@ -1517,6 +1519,7 @@ body.materials-sidebar-resizing {
   margin-top: 2px;
 }
 .materials-main-pane {
+  grid-column: 3;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
   gap: 12px;
@@ -1620,6 +1623,7 @@ body.materials-sidebar-resizing {
   font-weight: 750;
 }
 .materials-insight-pane {
+  grid-column: 4;
   display: grid;
   align-content: start;
   gap: 12px;
@@ -5639,11 +5643,11 @@ body.modal-open { overflow: hidden; }
     grid-template-columns: 1fr;
   }
   .materials-layout {
-    grid-template-columns: minmax(280px, var(--materials-sidebar-width, 320px)) 14px minmax(520px, 1fr) minmax(300px, 340px);
+    grid-template-columns: minmax(280px, var(--materials-sidebar-width, 320px)) 14px minmax(0, 1fr) minmax(300px, 340px);
     overflow-x: auto;
   }
   .materials-layout.materials-sidebar-collapsed {
-    grid-template-columns: 0 14px minmax(520px, 1fr) minmax(300px, 340px);
+    grid-template-columns: 0 14px minmax(0, 1fr) minmax(300px, 340px);
   }
   .materials-sidebar,
   .materials-main-pane,
