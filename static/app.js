@@ -58,6 +58,9 @@ const state = {
   materialDropdownOpen: null,
   materialAnalysisType: 'overview',
   materialCurrentItems: [],
+  materialListQuery: '',
+  materialCompareGroupMode: 'none',
+  materialCompareOnlyUnverified: false,
   reviewItemIndex: 0,
   reviewFilters: {dimension: 'all', status: 'all', risk: 'all', query: ''},
   reviewActionMode: null,
@@ -5934,36 +5937,181 @@ window.toggleMaterialScopePanel = function() {
   renderMaterialScopePanel();
 };
 
+function materialItemContent(item) {
+  return item?.edited_content || item?.content || '';
+}
+
+function materialItemAccepted(item) {
+  return reviewStatusGroup(item?.review_status || 'pending') === 'accepted';
+}
+
+function materialLooksNotReported(text) {
+  return /not[_\s-]?reported|未报告|无直接|没有报告|未提及|not reported/i.test(String(text || ''));
+}
+
+function materialEvidenceLabel(item) {
+  const ev = (item?.evidence || [])[0];
+  if (!ev) return '-';
+  const section = ev.section_title || ev.section || 'Evidence';
+  const page = ev.page_start || ev.page || ev.page_number || '';
+  return page ? `${section} p.${page}` : section;
+}
+
+function materialDimensionMatches(dim, pattern) {
+  return pattern.test(`${dim.value || ''} ${dim.label || ''}`);
+}
+
+function materialItemsForPaperDimension(items, paperId, dimensionName) {
+  return (items || []).filter(item => item.paper_id === paperId && item.dimension_name === dimensionName);
+}
+
+function materialPrimaryCellItem(items, paperId, dimensionName) {
+  return materialItemsForPaperDimension(items, paperId, dimensionName)
+    .sort((a, b) => Number(materialItemAccepted(b)) - Number(materialItemAccepted(a)) || Number(b.confidence || 0) - Number(a.confidence || 0))[0] || null;
+}
+
+function materialPaperHasDimensionSignal(items, paperId, pattern, predicate = () => true) {
+  const dims = materialTemplateDimensions().filter(dim => materialDimensionMatches(dim, pattern)).map(dim => dim.value);
+  return (items || []).some(item => item.paper_id === paperId && dims.includes(item.dimension_name) && predicate(item));
+}
+
+function materialOverviewStats(items) {
+  const papers = materialScopedPapers();
+  const acceptedItems = items.filter(materialItemAccepted);
+  const evidenceCount = items.reduce((total, item) => total + (item.evidence || []).length, 0);
+  const evidenceCoverage = items.length ? Math.round(items.filter(item => (item.evidence || []).length).length / items.length * 100) : 0;
+  const objectInstanceCount = new Set(items.map(item => item.paper_id)).size;
+  const effectPaperCount = papers.filter(paper => materialPaperHasDimensionSignal(items, paper.id, /(evaluation|effect|experiment|效果|验证|实验|评估)/i, item => {
+    const text = materialItemContent(item);
+    return materialItemAccepted(item) && !materialLooksNotReported(text);
+  })).length;
+  const ablationPaperCount = papers.filter(paper => (items || []).some(item =>
+    item.paper_id === paper.id && /ablation|消融/i.test(`${materialItemContent(item)} ${(item.evidence || []).map(ev => ev.quote).join(' ')}`)
+  )).length;
+  const updateDims = materialTemplateDimensions().filter(dim => materialDimensionMatches(dim, /(update|refine|更新|迭代|修订)/i)).map(dim => dim.value);
+  const updateMissingCount = updateDims.length
+    ? papers.filter(paper => {
+        const updateItems = items.filter(item => item.paper_id === paper.id && updateDims.includes(item.dimension_name));
+        return !updateItems.length || updateItems.every(item => materialLooksNotReported(materialItemContent(item)));
+      }).length
+    : papers.filter(paper => !(items || []).some(item => item.paper_id === paper.id && /(update|refine|更新|迭代|修订)/i.test(materialItemContent(item)))).length;
+  return [
+    ['论文数', papers.length],
+    ['对象实例', objectInstanceCount],
+    ['已确认素材', acceptedItems.length],
+    ['证据片段', evidenceCount],
+    ['证据覆盖率', `${evidenceCoverage}%`],
+    ['有效果验证论文', effectPaperCount],
+    ['有消融实验论文', ablationPaperCount],
+    ['未报告更新机制论文', updateMissingCount],
+  ];
+}
+
+function materialDimensionCoverage(items) {
+  const papers = materialScopedPapers();
+  const total = Math.max(1, papers.length);
+  return materialTemplateDimensions().map(dim => {
+    const count = papers.filter(paper => materialItemsForPaperDimension(items, paper.id, dim.value).some(materialItemAccepted)).length;
+    return {dimension: dim, rate: Math.round(count / total * 100), count};
+  });
+}
+
+function filteredMaterialListItems(items) {
+  const query = (state.materialListQuery || '').trim().toLowerCase();
+  if (!query) return items;
+  return items.filter(item => {
+    const paper = paperById(item.paper_id);
+    const text = [
+      paper?.metadata?.title,
+      item.dimension_label,
+      item.dimension_name,
+      item.title,
+      materialItemContent(item),
+      (item.evidence || []).map(ev => ev.quote).join(' '),
+      (item.tags || []).join(' '),
+    ].filter(Boolean).join(' ').toLowerCase();
+    return text.includes(query);
+  });
+}
+
 function renderMaterialOverview(items) {
-  const dimensions = selectedMaterialDimensions();
-  const byDimension = new Map();
-  dimensions.forEach(dim => byDimension.set(dim, 0));
-  items.forEach(item => byDimension.set(item.dimension_name, (byDimension.get(item.dimension_name) || 0) + 1));
-  const accepted = items.filter(item => reviewStatusGroup(item.review_status) === 'accepted').length;
-  const evidenceCount = items.filter(item => (item.evidence || []).length).length;
-  const inferredCount = items.filter(item => itemModelInferred(item)).length;
+  const template = materialCurrentTemplate();
+  const paperSetLabel = $('materialPaperSetSelect')?.selectedOptions?.[0]?.textContent || '全部论文';
+  const stats = materialOverviewStats(items);
+  const coverage = materialDimensionCoverage(items);
+  const listItems = filteredMaterialListItems(items).slice(0, 40);
   $('analysisOutput').classList.remove('muted');
   $('analysisOutput').innerHTML = `
-    <div class="materials-overview-grid">
-      <div><span>当前素材</span><b>${items.length}</b></div>
-      <div><span>已接受</span><b>${accepted}</b></div>
-      <div><span>有证据</span><b>${evidenceCount}</b></div>
-      <div><span>模型推断</span><b>${inferredCount}</b></div>
-    </div>
-    <div class="materials-coverage-list">
-      ${[...byDimension.entries()].map(([dim, count]) => `
+    <section class="materials-overview-page">
+      <header class="materials-view-heading">
         <div>
-          <span>${escapeHtml(materialDimensionLabel(dim))}</span>
-          <b>${count} 条</b>
+          <h3>素材总览</h3>
+          <p>当前集合：${escapeHtml(paperSetLabel)} · 科研对象：${escapeHtml(template?.name || '未选择')}</p>
         </div>
-      `).join('') || '<div><span>暂无维度</span><b>0 条</b></div>'}
-    </div>
+      </header>
+      <div class="materials-stat-grid">
+        ${stats.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>`).join('')}
+      </div>
+      <section class="materials-overview-section">
+        <div class="materials-section-heading inline">
+          <h3>维度覆盖率</h3>
+          <span>${coverage.length} 个维度</span>
+        </div>
+        <div class="materials-coverage-bars">
+          ${coverage.map(row => `
+            <div class="materials-coverage-row">
+              <span>${escapeHtml(row.dimension.label)}</span>
+              <div><i style="width:${row.rate}%"></i></div>
+              <b>${row.rate}%</b>
+            </div>
+          `).join('') || '<div class="materials-empty">暂无维度覆盖数据。</div>'}
+        </div>
+      </section>
+      <section class="materials-overview-section">
+        <div class="materials-table-head">
+          <div>
+            <h3>素材列表</h3>
+            <p>下方显示当前范围内可检索素材。</p>
+          </div>
+          <input id="materialTableSearch" value="${escapeHtml(state.materialListQuery)}" placeholder="搜索素材" oninput="updateMaterialListQuery(this.value)" />
+        </div>
+        <div class="table-wrap materials-table-wrap">
+          <table class="materials-table">
+            <thead>
+              <tr><th>论文</th><th>维度</th><th>抽取内容摘要</th><th>证据</th><th>审查状态</th><th>操作</th></tr>
+            </thead>
+            <tbody>
+              ${listItems.map(item => {
+                const paper = paperById(item.paper_id);
+                return `<tr>
+                  <td>${escapeHtml(fmt(paper?.metadata?.title || item.paper_id, 80))}</td>
+                  <td>${escapeHtml(item.dimension_label || materialDimensionLabel(item.dimension_name))}</td>
+                  <td>${escapeHtml(fmt(materialItemContent(item) || item.title || '无内容', 120))}</td>
+                  <td>${escapeHtml(materialEvidenceLabel(item))}</td>
+                  <td><span class="badge ${escapeHtml(item.review_status || 'pending')}">${escapeHtml(reviewStatusLabel(item.review_status || 'pending'))}</span></td>
+                  <td><button type="button" onclick="openMaterialItemDetail(${escapeHtml(JSON.stringify(item.id))})">查看</button></td>
+                </tr>`;
+              }).join('') || '<tr><td colspan="6" class="muted">当前筛选条件下没有匹配素材。</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </section>
   `;
 }
+
+window.updateMaterialListQuery = function(value) {
+  state.materialListQuery = value || '';
+  renderMaterialOverview(state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems());
+};
 
 function renderMaterialResults(items) {
   const list = $('materialResults');
   if (!list) return;
+  if (['overview', 'compare'].includes(state.materialAnalysisType)) {
+    list.innerHTML = '';
+    return;
+  }
   const shown = items.slice(0, 30);
   list.innerHTML = shown.map(item => {
     const paper = paperById(item.paper_id);
@@ -5987,6 +6135,222 @@ function renderMaterialResults(items) {
     list.insertAdjacentHTML('beforeend', `<div class="materials-empty">已显示前 ${shown.length} 条，继续缩小筛选条件可查看更聚焦的结果。</div>`);
   }
 }
+
+function materialCompareDimensions() {
+  const selected = new Set(selectedMaterialDimensions());
+  return materialTemplateDimensions().filter(dim => !selected.size || selected.has(dim.value));
+}
+
+function materialPaperHasVerifiedEffect(items, paperId) {
+  return materialPaperHasDimensionSignal(items, paperId, /(evaluation|effect|experiment|效果|验证|实验|评估)/i, item => {
+    const text = materialItemContent(item);
+    return materialItemAccepted(item) && !materialLooksNotReported(text);
+  });
+}
+
+function materialUsageGroupLabel(items, paperId) {
+  const usageDim = materialTemplateDimensions().find(dim => materialDimensionMatches(dim, /(usage|use|使用|应用|规划|决策)/i));
+  if (!usageDim) return '使用方式未分类';
+  const item = materialPrimaryCellItem(items, paperId, usageDim.value);
+  const text = materialItemContent(item);
+  if (/prompt/i.test(text) || /提示/.test(text)) return 'prompt / 上下文';
+  if (/retriev|检索|memory|记忆/i.test(text)) return '检索增强';
+  if (/planning|plan|规划/i.test(text)) return '规划决策';
+  if (/action|selection|行动|选择/i.test(text)) return '行动选择';
+  if (text) return '其他使用方式';
+  return '使用方式未报告';
+}
+
+function materialSourceGroupLabel(paper) {
+  return {
+    arxiv: 'arXiv',
+    acl: 'ACL',
+    neurips: 'NeurIPS',
+    iclr: 'ICLR',
+    icml: 'ICML',
+    other: '其他来源',
+  }[paperSourceBucket(paper)] || '其他来源';
+}
+
+function materialCompareRows(items) {
+  const selectedIds = selectedAnalysisPaperIds();
+  const papers = selectedIds.length
+    ? selectedIds.map(id => paperById(id)).filter(Boolean)
+    : materialScopedPapers();
+  const filtered = state.materialCompareOnlyUnverified
+    ? papers.filter(paper => !materialPaperHasVerifiedEffect(items, paper.id))
+    : papers;
+  return filtered;
+}
+
+function materialCompareCellSummary(item) {
+  if (!item) return '未报告';
+  const text = materialItemContent(item);
+  if (!text) return '未报告';
+  return fmt(text, 96);
+}
+
+function renderMaterialCompareMatrixView(items) {
+  const template = materialCurrentTemplate();
+  const dims = materialCompareDimensions();
+  const rows = materialCompareRows(items);
+  const grouped = new Map();
+  rows.forEach(paper => {
+    const group = state.materialCompareGroupMode === 'source'
+      ? materialSourceGroupLabel(paper)
+      : state.materialCompareGroupMode === 'usage'
+        ? materialUsageGroupLabel(items, paper.id)
+        : '';
+    if (!grouped.has(group)) grouped.set(group, []);
+    grouped.get(group).push(paper);
+  });
+  const bodyRows = [...grouped.entries()].map(([group, papers]) => `
+    ${group ? `<tr class="materials-matrix-group"><td colspan="${dims.length + 2}">${escapeHtml(group)} · ${papers.length} 篇</td></tr>` : ''}
+    ${papers.map(paper => `
+      <tr>
+        <th>
+          <span>${escapeHtml(fmt(paper.metadata?.title || paper.id, 92))}</span>
+          <small>${escapeHtml(String(paper.metadata?.year || ''))}</small>
+        </th>
+        <td>${escapeHtml(sourceLabel(paper.source))}</td>
+        ${dims.map(dim => {
+          const item = materialPrimaryCellItem(items, paper.id, dim.value);
+          return `<td>
+            <button type="button" class="materials-matrix-cell ${item ? '' : 'empty'}" onclick="openMaterialCellDetail(${escapeHtml(JSON.stringify(paper.id))}, ${escapeHtml(JSON.stringify(dim.value))})">
+              ${escapeHtml(materialCompareCellSummary(item))}
+            </button>
+          </td>`;
+        }).join('')}
+      </tr>
+    `).join('')}
+  `).join('');
+  $('analysisOutput').classList.remove('muted');
+  $('analysisOutput').innerHTML = `
+    <section class="materials-matrix-page">
+      <header class="materials-view-heading">
+        <div>
+          <h3>跨论文对比矩阵：${escapeHtml(template?.name || '研究对象')}</h3>
+          <p>行是论文，列是抽取维度，单元格显示审查后的维度结果摘要。</p>
+        </div>
+        <div class="materials-matrix-actions">
+          <button type="button" class="${state.materialCompareGroupMode === 'source' ? 'active' : ''}" onclick="setMaterialCompareGroupMode('source')">按来源分组</button>
+          <button type="button" class="${state.materialCompareGroupMode === 'usage' ? 'active' : ''}" onclick="setMaterialCompareGroupMode('usage')">按使用方式分组</button>
+          <button type="button" class="${state.materialCompareOnlyUnverified ? 'active' : ''}" onclick="toggleMaterialCompareUnverified()">只看未验证效果</button>
+          <button type="button" onclick="exportMaterialCompareMatrix()">导出矩阵</button>
+        </div>
+      </header>
+      <div class="table-wrap materials-matrix-wrap">
+        <table class="materials-matrix-table">
+          <thead>
+            <tr>
+              <th>论文</th>
+              <th>来源</th>
+              ${dims.map(dim => `<th>${escapeHtml(dim.label)}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>${bodyRows || `<tr><td colspan="${dims.length + 2}" class="muted">当前范围下没有可对比论文。</td></tr>`}</tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+window.setMaterialCompareGroupMode = function(mode) {
+  state.materialCompareGroupMode = state.materialCompareGroupMode === mode ? 'none' : mode;
+  renderMaterialCompareMatrixView(state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems());
+};
+
+window.toggleMaterialCompareUnverified = function() {
+  state.materialCompareOnlyUnverified = !state.materialCompareOnlyUnverified;
+  renderMaterialCompareMatrixView(state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems());
+};
+
+window.exportMaterialCompareMatrix = function() {
+  const items = state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems();
+  const dims = materialCompareDimensions();
+  const rows = materialCompareRows(items).map(paper => {
+    const row = {paper_id: paper.id, title: paper.metadata?.title || paper.id, year: paper.metadata?.year || '', source: sourceLabel(paper.source)};
+    dims.forEach(dim => {
+      row[dim.label] = materialCompareCellSummary(materialPrimaryCellItem(items, paper.id, dim.value));
+    });
+    return row;
+  });
+  downloadJson(`litmate_compare_matrix_${new Date().toISOString().slice(0, 10)}.json`, {exported_at: new Date().toISOString(), rows});
+};
+
+function materialDetailItemsHtml(items) {
+  return items.map(item => `
+    <article class="material-detail-item">
+      <header>
+        <b>${escapeHtml(item.dimension_label || materialDimensionLabel(item.dimension_name))}</b>
+        <span class="badge ${escapeHtml(item.review_status || 'pending')}">${escapeHtml(reviewStatusLabel(item.review_status || 'pending'))}</span>
+      </header>
+      <section>
+        <h4>完整抽取结果</h4>
+        <p>${escapeHtml(materialItemContent(item) || item.title || '无内容')}</p>
+      </section>
+      <section>
+        <h4>原文证据</h4>
+        ${(item.evidence || []).map(ev => `
+          <blockquote>
+            ${escapeHtml(ev.quote || '无证据原文')}
+            <span>${escapeHtml(ev.section_title || ev.section || 'Evidence')}${ev.page_start || ev.page ? ` · p.${escapeHtml(ev.page_start || ev.page)}` : ''}</span>
+          </blockquote>
+        `).join('') || '<p class="muted">暂无证据绑定。</p>'}
+      </section>
+      <section>
+        <h4>人工审查记录</h4>
+        <div class="material-detail-meta">
+          <span>状态：${escapeHtml(reviewStatusLabel(item.review_status || 'pending'))}</span>
+          <span>置信度：${escapeHtml(confidenceText(item.confidence))}</span>
+          ${(item.tags || []).slice(0, 6).map(tag => `<span>${escapeHtml(tag)}</span>`).join('')}
+        </div>
+        ${item.user_note ? `<p>${escapeHtml(item.user_note)}</p>` : '<p class="muted">暂无人工备注。</p>'}
+      </section>
+      <section>
+        <h4>相关笔记</h4>
+        <p class="muted">暂无相关笔记。</p>
+      </section>
+    </article>
+  `).join('') || '<p class="muted">当前单元格暂无抽取结果。</p>';
+}
+
+function openMaterialDetailModal(title, meta, items) {
+  $('materialCellTitle').textContent = title;
+  $('materialCellMeta').textContent = meta;
+  $('materialCellBody').innerHTML = materialDetailItemsHtml(items);
+  $('materialCellAddBtn').onclick = () => {
+    toast('已加入综述素材候选');
+  };
+  $('materialCellModal').hidden = false;
+  document.body.classList.add('modal-open');
+}
+
+window.openMaterialItemDetail = function(itemId) {
+  const item = (state.materials || []).find(entry => entry.id === itemId);
+  if (!item) return toast('未找到素材详情');
+  const paper = paperById(item.paper_id);
+  openMaterialDetailModal(
+    item.dimension_label || materialDimensionLabel(item.dimension_name),
+    paper?.metadata?.title || item.paper_id,
+    [item],
+  );
+};
+
+window.openMaterialCellDetail = function(paperId, dimensionName) {
+  const items = materialItemsForPaperDimension(state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems(), paperId, dimensionName);
+  const paper = paperById(paperId);
+  openMaterialDetailModal(
+    materialDimensionLabel(dimensionName),
+    paper?.metadata?.title || paperId,
+    items,
+  );
+};
+
+window.closeMaterialCellModal = function() {
+  $('materialCellModal').hidden = true;
+  syncModalLock();
+};
 
 function renderMaterialInsights(items) {
   const panel = $('materialInsightPanel');
@@ -6037,7 +6401,8 @@ function renderMaterialExplanations(items) {
 function refreshMaterialDerivedViews(items = filteredMaterialItems()) {
   state.materialCurrentItems = items;
   updateMaterialsContext(items);
-  renderMaterialOverview(items);
+  if (state.materialAnalysisType === 'compare') renderMaterialCompareMatrixView(items);
+  else renderMaterialOverview(items);
   renderMaterialResults(items);
   renderMaterialInsights(items);
   renderMaterialExplanations(items);
@@ -6078,28 +6443,10 @@ async function comparePapers() {
   window.setMaterialAnalysisType('compare', {silent: true});
   const ids = selectedAnalysisPaperIds();
   if (!ids.length) { toast('请至少选择一篇论文'); return; }
-  const template = materialCurrentTemplate();
-  const params = new URLSearchParams({
-    paper_ids: ids.join(','),
-    template_id: template?.id || 'tmpl_experience_v2',
-    include_pending: String(materialSelectedStatuses().includes('pending')),
-  });
-  const data = await api('/api/analysis/compare?' + params.toString());
-  const selectedDims = new Set(selectedMaterialDimensions());
-  const dims = (data.dimensions || []).filter(dim => !selectedDims.size || selectedDims.has(dim));
-  const cols = ['title', 'year', ...dims];
-  $('analysisOutput').classList.remove('muted');
-  $('analysisOutput').innerHTML = `
-    <div class="table-wrap">
-      <table>
-        <thead><tr>${cols.map(col => `<th>${escapeHtml(col === 'title' ? '论文' : col === 'year' ? '年份' : materialDimensionLabel(col))}</th>`).join('')}</tr></thead>
-        <tbody>${(data.matrix || []).map(row => `<tr>${cols.map(col => `<td>${escapeHtml(fmt(row[col], 600))}</td>`).join('')}</tr>`).join('')}</tbody>
-      </table>
-    </div>
-    <h4>缺口摘要</h4>
-    <pre>${escapeHtml(JSON.stringify((data.gaps || []).slice(0, 30), null, 2))}</pre>
-  `;
-  $('materialResultHint').textContent = `对比矩阵已生成：${ids.length} 篇论文，${dims.length} 个维度。`;
+  const items = filteredMaterialItems();
+  state.materialCurrentItems = items;
+  renderMaterialCompareMatrixView(items);
+  $('materialResultHint').textContent = `对比矩阵已生成：${ids.length} 篇论文，${materialCompareDimensions().length} 个维度。`;
 }
 
 async function gapAnalysis() {
@@ -6600,6 +6947,7 @@ async function bindEvents() {
   $('simulationRawJsonBtn').onclick = openSimulationRawModal;
   $('simulationRawClose').onclick = closeSimulationRawModal;
   $('extractionResultClose').onclick = closeExtractionResultModal;
+  $('materialCellClose').onclick = window.closeMaterialCellModal;
   document.querySelectorAll('[data-paper-library-tab]').forEach(button => {
     button.onclick = () => {
       state.paperLibraryTab = button.dataset.paperLibraryTab;
@@ -6678,6 +7026,7 @@ async function bindEvents() {
       else if (el.dataset.closeModal === 'objectImportModal') closeObjectImportModal();
       else if (el.dataset.closeModal === 'simulationRawModal') closeSimulationRawModal();
       else if (el.dataset.closeModal === 'extractionResultModal') closeExtractionResultModal();
+      else if (el.dataset.closeModal === 'materialCellModal') closeMaterialCellModal();
       else if (el.dataset.closeModal === 'objectConfigModal') closeObjectConfigModal();
       else if (el.dataset.closeModal === 'configModal') closeConfigModal();
       else closePaperDetail();
@@ -6692,6 +7041,7 @@ async function bindEvents() {
     else if (!$('objectImportModal').hidden) closeObjectImportModal();
     else if (!$('simulationRawModal').hidden) closeSimulationRawModal();
     else if (!$('extractionResultModal').hidden) closeExtractionResultModal();
+    else if (!$('materialCellModal').hidden) closeMaterialCellModal();
     else if (!$('promptPreviewModal').hidden) closePromptPreviewModal();
     else if (!$('paperDetailModal').hidden) closePaperDetail();
     else if (!$('objectConfigModal').hidden) closeObjectConfigModal();

@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Literature Research Assistant V2</title>
-  <link rel="stylesheet" href="/styles.css?v=materials-compact-filters-20260603" />
+  <link rel="stylesheet" href="/styles.css?v=materials-main-results-20260604" />
 </head>
 <body>
   <header class="topbar">
@@ -807,6 +807,23 @@
       </div>
     </section>
 
+    <div id="materialCellModal" class="modal" hidden>
+      <div class="modal-backdrop" data-close-modal="materialCellModal"></div>
+      <div class="paper-modal material-cell-modal">
+        <header class="modal-header">
+          <div>
+            <h2 id="materialCellTitle">素材详情</h2>
+            <p id="materialCellMeta" class="meta"></p>
+          </div>
+          <div class="modal-actions">
+            <button id="materialCellAddBtn" type="button">加入综述素材</button>
+            <button id="materialCellClose" aria-label="关闭">关闭</button>
+          </div>
+        </header>
+        <div id="materialCellBody" class="material-cell-body"></div>
+      </div>
+    </div>
+
     <div id="configModal" class="modal" hidden>
       <div class="modal-backdrop" data-close-modal="configModal"></div>
       <div class="config-modal">
@@ -1057,6 +1074,6 @@
   </div>
 
   <div id="toast" class="toast"></div>
-  <script src="/app.js?v=materials-compact-filters-20260603"></script>
+  <script src="/app.js?v=materials-main-results-20260604"></script>
 </body>
 </html>
