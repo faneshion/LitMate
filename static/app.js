@@ -243,6 +243,30 @@ const fmtDuration = (seconds) => {
   if (value < 60) return `${value.toFixed(value < 10 ? 1 : 0)} 秒`;
   return `${Math.floor(value / 60)} 分 ${Math.round(value % 60)} 秒`;
 };
+const secondsBetweenIso = (start, end) => {
+  const startMs = Date.parse(start || '');
+  const endMs = Date.parse(end || '');
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return undefined;
+  return (endMs - startMs) / 1000;
+};
+const extractionRunDurationSeconds = (run) => {
+  const explicit = [
+    run?.duration_seconds,
+    run?.elapsed_seconds,
+    run?.metadata?.duration_seconds,
+    run?.metadata?.elapsed_seconds,
+  ].find(value => value !== undefined && value !== null && Number.isFinite(Number(value)));
+  if (explicit !== undefined) return Number(explicit);
+  const startMs = Date.parse(run?.created_at || '');
+  const itemTimes = (run?.items || [])
+    .map(item => Date.parse(item.created_at || ''))
+    .filter(Number.isFinite);
+  if (Number.isFinite(startMs) && itemTimes.length) {
+    const elapsed = (Math.max(...itemTimes) - startMs) / 1000;
+    if (Number.isFinite(elapsed) && elapsed > 0) return elapsed;
+  }
+  return secondsBetweenIso(run?.created_at, run?.updated_at);
+};
 const sourceLabel = (source) => ({
   upload: '本地上传',
   arxiv: 'arXiv',
@@ -3244,12 +3268,14 @@ function extractionStatsForPaper(paperId) {
   const itemCount = runs.reduce((total, run) => total + (run.items?.length || 0), 0);
   const reviewableItems = runs.flatMap(run => run.items || []);
   const reviewedItems = reviewableItems.filter(item => (item.review_status || 'pending') !== 'pending');
+  const latestRun = runs[0] || null;
   return {
     runCount: runs.length,
     objectCount: templateIds.size,
     itemCount,
     reviewedItemCount: reviewedItems.length,
-    latestRun: runs[0] || null,
+    latestRun,
+    latestRunDurationSeconds: extractionRunDurationSeconds(latestRun),
   };
 }
 
@@ -3413,8 +3439,7 @@ function renderPaperRow(p, selectable = false) {
         <div class="paper-meta-line"><span>来源：</span><b>${escapeHtml(sourceLabel(p.source))}${escapeHtml(parser)}</b></div>
         <div class="paper-meta-line">
           <span>导入：</span><b>${escapeHtml(fmtTime(p.created_at))}</b>
-          <span> · 解析：</span><b>${escapeHtml(fmtTime(p.updated_at))}</b>
-          <span> · 耗时：</span><b>${escapeHtml(fmtDuration(p.metadata?.extra?.parse_duration_seconds))}</b>
+          <span> · 解析耗时：</span><b>${escapeHtml(fmtDuration(p.metadata?.extra?.parse_duration_seconds))}</b>
         </div>
         ${taskProgress}
       </div>
@@ -3439,6 +3464,7 @@ function renderPaperRow(p, selectable = false) {
             <span>对象 ${extractionStats.objectCount}</span>
             <span>结果 ${extractionStats.itemCount}</span>
             <span>已审 ${extractionStats.reviewedItemCount}</span>
+            <span>抽取耗时 ${fmtDuration(extractionStats.latestRunDurationSeconds)}</span>
           </div>
         </section>
       </div>
