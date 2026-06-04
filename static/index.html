@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Literature Research Assistant V2</title>
-  <link rel="stylesheet" href="/styles.css?v=materials-workbench-20260603" />
+  <link rel="stylesheet" href="/styles.css?v=materials-scope-top-20260603" />
 </head>
 <body>
   <header class="topbar">
@@ -675,20 +675,44 @@
             <h2 id="materialsProjectName">当前分析项目</h2>
             <p id="materialsScopeSummary">默认使用已审查且有证据的素材进行分析。</p>
           </div>
-          <div class="materials-context-grid">
-            <div><span>当前论文集合</span><b id="materialsPaperSetName">-</b></div>
-            <div><span>当前科研对象</span><b id="materialsObjectName">-</b></div>
-            <div><span>模板版本</span><b id="materialsTemplateVersion">-</b></div>
-            <div><span>已纳入论文</span><b id="materialsPaperCount">0 篇</b></div>
-            <div><span>已审查素材</span><b id="materialsReviewedCount">0 条</b></div>
-            <div><span>证据覆盖率</span><b id="materialsEvidenceCoverage">0%</b></div>
-          </div>
           <div class="materials-top-actions">
             <button id="refreshMaterialsBtn" type="button">刷新数据</button>
             <button id="saveAnalysisViewBtn" type="button">保存分析视图</button>
             <button id="exportAnalysisReportBtn" type="button">导出报告</button>
             <button id="generateReviewPackageBtn" type="button" class="primary">生成综述素材包</button>
           </div>
+          <section class="materials-scope-panel">
+            <button id="materialsScopeToggleBtn" class="materials-scope-toggle" type="button">
+              <span>数据范围</span>
+              <b id="materialsScopeToggleText">收起</b>
+            </button>
+            <div id="materialsScopeBody" class="materials-scope-body">
+              <div class="materials-scope-fields">
+                <label>
+                  <span>论文集合</span>
+                  <select id="materialPaperSetSelect"></select>
+                </label>
+                <label>
+                  <span>科研对象</span>
+                  <select id="materialObjectSelect"></select>
+                </label>
+                <label>
+                  <span>模板版本</span>
+                  <select id="materialTemplateVersionSelect"></select>
+                </label>
+              </div>
+              <div class="materials-scope-checks">
+                <div class="materials-check-group">
+                  <b>审查状态</b>
+                  <div id="materialReviewStatusChecks" class="materials-check-list scope"></div>
+                </div>
+                <div class="materials-check-group">
+                  <b>证据要求</b>
+                  <div id="materialEvidenceRequirementChecks" class="materials-check-list scope"></div>
+                </div>
+              </div>
+            </div>
+          </section>
         </header>
 
         <div id="materialsLayout" class="materials-layout">
@@ -699,33 +723,6 @@
                 <span id="materialAnalysisTypeHint">选择一种科研任务视角</span>
               </div>
               <nav id="materialAnalysisNav" class="materials-analysis-nav"></nav>
-            </section>
-
-            <section class="materials-side-section">
-              <div class="materials-section-heading">
-                <h3>数据范围</h3>
-                <span>默认优先使用可靠素材</span>
-              </div>
-              <label>
-                <span>论文集合</span>
-                <select id="materialPaperSetSelect"></select>
-              </label>
-              <label>
-                <span>科研对象</span>
-                <select id="materialObjectSelect"></select>
-              </label>
-              <label>
-                <span>模板版本</span>
-                <select id="materialTemplateVersionSelect"></select>
-              </label>
-              <div class="materials-check-group">
-                <b>审查状态</b>
-                <div id="materialReviewStatusChecks" class="materials-check-list"></div>
-              </div>
-              <div class="materials-check-group">
-                <b>证据要求</b>
-                <div id="materialEvidenceRequirementChecks" class="materials-check-list"></div>
-              </div>
             </section>
 
             <section class="materials-side-section">
@@ -1104,6 +1101,6 @@
   </div>
 
   <div id="toast" class="toast"></div>
-  <script src="/app.js?v=materials-workbench-20260603"></script>
+  <script src="/app.js?v=materials-scope-top-20260603"></script>
 </body>
 </html>
