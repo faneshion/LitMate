@@ -1794,6 +1794,285 @@ body.materials-sidebar-resizing {
   font-size: 13px;
   line-height: 1.6;
 }
+.materials-overview-page,
+.materials-matrix-page {
+  display: grid;
+  gap: 14px;
+  white-space: normal;
+}
+.materials-view-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+.materials-view-heading h3 {
+  margin: 0 0 4px;
+  color: #0f172a;
+  font-size: 18px;
+}
+.materials-view-heading p {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.materials-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.materials-stat-grid div {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #f8fafc;
+}
+.materials-stat-grid span,
+.materials-stat-grid b {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.materials-stat-grid span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+}
+.materials-stat-grid b {
+  margin-top: 4px;
+  color: #0f172a;
+  font-size: 18px;
+}
+.materials-overview-section {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fbfdff;
+}
+.materials-coverage-bars {
+  display: grid;
+  gap: 8px;
+}
+.materials-coverage-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.9fr) minmax(160px, 2fr) 48px;
+  align-items: center;
+  gap: 10px;
+}
+.materials-coverage-row span {
+  overflow: hidden;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.materials-coverage-row div {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+.materials-coverage-row i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2563eb, #059669);
+}
+.materials-coverage-row b {
+  color: #1d4ed8;
+  font-size: 12px;
+  text-align: right;
+}
+.materials-table-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+.materials-table-head h3 {
+  margin: 0 0 3px;
+  color: #0f172a;
+  font-size: 15px;
+}
+.materials-table-head p {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+}
+.materials-table-head input {
+  max-width: 260px;
+  min-height: 34px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.materials-table-wrap table,
+.materials-matrix-wrap table {
+  min-width: 980px;
+}
+.materials-table td,
+.materials-table th,
+.materials-matrix-table td,
+.materials-matrix-table th {
+  font-size: 12px;
+}
+.materials-table button,
+.materials-matrix-actions button {
+  min-height: 28px;
+  padding: 4px 8px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+.materials-matrix-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+.materials-matrix-actions button.active {
+  border-color: #1d4ed8;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+.materials-matrix-table th:first-child,
+.materials-matrix-table td:first-child {
+  min-width: 220px;
+}
+.materials-matrix-table tbody th {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: #fff;
+  text-align: left;
+}
+.materials-matrix-table tbody th span,
+.materials-matrix-table tbody th small {
+  display: block;
+}
+.materials-matrix-table tbody th span {
+  color: #0f172a;
+  font-weight: 800;
+}
+.materials-matrix-table tbody th small {
+  margin-top: 3px;
+  color: #64748b;
+  font-weight: 600;
+}
+.materials-matrix-cell {
+  display: block;
+  width: 100%;
+  min-width: 160px;
+  min-height: 52px;
+  padding: 7px 8px;
+  border-radius: 7px;
+  background: #fff;
+  color: #334155;
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: left;
+}
+.materials-matrix-cell:hover {
+  border-color: #1d4ed8;
+  background: #eff6ff;
+  color: #0f172a;
+}
+.materials-matrix-cell.empty {
+  color: #94a3b8;
+  border-style: dashed;
+  background: #f8fafc;
+}
+.materials-matrix-group td {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: #eef2ff;
+  color: #1d4ed8;
+  font-weight: 850;
+}
+.material-cell-modal {
+  inset: 48px max(70px, 8vw);
+}
+.material-cell-body {
+  display: grid;
+  gap: 12px;
+  min-height: 0;
+  overflow: auto;
+  padding: 18px;
+}
+.material-detail-item {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+.material-detail-item header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.material-detail-item header b {
+  color: #0f172a;
+  font-size: 15px;
+}
+.material-detail-item section {
+  display: grid;
+  gap: 7px;
+}
+.material-detail-item h4 {
+  margin: 0;
+  color: #475569;
+  font-size: 12px;
+}
+.material-detail-item p {
+  margin: 0;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.material-detail-item blockquote {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid #2563eb;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.material-detail-item blockquote span {
+  display: block;
+  margin-top: 6px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+.material-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.material-detail-meta span {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  padding: 2px 7px;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 750;
+}
 .paper-record {
   white-space: normal;
   line-height: 1.55;
@@ -5363,6 +5642,23 @@ body.modal-open { overflow: hidden; }
   .materials-overview-grid,
   .materials-gap-columns {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .materials-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .materials-view-heading,
+  .materials-table-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .materials-matrix-actions {
+    justify-content: flex-start;
+  }
+  .materials-coverage-row {
+    grid-template-columns: minmax(0, 1fr) 80px 42px;
+  }
+  .material-cell-modal {
+    inset: 12px;
   }
   .review-carousel-arrow {
     width: 36px;
