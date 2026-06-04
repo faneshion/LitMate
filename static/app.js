@@ -55,6 +55,7 @@ const state = {
   materialsSidebarCollapsed: false,
   materialsSidebarResizing: false,
   materialScopePanelOpen: true,
+  materialDropdownOpen: null,
   materialAnalysisType: 'overview',
   materialCurrentItems: [],
   reviewItemIndex: 0,
@@ -5627,7 +5628,7 @@ function materialReadyTemplates() {
 }
 
 function materialCurrentTemplate() {
-  const selectedId = $('materialObjectSelect')?.value || $('materialTemplateVersionSelect')?.value || '';
+  const selectedId = $('materialObjectSelect')?.value || '';
   const templates = materialReadyTemplates();
   return templates.find(item => item.id === selectedId) || templates[0] || null;
 }
@@ -5657,18 +5658,65 @@ function selectedCheckboxValues(selector) {
     .map(input => input.value);
 }
 
-function renderMaterialChecks(containerId, inputClass, options) {
+function materialDropdownLabel(selectedLabels, total) {
+  if (!selectedLabels.length) return '未选择';
+  if (selectedLabels.length === total) return '全部';
+  if (selectedLabels.length <= 2) return selectedLabels.join('、');
+  return `${selectedLabels.length} 项`;
+}
+
+function renderMaterialDropdownOpenStates() {
+  document.querySelectorAll('.materials-multi-select').forEach(container => {
+    const id = container.dataset.materialDropdown;
+    const open = state.materialDropdownOpen === id;
+    container.classList.toggle('open', open);
+    const menu = container.querySelector('.materials-multi-menu');
+    if (menu) menu.hidden = !open;
+  });
+}
+
+function refreshMaterialDropdownLabels() {
+  document.querySelectorAll('.materials-multi-select').forEach(container => {
+    const labels = [...container.querySelectorAll('input:checked')]
+      .map(input => input.dataset.label || input.value);
+    const total = container.querySelectorAll('input').length;
+    const label = container.querySelector('[data-material-dropdown-label]');
+    if (label) label.textContent = materialDropdownLabel(labels, total);
+  });
+}
+
+window.toggleMaterialMultiDropdown = function(id) {
+  state.materialDropdownOpen = state.materialDropdownOpen === id ? null : id;
+  renderMaterialDropdownOpenStates();
+};
+
+function renderMaterialMultiSelect(containerId, dropdownId, title, inputClass, options) {
   const container = $(containerId);
   if (!container) return;
   const previous = new Map([...container.querySelectorAll('input')].map(input => [input.value, input.checked]));
   const hasPrevious = previous.size > 0;
-  container.innerHTML = options.map(option => {
+  const normalized = options.map(option => {
     const checked = hasPrevious ? previous.get(option.value) !== false : Boolean(option.defaultChecked);
-    return `<label class="materials-check" title="${escapeHtml(option.label)}">
-      <input type="checkbox" class="${escapeHtml(inputClass)}" value="${escapeHtml(option.value)}" ${checked ? 'checked' : ''} />
-      <span>${escapeHtml(option.label)}</span>
-    </label>`;
-  }).join('');
+    return {...option, checked};
+  });
+  const selectedLabels = normalized.filter(option => option.checked).map(option => option.label);
+  container.innerHTML = `
+    <div class="materials-multi-select" data-material-dropdown="${escapeHtml(dropdownId)}">
+      <button type="button" class="materials-multi-trigger" onclick="toggleMaterialMultiDropdown('${escapeHtml(dropdownId)}')" title="${escapeHtml(title)}">
+        <span>${escapeHtml(title)}</span>
+        <b data-material-dropdown-label="${escapeHtml(dropdownId)}">${escapeHtml(materialDropdownLabel(selectedLabels, normalized.length))}</b>
+      </button>
+      <div class="materials-multi-menu" hidden>
+        ${normalized.map(option => `
+          <label class="materials-check" title="${escapeHtml(option.label)}">
+            <input type="checkbox" class="${escapeHtml(inputClass)}" value="${escapeHtml(option.value)}" data-label="${escapeHtml(option.label)}" ${option.checked ? 'checked' : ''} />
+            <span>${escapeHtml(option.label)}</span>
+          </label>
+        `).join('') || '<div class="materials-empty small">暂无选项。</div>'}
+      </div>
+    </div>
+  `;
+  renderMaterialDropdownOpenStates();
 }
 
 function renderMaterialDimensionChecks() {
@@ -5681,13 +5729,11 @@ function renderMaterialDimensionChecks() {
   if (!container) return;
   const previous = new Map([...container.querySelectorAll('input')].map(input => [input.value, input.checked]));
   const hasPrevious = previous.size > 0;
-  container.innerHTML = dims.map(dim => {
-    const checked = hasPrevious ? previous.get(dim.value) !== false : true;
-    return `<label class="materials-dimension-check" title="${escapeHtml(dim.question || dim.value)}">
-      <input type="checkbox" class="materialDimCheck" value="${escapeHtml(dim.value)}" ${checked ? 'checked' : ''} />
-      <span>${escapeHtml(dim.label)}</span>
-    </label>`;
-  }).join('') || '<div class="materials-empty">暂无可用维度。请先发布对象模板或完成抽取。</div>';
+  renderMaterialMultiSelect('materialDimensionChecks', 'dimensions', '分析维度', 'materialDimCheck', dims.map(dim => ({
+    value: dim.value,
+    label: dim.label,
+    defaultChecked: hasPrevious ? previous.get(dim.value) !== false : true,
+  })));
 }
 
 function selectedMaterialDimensions() {
@@ -5729,6 +5775,10 @@ function materialSelectedStatuses() {
 
 function materialEvidenceRequirements() {
   return new Set(selectedCheckboxValues('.materialEvidenceRequirementCheck'));
+}
+
+function selectedMaterialAnalysisParams() {
+  return selectedCheckboxValues('.materialParamCheck');
 }
 
 function paperSourceBucket(paper) {
@@ -5823,12 +5873,11 @@ function renderMaterialAnalysisParams() {
   const options = MATERIAL_ANALYSIS_PARAMS[state.materialAnalysisType] || [];
   const panel = $('materialAnalysisParams');
   if (!panel) return;
-  panel.innerHTML = options.map(option => `
-    <label class="materials-param-option">
-      <input type="checkbox" value="${escapeHtml(option.value)}" checked />
-      <span>${escapeHtml(option.label)}</span>
-    </label>
-  `).join('') || '<div class="materials-empty">当前分析类型暂无额外参数。</div>';
+  renderMaterialMultiSelect('materialAnalysisParams', 'analysis_params', '分析参数', 'materialParamCheck', options.map(option => ({
+    value: option.value,
+    label: option.label,
+    defaultChecked: true,
+  })));
 }
 
 function renderComparePaperChecks() {
@@ -6000,18 +6049,13 @@ function renderMaterialsPanel() {
   applySelectOptions($('materialPaperSetSelect'), materialPaperSetOptions(), paperSetValue);
   const templateOptions = materialReadyTemplates().map(template => ({value: template.id, label: template.name || template.id}));
   applySelectOptions($('materialObjectSelect'), templateOptions.length ? templateOptions : [{value: '', label: '暂无对象模板'}], templateValue);
-  applySelectOptions($('materialTemplateVersionSelect'), materialReadyTemplates().map(template => ({
-    value: template.id,
-    label: `${template.version || '-'} · ${template.name || template.id}`,
-  })), $('materialObjectSelect')?.value || templateValue);
-  if ($('materialTemplateVersionSelect') && $('materialObjectSelect')) $('materialTemplateVersionSelect').value = $('materialObjectSelect').value;
   renderMaterialAnalysisNav();
   renderMaterialAnalysisParams();
-  renderMaterialChecks('materialReviewStatusChecks', 'materialReviewStatusCheck', MATERIAL_REVIEW_STATUS_OPTIONS);
-  renderMaterialChecks('materialEvidenceRequirementChecks', 'materialEvidenceRequirementCheck', MATERIAL_EVIDENCE_REQUIREMENT_OPTIONS);
-  renderMaterialChecks('materialSourceChecks', 'materialSourceCheck', MATERIAL_SOURCE_OPTIONS);
-  renderMaterialChecks('materialEvidenceStrengthChecks', 'materialEvidenceStrengthCheck', MATERIAL_EVIDENCE_STRENGTH_OPTIONS);
-  renderMaterialChecks('materialObjectRoleChecks', 'materialObjectRoleCheck', MATERIAL_OBJECT_ROLE_OPTIONS);
+  renderMaterialMultiSelect('materialReviewStatusChecks', 'review_status', '审查状态', 'materialReviewStatusCheck', MATERIAL_REVIEW_STATUS_OPTIONS);
+  renderMaterialMultiSelect('materialEvidenceRequirementChecks', 'evidence_requirements', '证据要求', 'materialEvidenceRequirementCheck', MATERIAL_EVIDENCE_REQUIREMENT_OPTIONS);
+  renderMaterialMultiSelect('materialSourceChecks', 'paper_sources', '论文来源', 'materialSourceCheck', MATERIAL_SOURCE_OPTIONS);
+  renderMaterialMultiSelect('materialEvidenceStrengthChecks', 'evidence_strength', '证据强度', 'materialEvidenceStrengthCheck', MATERIAL_EVIDENCE_STRENGTH_OPTIONS);
+  renderMaterialMultiSelect('materialObjectRoleChecks', 'object_roles', '对象角色', 'materialObjectRoleCheck', MATERIAL_OBJECT_ROLE_OPTIONS);
   renderMaterialDimensionChecks();
   renderComparePaperChecks();
   renderMaterialScopePanel();
@@ -6162,6 +6206,7 @@ function setMaterialDimensionSelection(predicate) {
     const label = materialDimensionLabel(input.value);
     input.checked = predicate(input.value, label);
   });
+  refreshMaterialDropdownLabels();
   refreshMaterialDerivedViews(filteredMaterialItems());
 }
 
@@ -6193,6 +6238,7 @@ function currentMaterialReportPayload() {
     dimensions: selectedMaterialDimensions(),
     review_statuses: materialSelectedStatuses(),
     evidence_requirements: [...materialEvidenceRequirements()],
+    analysis_params: selectedMaterialAnalysisParams(),
     item_count: items.length,
     items,
   };
@@ -6639,7 +6685,10 @@ async function bindEvents() {
   });
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return;
-    if (!$('promptPickerMenu')?.hidden) closePromptPicker();
+    if (state.materialDropdownOpen) {
+      state.materialDropdownOpen = null;
+      renderMaterialDropdownOpenStates();
+    } else if (!$('promptPickerMenu')?.hidden) closePromptPicker();
     else if (!$('objectImportModal').hidden) closeObjectImportModal();
     else if (!$('simulationRawModal').hidden) closeSimulationRawModal();
     else if (!$('extractionResultModal').hidden) closeExtractionResultModal();
@@ -6649,6 +6698,10 @@ async function bindEvents() {
     else if (!$('configModal').hidden) closeConfigModal();
   });
   document.addEventListener('click', (event) => {
+    if ($('materialsScopeBody') && !$('materialsScopeBody').contains(event.target) && state.materialDropdownOpen) {
+      state.materialDropdownOpen = null;
+      renderMaterialDropdownOpenStates();
+    }
     if (!$('promptProfilePicker') || $('promptProfilePicker').contains(event.target)) return;
     closePromptPicker();
   });
@@ -6734,21 +6787,19 @@ async function bindEvents() {
     refreshMaterialDerivedViews(filteredMaterialItems());
   };
   $('materialObjectSelect').onchange = () => {
-    if ($('materialTemplateVersionSelect')) $('materialTemplateVersionSelect').value = $('materialObjectSelect').value;
     renderMaterialDimensionChecks();
     renderComparePaperChecks();
     refreshMaterialDerivedViews(filteredMaterialItems());
   };
-  $('materialTemplateVersionSelect').onchange = () => {
-    if ($('materialObjectSelect')) $('materialObjectSelect').value = $('materialTemplateVersionSelect').value;
-    renderMaterialDimensionChecks();
-    refreshMaterialDerivedViews(filteredMaterialItems());
-  };
-  $('materialsLayout').addEventListener('change', (event) => {
-    if (event.target.matches('.materialDimCheck, .materialReviewStatusCheck, .materialEvidenceRequirementCheck, .materialSourceCheck, .materialEvidenceStrengthCheck, .materialObjectRoleCheck, #materialYearStart, #materialYearEnd')) {
+  const materialFilterSelector = '.materialDimCheck, .materialReviewStatusCheck, .materialEvidenceRequirementCheck, .materialSourceCheck, .materialEvidenceStrengthCheck, .materialObjectRoleCheck, .materialParamCheck, #materialYearStart, #materialYearEnd';
+  const handleMaterialFilterChange = (event) => {
+    if (event.target.matches(materialFilterSelector)) {
+      refreshMaterialDropdownLabels();
       refreshMaterialDerivedViews(filteredMaterialItems());
     }
-  });
+  };
+  $('materialsScopeBody').addEventListener('change', handleMaterialFilterChange);
+  $('materialsLayout').addEventListener('change', handleMaterialFilterChange);
   $('materialDimAllBtn').onclick = () => window.selectMaterialDimensionPreset('all');
   $('materialDimMethodBtn').onclick = () => window.selectMaterialDimensionPreset('method');
   $('materialDimEvaluationBtn').onclick = () => window.selectMaterialDimensionPreset('evaluation');

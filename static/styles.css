@@ -1095,17 +1095,87 @@ hr { border: none; border-top: 1px solid var(--line); margin: 18px 0; }
 }
 .materials-scope-body {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 .materials-scope-fields {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
+  gap: 8px;
+  align-items: end;
 }
-.materials-scope-checks {
+.materials-keyword-field {
+  min-width: min(220px, 100%);
+}
+.materials-scope-apply {
+  align-self: end;
+  min-height: 34px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+.materials-scope-dim-presets {
+  gap: 6px;
+}
+.materials-scope-dim-presets button {
+  min-height: 28px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+.materials-multi-select {
+  position: relative;
+  min-width: 0;
+}
+.materials-multi-trigger {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: #fff;
+  color: #334155;
+  font-size: 12px;
+  text-align: left;
+}
+.materials-multi-trigger:hover,
+.materials-multi-select.open .materials-multi-trigger {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #0f172a;
+}
+.materials-multi-trigger span,
+.materials-multi-trigger b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.materials-multi-trigger span {
+  color: #475569;
+  font-weight: 800;
+}
+.materials-multi-trigger b {
+  max-width: 8em;
+  color: #1d4ed8;
+  font-size: 12px;
+}
+.materials-multi-menu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 5px);
+  left: 0;
+  right: 0;
+  display: grid;
+  gap: 5px;
+  max-height: 240px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 16px 28px rgba(15, 23, 42, 0.16);
 }
 .materials-top-actions button,
 .materials-result-actions button,
@@ -5265,8 +5335,7 @@ body.modal-open { overflow: hidden; }
   .materials-top-actions {
     justify-content: flex-start;
   }
-  .materials-scope-fields,
-  .materials-scope-checks {
+  .materials-scope-fields {
     grid-template-columns: 1fr;
   }
   .materials-layout {
