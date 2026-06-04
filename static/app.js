@@ -5126,7 +5126,7 @@ function renderReviewMain(entry) {
         <h3>模型抽取结果</h3>
         <span class="badge ${escapeHtml(item.review_status || 'pending')}">${escapeHtml(reviewStatusLabel(item.review_status || 'pending'))}</span>
       </div>
-      <div class="review-answer lead">${escapeHtml(item.edited_content || item.content || '无内容')}</div>
+      <div class="review-answer lead highlighted">${escapeHtml(item.edited_content || item.content || '无内容')}</div>
       <div class="review-result-meta">
         <span>置信度：<b>${confidenceLevelText(item.confidence)}</b></span>
         <span>证据：<b>${evidenceCount} 条</b></span>
@@ -5293,6 +5293,44 @@ function renderReviewEvidence(entry) {
   `;
 }
 
+function compactContextSnippet(text, maxChars = 640) {
+  const value = String(text || '').trim();
+  if (!value || value.length <= maxChars) return value;
+  return `${value.slice(0, maxChars).trim()}...`;
+}
+
+function compactCurrentContext(text, quote) {
+  const value = String(text || '').trim();
+  const needle = String(quote || '').trim();
+  if (!value) return needle;
+  if (!needle) return compactContextSnippet(value, 1600);
+  const index = value.indexOf(needle);
+  if (index < 0) return compactContextSnippet(value, 1600);
+  const start = Math.max(0, index - 720);
+  const end = Math.min(value.length, index + needle.length + 900);
+  return `${start > 0 ? '...' : ''}${value.slice(start, end).trim()}${end < value.length ? '...' : ''}`;
+}
+
+function renderUnderlinedEvidenceContext(text, quote) {
+  const value = String(text || '').trim();
+  const needle = String(quote || '').trim();
+  if (!needle) return escapeHtml(value);
+  const index = value.indexOf(needle);
+  if (index < 0) {
+    return `<span class="review-context-evidence">${escapeHtml(needle)}</span>${value ? `\n\n${escapeHtml(value)}` : ''}`;
+  }
+  return `${escapeHtml(value.slice(0, index))}<span class="review-context-evidence">${escapeHtml(needle)}</span>${escapeHtml(value.slice(index + needle.length))}`;
+}
+
+function renderEvidenceContextHtml(prev, current, next, ev) {
+  const parts = [
+    prev ? compactContextSnippet(prev.text) : '',
+    compactCurrentContext(current?.text || ev.quote || '', ev.quote || ''),
+    next ? compactContextSnippet(next.text) : '',
+  ].filter(Boolean);
+  return renderUnderlinedEvidenceContext(parts.join('\n\n'), ev.quote || '');
+}
+
 function renderEvidenceCard(ev, entry, index) {
   const paper = entry.paper;
   const chunks = paper?.chunks || [];
@@ -5318,9 +5356,7 @@ function renderEvidenceCard(ev, entry, index) {
       <button type="button" onclick="toggleEvidenceContext(${index})">${expanded ? '收起上下文' : '看上下文'}</button>
     </div>
     <div class="review-context-stack ${expanded ? '' : 'collapsed'}">
-      ${prev ? `<div><b>上一段</b><p>${escapeHtml(fmt(prev.text, 320))}</p></div>` : ''}
-      <div class="current"><b>当前段</b><p>${escapeHtml(fmt(current?.text || ev.quote || '', 420))}</p></div>
-      ${next ? `<div><b>下一段</b><p>${escapeHtml(fmt(next.text, 320))}</p></div>` : ''}
+      <div class="review-context-combined"><p>${renderEvidenceContextHtml(prev, current, next, ev)}</p></div>
     </div>
   </article>`;
 }
