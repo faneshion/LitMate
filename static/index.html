@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Literature Research Assistant V2</title>
-  <link rel="stylesheet" href="/styles.css?v=review-context-ellipsis-evidence-20260604" />
+  <link rel="stylesheet" href="/styles.css?v=paper-review-sidebar-collapse-20260604" />
 </head>
 <body>
   <header class="topbar">
@@ -682,52 +682,64 @@
             <button id="generateReviewPackageBtn" type="button" class="primary">生成综述素材包</button>
           </div>
           <section class="materials-scope-panel">
-            <button id="materialsScopeToggleBtn" class="materials-scope-toggle" type="button">
-              <span>数据范围</span>
-              <b id="materialsScopeToggleText">收起</b>
-            </button>
             <div id="materialsScopeBody" class="materials-scope-body">
-              <div class="materials-scope-fields">
-                <label>
-                  <span>论文集合</span>
-                  <select id="materialPaperSetSelect"></select>
-                </label>
-                <label>
-                  <span>科研对象</span>
-                  <select id="materialObjectSelect"></select>
-                </label>
-                <div id="materialReviewStatusChecks"></div>
-                <div id="materialEvidenceRequirementChecks"></div>
-                <div id="materialDimensionChecks"></div>
-                <div id="materialSourceChecks"></div>
-                <div id="materialEvidenceStrengthChecks"></div>
-                <div id="materialObjectRoleChecks"></div>
-                <div id="materialAnalysisParams"></div>
-                <label>
-                  <span>年份起</span>
-                  <input id="materialYearStart" type="number" min="1900" max="2100" value="2020" />
-                </label>
-                <label>
-                  <span>年份止</span>
-                  <input id="materialYearEnd" type="number" min="1900" max="2100" value="2026" />
-                </label>
-                <label class="materials-keyword-field">
-                  <span>关键词</span>
-                  <input id="materialQuery" placeholder="reflection, memory, planning" />
-                </label>
-                <button id="searchMaterialsBtn" type="button" class="primary materials-scope-apply">更新分析范围</button>
+              <div class="materials-scope-row">
+                <div class="materials-scope-row-heading">
+                  <h3>论文选择</h3>
+                </div>
+                <div class="materials-scope-fields materials-paper-scope-fields">
+                  <label class="materials-inline-field materials-paper-set-field">
+                    <span>论文集合</span>
+                    <select id="materialPaperSetSelect"></select>
+                  </label>
+                  <div id="materialSourceChecks"></div>
+                  <label class="materials-inline-field materials-year-field">
+                    <span>年份起</span>
+                    <input id="materialYearStart" type="number" min="1900" max="2100" value="2020" />
+                  </label>
+                  <label class="materials-inline-field materials-year-field">
+                    <span>年份止</span>
+                    <input id="materialYearEnd" type="number" min="1900" max="2100" value="2026" />
+                  </label>
+                  <label class="materials-inline-field materials-keyword-field">
+                    <span>关键词</span>
+                    <input id="materialQuery" placeholder="reflection, memory, planning" />
+                  </label>
+                </div>
               </div>
-              <div class="materials-quick-actions materials-scope-dim-presets">
-                <button id="materialDimAllBtn" type="button">全选维度</button>
-                <button id="materialDimMethodBtn" type="button">方法机制</button>
-                <button id="materialDimEvaluationBtn" type="button">效果验证</button>
-                <button id="materialDimLimitBtn" type="button">局限</button>
+              <div class="materials-scope-row">
+                <div class="materials-scope-row-heading">
+                  <h3>科研对象选择</h3>
+                </div>
+                <div class="materials-scope-fields materials-object-scope-fields">
+                  <label>
+                    <span>科研对象</span>
+                    <select id="materialObjectSelect"></select>
+                  </label>
+                  <div id="materialReviewStatusChecks"></div>
+                  <div id="materialEvidenceRequirementChecks"></div>
+                  <div id="materialDimensionChecks"></div>
+                  <div id="materialEvidenceStrengthChecks"></div>
+                  <div id="materialObjectRoleChecks"></div>
+                  <div id="materialAnalysisParams"></div>
+                  <button id="searchMaterialsBtn" type="button" class="primary materials-scope-apply">更新分析范围</button>
+                </div>
               </div>
+              <section class="materials-paper-picker materials-scope-paper-picker">
+                <div class="materials-section-heading inline">
+                  <h3>纳入论文</h3>
+                  <span>勾选后用于对比矩阵、空白分析和证据图</span>
+                </div>
+                <div id="comparePaperChecks" class="materials-paper-checks"></div>
+              </section>
               <select id="materialDimension" hidden></select>
               <select id="materialStatus" hidden>
                 <option value="">全部状态</option>
               </select>
             </div>
+            <button id="materialsScopeToggleBtn" class="materials-scope-toggle" type="button" title="收起/展开数据范围" aria-label="收起/展开数据范围">
+              <span id="materialsScopeToggleText">⌃</span>
+            </button>
           </section>
         </header>
 
@@ -757,13 +769,6 @@
                 <button id="gapBtn" type="button">生成空白分析</button>
                 <button id="graphBtn" type="button">生成证据图</button>
               </div>
-            </section>
-            <section class="materials-paper-picker">
-              <div class="materials-section-heading inline">
-                <h3>纳入论文</h3>
-                <span>勾选后用于对比矩阵、空白分析和证据图</span>
-              </div>
-              <div id="comparePaperChecks" class="materials-paper-checks"></div>
             </section>
             <section class="materials-output-card">
               <div class="materials-section-heading inline">

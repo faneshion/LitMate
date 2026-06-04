@@ -168,17 +168,17 @@ const MATERIAL_SOURCE_OPTIONS = [
 ];
 
 const MATERIAL_EVIDENCE_STRENGTH_OPTIONS = [
-  {value: 'strong', label: 'strong', defaultChecked: true},
-  {value: 'medium', label: 'medium', defaultChecked: true},
-  {value: 'weak', label: 'weak', defaultChecked: false},
+  {value: 'strong', label: '强证据', defaultChecked: true},
+  {value: 'medium', label: '中等证据', defaultChecked: true},
+  {value: 'weak', label: '弱证据', defaultChecked: false},
 ];
 
 const MATERIAL_OBJECT_ROLE_OPTIONS = [
-  {value: 'core_contribution', label: 'core_contribution', defaultChecked: true},
-  {value: 'method_component', label: 'method_component', defaultChecked: true},
-  {value: 'auxiliary_component', label: 'auxiliary_component', defaultChecked: true},
-  {value: 'evaluation_object', label: 'evaluation_object', defaultChecked: true},
-  {value: 'discussion_only', label: 'discussion_only', defaultChecked: false},
+  {value: 'core_contribution', label: '核心贡献', defaultChecked: true},
+  {value: 'method_component', label: '方法组件', defaultChecked: true},
+  {value: 'auxiliary_component', label: '辅助组件', defaultChecked: true},
+  {value: 'evaluation_object', label: '评估对象', defaultChecked: true},
+  {value: 'discussion_only', label: '仅讨论', defaultChecked: false},
 ];
 
 const MATERIAL_ANALYSIS_PARAMS = {
@@ -237,6 +237,45 @@ const toast = (msg) => {
 const escapeHtml = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmt = (s, n=180) => s && s.length > n ? s.slice(0, n) + '…' : (s || '');
 const fmtTime = (s) => s ? new Date(s).toLocaleString() : '-';
+const normalizeDateParts = (parts) => {
+  if (!Array.isArray(parts) || !parts.length || !Number.isFinite(Number(parts[0]))) return '';
+  const year = String(Number(parts[0]));
+  const month = Number.isFinite(Number(parts[1])) ? String(Number(parts[1])).padStart(2, '0') : '';
+  const day = Number.isFinite(Number(parts[2])) ? String(Number(parts[2])).padStart(2, '0') : '';
+  return [year, month, day].filter(Boolean).join('-');
+};
+const normalizePublishedDate = (value) => {
+  if (!value) return '';
+  if (Array.isArray(value)) return normalizeDateParts(value);
+  if (typeof value === 'object') {
+    const dateParts = value['date-parts'] || value.date_parts || value.dateParts;
+    return normalizeDateParts(Array.isArray(dateParts?.[0]) ? dateParts[0] : dateParts);
+  }
+  const text = String(value).trim();
+  if (!text) return '';
+  const match = text.match(/^(\d{4})(?:-(\d{1,2})(?:-(\d{1,2}))?)?/);
+  if (!match) return text;
+  return [match[1], match[2]?.padStart(2, '0'), match[3]?.padStart(2, '0')].filter(Boolean).join('-');
+};
+const arxivMonthFromId = (arxivId) => {
+  const match = String(arxivId || '').match(/^(\d{2})(\d{2})\./);
+  if (!match) return '';
+  const yy = Number(match[1]);
+  const year = yy < 90 ? 2000 + yy : 1900 + yy;
+  return `${year}-${match[2]}`;
+};
+const paperPublishedDate = (paper) => {
+  const meta = paper?.metadata || {};
+  const extra = meta.extra || {};
+  const raw = [
+    extra.published,
+    extra.published_date,
+    extra.publication_date,
+    extra.issued,
+    meta.published,
+  ].find(Boolean);
+  return normalizePublishedDate(raw) || arxivMonthFromId(meta.arxiv_id) || (meta.year ? String(meta.year) : '未知');
+};
 const fmtDuration = (seconds) => {
   const value = Number(seconds);
   if (!Number.isFinite(value)) return '-';
@@ -3244,6 +3283,12 @@ function paperCollectionNames(paperId) {
     .map(item => item.name);
 }
 
+function renderPaperCollectionBadges(paperId) {
+  return paperCollectionNames(paperId).map(name => `
+    <span class="badge paper-set-badge" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+  `).join('');
+}
+
 function paperParseFilterKey(paper) {
   if (state.paperOps[paper.id]) return 'pending';
   if (paper.metadata?.extra?.review_status === 'verified') return 'verified';
@@ -3422,6 +3467,7 @@ function renderPaperRow(p, selectable = false) {
   const parser = status.parser ? ` · parser ${status.parser}` : '';
   const checked = state.selectedPaperIds.includes(p.id);
   const taskProgress = renderPaperTaskProgress(paperTaskProgress(p));
+  const collectionBadges = renderPaperCollectionBadges(p.id);
   return `
     <div class="paper-row ${selectable ? 'selectable' : ''} ${p.id === state.selectedPaperId ? 'active' : ''}" data-paper-id="${escapeHtml(p.id)}">
       ${selectable ? `
@@ -3434,12 +3480,12 @@ function renderPaperRow(p, selectable = false) {
           <h3 class="paper-title" title="${escapeHtml(p.metadata.title)}">${escapeHtml(p.metadata.title)}</h3>
           <span class="badge ${status.className}">${status.label}</span>
           <span class="badge ${extractionStatus.className}">${extractionStatus.label}</span>
+          ${collectionBadges}
         </div>
         <div class="paper-authors-line">${escapeHtml((p.metadata.authors || []).slice(0, 4).join(', ') || '作者未知')} ${p.metadata.year || ''}</div>
         <div class="paper-meta-line"><span>来源：</span><b>${escapeHtml(sourceLabel(p.source))}${escapeHtml(parser)}</b></div>
         <div class="paper-meta-line">
-          <span>导入：</span><b>${escapeHtml(fmtTime(p.created_at))}</b>
-          <span> · 解析耗时：</span><b>${escapeHtml(fmtDuration(p.metadata?.extra?.parse_duration_seconds))}</b>
+          <span>发表：</span><b>${escapeHtml(paperPublishedDate(p))}</b>
         </div>
         ${taskProgress}
       </div>
@@ -3464,7 +3510,6 @@ function renderPaperRow(p, selectable = false) {
             <span>对象 ${extractionStats.objectCount}</span>
             <span>结果 ${extractionStats.itemCount}</span>
             <span>已审 ${extractionStats.reviewedItemCount}</span>
-            <span>抽取耗时 ${fmtDuration(extractionStats.latestRunDurationSeconds)}</span>
           </div>
         </section>
       </div>
@@ -3964,7 +4009,8 @@ function renderPaperDetail(p) {
   const meta = p.metadata || {};
   const authors = meta.authors || [];
   const extra = meta.extra || {};
-  const published = extra.published ? String(extra.published).slice(0, 10) : '';
+  const published = paperPublishedDate(p);
+  const extractionStats = extractionStatsForPaper(p.id);
   const links = [
     linkButton(meta.url, meta.arxiv_id ? 'arXiv 页面' : '来源页面'),
     linkButton(meta.pdf_url, 'PDF'),
@@ -4002,6 +4048,7 @@ function renderPaperDetail(p) {
             ${metaRow('Parser', escapeHtml(extra.parser || ''))}
             ${metaRow('MinerU', extra.mineru_error ? escapeHtml(fmt(extra.mineru_error, 220)) : '')}
             ${metaRow('解析耗时', escapeHtml(fmtDuration(extra.parse_duration_seconds)))}
+            ${metaRow('抽取耗时', escapeHtml(fmtDuration(extractionStats.latestRunDurationSeconds)))}
             ${metaRow('Created', escapeHtml((p.created_at || '').slice(0, 19).replace('T', ' ')))}
           </dl>
         </section>
@@ -5828,17 +5875,35 @@ function renderMaterialDropdownOpenStates() {
 
 function refreshMaterialDropdownLabels() {
   document.querySelectorAll('.materials-multi-select').forEach(container => {
-    const labels = [...container.querySelectorAll('input:checked')]
+    const inputs = [...container.querySelectorAll('input:not(.materialSelectAllCheck)')];
+    const checkedInputs = inputs.filter(input => input.checked);
+    const labels = checkedInputs
       .map(input => input.dataset.label || input.value);
-    const total = container.querySelectorAll('input').length;
+    const total = inputs.length;
     const label = container.querySelector('[data-material-dropdown-label]');
     if (label) label.textContent = materialDropdownLabel(labels, total);
+    const selectAll = container.querySelector('.materialSelectAllCheck');
+    if (selectAll) {
+      selectAll.checked = Boolean(inputs.length && checkedInputs.length === inputs.length);
+      selectAll.indeterminate = Boolean(checkedInputs.length && checkedInputs.length < inputs.length);
+    }
   });
 }
 
 window.toggleMaterialMultiDropdown = function(id) {
   state.materialDropdownOpen = state.materialDropdownOpen === id ? null : id;
   renderMaterialDropdownOpenStates();
+};
+
+window.toggleMaterialMultiSelectAll = function(dropdownId, inputClass, checked) {
+  const container = [...document.querySelectorAll('.materials-multi-select')]
+    .find(item => item.dataset.materialDropdown === dropdownId);
+  if (!container) return;
+  container.querySelectorAll(`.${inputClass}`).forEach(input => {
+    input.checked = checked;
+  });
+  refreshMaterialDropdownLabels();
+  refreshMaterialDerivedViews(filteredMaterialItems());
 };
 
 function renderMaterialMultiSelect(containerId, dropdownId, title, inputClass, options) {
@@ -5851,6 +5916,7 @@ function renderMaterialMultiSelect(containerId, dropdownId, title, inputClass, o
     return {...option, checked};
   });
   const selectedLabels = normalized.filter(option => option.checked).map(option => option.label);
+  const allChecked = Boolean(normalized.length && normalized.every(option => option.checked));
   container.innerHTML = `
     <div class="materials-multi-select" data-material-dropdown="${escapeHtml(dropdownId)}">
       <button type="button" class="materials-multi-trigger" onclick="toggleMaterialMultiDropdown('${escapeHtml(dropdownId)}')" title="${escapeHtml(title)}">
@@ -5858,6 +5924,12 @@ function renderMaterialMultiSelect(containerId, dropdownId, title, inputClass, o
         <b data-material-dropdown-label="${escapeHtml(dropdownId)}">${escapeHtml(materialDropdownLabel(selectedLabels, normalized.length))}</b>
       </button>
       <div class="materials-multi-menu" hidden>
+        ${normalized.length ? `
+          <label class="materials-check materials-check-all" title="全选/取消全选">
+            <input type="checkbox" class="materialSelectAllCheck" ${allChecked ? 'checked' : ''} onchange="toggleMaterialMultiSelectAll('${escapeHtml(dropdownId)}', '${escapeHtml(inputClass)}', this.checked)" />
+            <span>全选</span>
+          </label>
+        ` : ''}
         ${normalized.map(option => `
           <label class="materials-check" title="${escapeHtml(option.label)}">
             <input type="checkbox" class="${escapeHtml(inputClass)}" value="${escapeHtml(option.value)}" data-label="${escapeHtml(option.label)}" ${option.checked ? 'checked' : ''} />
@@ -6072,16 +6144,24 @@ function updateMaterialsContext(items = filteredMaterialItems()) {
 }
 
 function renderMaterialScopePanel() {
+  const workbench = document.querySelector('.materials-workbench');
+  const panel = document.querySelector('.materials-scope-panel');
   const body = $('materialsScopeBody');
   const text = $('materialsScopeToggleText');
   const toggle = $('materialsScopeToggleBtn');
   if (body) body.hidden = !state.materialScopePanelOpen;
-  if (text) text.textContent = state.materialScopePanelOpen ? '收起' : '展开';
-  if (toggle) toggle.setAttribute('aria-expanded', state.materialScopePanelOpen ? 'true' : 'false');
+  if (workbench) workbench.classList.toggle('materials-scope-collapsed', !state.materialScopePanelOpen);
+  if (panel) panel.classList.toggle('scope-collapsed', !state.materialScopePanelOpen);
+  if (text) text.textContent = state.materialScopePanelOpen ? '⌃' : '⌄';
+  if (toggle) {
+    toggle.setAttribute('aria-expanded', state.materialScopePanelOpen ? 'true' : 'false');
+    toggle.title = state.materialScopePanelOpen ? '收起数据范围' : '展开数据范围';
+  }
 }
 
 window.toggleMaterialScopePanel = function() {
   state.materialScopePanelOpen = !state.materialScopePanelOpen;
+  if (!state.materialScopePanelOpen) state.materialDropdownOpen = null;
   renderMaterialScopePanel();
 };
 
@@ -6696,29 +6776,6 @@ window.setMaterialAnalysisType = function(type, options = {}) {
   if (!options.silent) toast(`已切换到：${materialAnalysisConfig().label}`);
 };
 
-function setMaterialDimensionSelection(predicate) {
-  document.querySelectorAll('.materialDimCheck').forEach(input => {
-    const label = materialDimensionLabel(input.value);
-    input.checked = predicate(input.value, label);
-  });
-  refreshMaterialDropdownLabels();
-  refreshMaterialDerivedViews(filteredMaterialItems());
-}
-
-window.selectMaterialDimensionPreset = function(kind) {
-  if (kind === 'all') {
-    setMaterialDimensionSelection(() => true);
-    return;
-  }
-  const matchers = {
-    method: /(source|method|extraction|representation|usage|形成|来源|抽取|表示|使用|机制|方法|更新)/i,
-    evaluation: /(evaluation|effect|experiment|result|ablation|效果|验证|实验|评估|消融)/i,
-    limit: /(limitation|risk|boundary|condition|局限|风险|边界|适用)/i,
-  };
-  const matcher = matchers[kind] || /.*/;
-  setMaterialDimensionSelection((value, label) => matcher.test(`${value} ${label}`));
-};
-
 function currentMaterialReportPayload() {
   const items = state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems();
   const template = materialCurrentTemplate();
@@ -7298,10 +7355,6 @@ async function bindEvents() {
   };
   $('materialsScopeBody').addEventListener('change', handleMaterialFilterChange);
   $('materialsLayout').addEventListener('change', handleMaterialFilterChange);
-  $('materialDimAllBtn').onclick = () => window.selectMaterialDimensionPreset('all');
-  $('materialDimMethodBtn').onclick = () => window.selectMaterialDimensionPreset('method');
-  $('materialDimEvaluationBtn').onclick = () => window.selectMaterialDimensionPreset('evaluation');
-  $('materialDimLimitBtn').onclick = () => window.selectMaterialDimensionPreset('limit');
   $('refreshMaterialsBtn').onclick = () => refreshAll().then(() => toast('素材分析数据已刷新')).catch(err => toast(err.message));
   $('saveAnalysisViewBtn').onclick = saveMaterialAnalysisView;
   $('exportAnalysisReportBtn').onclick = exportMaterialReport;
