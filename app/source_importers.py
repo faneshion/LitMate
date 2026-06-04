@@ -99,7 +99,10 @@ def fetch_arxiv_html_metadata(arxiv_id: str) -> Optional[PaperMetadata]:
     authors = [clean_html_fragment(a) for a in re.findall(r"<a[^>]*>(.*?)</a>", authors_block, flags=re.S)]
     abstract = clean_html_fragment(_match_html(text, r'<blockquote[^>]*class="abstract[^"]*"[^>]*>(.*?)</blockquote>'))
     abstract = re.sub(r"^Abstract:\s*", "", abstract, flags=re.I).strip() or None
+    published = parse_arxiv_dateline_published(text)
     year = arxiv_year(arxiv_id)
+    if published and published[:4].isdigit():
+        year = int(published[:4])
     return PaperMetadata(
         title=title,
         authors=[a for a in authors if a],
@@ -108,7 +111,7 @@ def fetch_arxiv_html_metadata(arxiv_id: str) -> Optional[PaperMetadata]:
         arxiv_id=arxiv_id,
         url=url,
         pdf_url=f"https://arxiv.org/pdf/{arxiv_id}.pdf",
-        extra={"metadata_status": "arxiv_html"},
+        extra={"metadata_status": "arxiv_html", "published": published} if published else {"metadata_status": "arxiv_html"},
     )
 
 
@@ -129,6 +132,31 @@ def arxiv_year(arxiv_id: str) -> Optional[int]:
         return None
     yy = int(match.group(1))
     return 2000 + yy if yy < 90 else 1900 + yy
+
+
+def parse_arxiv_dateline_published(text: str) -> Optional[str]:
+    dateline = clean_html_fragment(_match_html(text, r'<div[^>]*class="dateline"[^>]*>(.*?)</div>'))
+    match = re.search(r"Submitted on\s+(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})", dateline)
+    if not match:
+        return None
+    months = {
+        "jan": 1,
+        "feb": 2,
+        "mar": 3,
+        "apr": 4,
+        "may": 5,
+        "jun": 6,
+        "jul": 7,
+        "aug": 8,
+        "sep": 9,
+        "oct": 10,
+        "nov": 11,
+        "dec": 12,
+    }
+    month = months.get(match.group(2).lower())
+    if not month:
+        return None
+    return f"{int(match.group(3)):04d}-{month:02d}-{int(match.group(1)):02d}"
 
 
 def normalize_arxiv_id(value: str) -> str:
@@ -177,15 +205,20 @@ def metadata_from_crossref(message: Dict[str, Any], doi: str) -> PaperMetadata:
         if name:
             authors.append(name)
     year = None
+    published = None
     for key in ["published-print", "published-online", "issued"]:
         parts = (((message.get(key) or {}).get("date-parts") or [[]])[0])
         if parts and isinstance(parts[0], int):
             year = parts[0]
+            published = crossref_date_parts_to_iso(parts)
             break
     venue = None
     if message.get("container-title"):
         venue = message.get("container-title", [None])[0]
     abstract = strip_xml_tags(message.get("abstract")) if message.get("abstract") else None
+    extra = {"crossref_type": message.get("type"), "publisher": message.get("publisher")}
+    if published:
+        extra["published"] = published
     return PaperMetadata(
         title=title,
         authors=authors,
@@ -194,8 +227,23 @@ def metadata_from_crossref(message: Dict[str, Any], doi: str) -> PaperMetadata:
         abstract=abstract,
         doi=doi,
         url=message.get("URL"),
-        extra={"crossref_type": message.get("type"), "publisher": message.get("publisher")},
+        extra=extra,
     )
+
+
+def crossref_date_parts_to_iso(parts: List[Any]) -> Optional[str]:
+    if not parts or not isinstance(parts[0], int):
+        return None
+    values = [parts[0]]
+    for value in parts[1:3]:
+        if not isinstance(value, int):
+            break
+        values.append(value)
+    if len(values) == 1:
+        return f"{values[0]:04d}"
+    if len(values) == 2:
+        return f"{values[0]:04d}-{values[1]:02d}"
+    return f"{values[0]:04d}-{values[1]:02d}-{values[2]:02d}"
 
 
 def pick_pdf_url_from_crossref(message: Dict[str, Any]) -> Optional[str]:
