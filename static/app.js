@@ -13,6 +13,7 @@ const state = {
   paperOps: {},
   paperPage: 1,
   paperLibraryTab: 'all',
+  paperLibraryControlsOpen: true,
   paperFilters: {query: '', year: 'all', paperSet: 'all', parseStatus: 'all', extractionStatus: 'all'},
   recentImportPaperIds: [],
   libraryBatchExtractionBusy: false,
@@ -61,6 +62,8 @@ const state = {
   materialListQuery: '',
   materialCompareGroupMode: 'none',
   materialCompareOnlyUnverified: false,
+  materialDeepDiveDimension: null,
+  materialDeepDiveAxis: '',
   reviewItemIndex: 0,
   reviewFilters: {dimension: 'all', status: 'all', risk: 'all', query: ''},
   reviewActionMode: null,
@@ -3527,13 +3530,30 @@ function renderPaperLibraryHeader(filteredCount = state.papers.length) {
   const total = state.papers.length;
   const setCount = validCustomPaperSets().length;
   const verified = verifiedPaperCount(state.papers);
-  $('paperLibraryTitle').textContent = '论文库';
   $('paperLibrarySubtitle').textContent = `共 ${total} 篇论文，${setCount} 个集合，${verified} 篇已审核`;
   $('paperCount').textContent = state.paperLibraryTab === 'all'
     ? `当前 ${filteredCount} 篇`
     : `${setCount} 个集合`;
   $('createPaperSetBtn').hidden = state.paperLibraryTab !== 'sets';
 }
+
+function renderPaperLibraryControls() {
+  const body = $('paperLibraryControlsBody');
+  const toggle = $('paperLibraryControlsToggle');
+  const icon = $('paperLibraryControlsToggleIcon');
+  const open = state.paperLibraryControlsOpen;
+  if (body) body.hidden = !open;
+  if (toggle) {
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    toggle.title = open ? '收起筛选与批量操作' : '展开筛选与批量操作';
+  }
+  if (icon) icon.textContent = open ? '⌃' : '⌄';
+}
+
+window.togglePaperLibraryControls = function() {
+  state.paperLibraryControlsOpen = !state.paperLibraryControlsOpen;
+  renderPaperLibraryControls();
+};
 
 function renderPaperLibraryTabs() {
   document.querySelectorAll('[data-paper-library-tab]').forEach(button => {
@@ -3781,6 +3801,7 @@ function renderPapers() {
     filteredCount = renderPaperLibraryAll();
   }
   renderPaperLibraryHeader(filteredCount);
+  renderPaperLibraryControls();
 
   if (state.selectedPaperId && !state.papers.some(p => p.id === state.selectedPaperId)) {
     state.selectedPaperId = null;
@@ -6422,6 +6443,10 @@ function renderMaterialCompareMatrixView(items) {
   const template = materialCurrentTemplate();
   const dims = materialCompareDimensions();
   const rows = materialCompareRows(items);
+  if (state.materialDeepDiveDimension && !dims.some(dim => dim.value === state.materialDeepDiveDimension)) {
+    state.materialDeepDiveDimension = null;
+  }
+  const selectedDiveDimension = state.materialDeepDiveDimension || '';
   const grouped = new Map();
   rows.forEach(paper => {
     const group = state.materialCompareGroupMode === 'source'
@@ -6443,7 +6468,8 @@ function renderMaterialCompareMatrixView(items) {
         <td>${escapeHtml(sourceLabel(paper.source))}</td>
         ${dims.map(dim => {
           const item = materialPrimaryCellItem(items, paper.id, dim.value);
-          return `<td>
+          const selected = dim.value === selectedDiveDimension;
+          return `<td class="${selected ? 'selected-dimension' : ''}">
             <button type="button" class="materials-matrix-cell ${item ? '' : 'empty'}" onclick="openMaterialCellDetail(${escapeHtml(JSON.stringify(paper.id))}, ${escapeHtml(JSON.stringify(dim.value))})">
               ${escapeHtml(materialCompareCellSummary(item))}
             </button>
@@ -6464,6 +6490,7 @@ function renderMaterialCompareMatrixView(items) {
           <button type="button" class="${state.materialCompareGroupMode === 'source' ? 'active' : ''}" onclick="setMaterialCompareGroupMode('source')">按来源分组</button>
           <button type="button" class="${state.materialCompareGroupMode === 'usage' ? 'active' : ''}" onclick="setMaterialCompareGroupMode('usage')">按使用方式分组</button>
           <button type="button" class="${state.materialCompareOnlyUnverified ? 'active' : ''}" onclick="toggleMaterialCompareUnverified()">只看未验证效果</button>
+          <button type="button" ${selectedDiveDimension ? '' : 'disabled'} onclick="openMaterialDimensionDeepDive()">维度深挖</button>
           <button type="button" onclick="exportMaterialCompareMatrix()">导出矩阵</button>
         </div>
       </header>
@@ -6473,7 +6500,11 @@ function renderMaterialCompareMatrixView(items) {
             <tr>
               <th>论文</th>
               <th>来源</th>
-              ${dims.map(dim => `<th>${escapeHtml(dim.label)}</th>`).join('')}
+              ${dims.map(dim => `<th class="${dim.value === selectedDiveDimension ? 'selected-dimension' : ''}">
+                <button type="button" class="materials-matrix-dim-head ${dim.value === selectedDiveDimension ? 'selected' : ''}" onclick="selectMaterialDeepDiveDimension(${escapeHtml(JSON.stringify(dim.value))})">
+                  ${escapeHtml(dim.label)}
+                </button>
+              </th>`).join('')}
             </tr>
           </thead>
           <tbody>${bodyRows || `<tr><td colspan="${dims.length + 2}" class="muted">当前范围下没有可对比论文。</td></tr>`}</tbody>
@@ -6482,6 +6513,12 @@ function renderMaterialCompareMatrixView(items) {
     </section>
   `;
 }
+
+window.selectMaterialDeepDiveDimension = function(dimensionName) {
+  state.materialDeepDiveDimension = state.materialDeepDiveDimension === dimensionName ? null : dimensionName;
+  state.materialDeepDiveAxis = '';
+  renderMaterialCompareMatrixView(state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems());
+};
 
 window.setMaterialCompareGroupMode = function(mode) {
   state.materialCompareGroupMode = state.materialCompareGroupMode === mode ? 'none' : mode;
@@ -6504,6 +6541,354 @@ window.exportMaterialCompareMatrix = function() {
     return row;
   });
   downloadJson(`litmate_compare_matrix_${new Date().toISOString().slice(0, 10)}.json`, {exported_at: new Date().toISOString(), rows});
+};
+
+function materialDeepDiveDimension() {
+  return materialCompareDimensions().find(dim => dim.value === state.materialDeepDiveDimension) || null;
+}
+
+function materialDeepDiveEntries(items, dimensionName) {
+  return materialCompareRows(items).map(paper => {
+    const item = materialPrimaryCellItem(items, paper.id, dimensionName);
+    const content = materialItemContent(item);
+    const notReported = !item || !content || materialLooksNotReported(content);
+    return {paper, item, content, notReported};
+  });
+}
+
+function materialDeepDivePercent(count, total) {
+  if (!total) return '0%';
+  return `${Math.round(count / total * 100)}%`;
+}
+
+function materialDeepDiveType(dim) {
+  const text = `${dim?.value || ''} ${dim?.label || ''} ${dim?.question || ''}`.toLowerCase();
+  if (/definition|定义|concept|what is/.test(text)) return '定义型维度';
+  if (/effect|evaluation|experiment|result|performance|效果|验证|评估|实验|指标|性能/.test(text)) return '效果型维度';
+  if (/limitation|risk|boundary|condition|局限|风险|边界|适用/.test(text)) return '局限型维度';
+  if (/method|step|pipeline|process|procedure|extraction|方法|步骤|流程|抽取|构建/.test(text)) return '方法型维度';
+  if (/source|origin|data|来源|生产|收集/.test(text)) return '来源型维度';
+  if (/representation|storage|memory|表示|存储|记忆/.test(text)) return '表示型维度';
+  if (/usage|use|function|应用|使用|功能/.test(text)) return '功能型维度';
+  return '通用维度';
+}
+
+function materialDeepDiveClusterRules(type) {
+  const common = [
+    {name: '未报告或表述不足', pattern: /not[_\s-]?reported|未报告|未提及|没有|无直接|缺少/i, description: '论文没有给出该维度的明确结果，或只能从上下文间接判断。'},
+    {name: '其他模式', pattern: /.*/i, description: '当前结果暂未落入高频模式，可作为人工复核和再命名候选。'},
+  ];
+  const rules = {
+    '定义型维度': [
+      {name: '反思生成型经验', pattern: /reflection|reflect|反思|失败|成功|lesson|经验总结/i, description: '将经验视为对历史轨迹、失败案例或成功案例的反思总结。'},
+      {name: '轨迹案例型经验', pattern: /trajectory|case|trace|demonstration|episode|轨迹|案例|示范/i, description: '强调经验来自可复用的交互轨迹、案例库或示范记录。'},
+      {name: '策略规则型经验', pattern: /rule|policy|heuristic|strategy|规则|策略|启发式/i, description: '把经验组织为策略规则、行动准则或可执行的启发式。'},
+      {name: '记忆存储型经验', pattern: /memory|store|library|retrieval|记忆|存储|经验库|检索/i, description: '将经验放入显式记忆、经验库或检索索引中供后续任务使用。'},
+    ],
+    '效果型维度': [
+      {name: '性能提升型', pattern: /improv|boost|accuracy|score|性能|提升|准确率|效果更好/i, description: '核心证据是任务分数或质量指标提升。'},
+      {name: '效率优化型', pattern: /efficient|speed|latency|cost|token|效率|速度|成本|开销/i, description: '强调推理、训练、检索或标注成本的优化。'},
+      {name: '泛化增强型', pattern: /generaliz|transfer|robust|cross|泛化|迁移|鲁棒|跨任务/i, description: '结果主张在新任务、新领域或跨模型环境中保持有效。'},
+      {name: '成本增加但效果提升型', pattern: /trade.?off|overhead|cost.*improv|开销.*提升|成本.*效果/i, description: '承认额外成本或复杂度，但认为收益足以抵消。'},
+      {name: '无直接验证型', pattern: /no direct|not evaluated|未验证|无消融|未报告/i, description: '没有直接实验、消融或量化指标支撑。'},
+    ],
+    '局限型维度': [
+      {name: '数据依赖', pattern: /data|dataset|sample|annotation|数据|样本|标注/i, description: '局限主要来自数据质量、覆盖范围或标注成本。'},
+      {name: '泛化不足', pattern: /generaliz|transfer|domain|泛化|迁移|领域/i, description: '方法可能难以迁移到新领域、新任务或新模型。'},
+      {name: '错误传播', pattern: /error|noise|hallucination|propagat|错误|噪声|幻觉|传播/i, description: '上游抽取、检索或判断错误会影响后续结果。'},
+      {name: '计算成本', pattern: /cost|compute|latency|token|scal|成本|算力|延迟|扩展/i, description: '成本、延迟或规模化部署是主要限制。'},
+      {name: '评估不足', pattern: /evaluation|ablation|metric|评估|消融|指标|验证不足/i, description: '评估覆盖不足，缺少消融、跨任务验证或可靠指标。'},
+    ],
+    '方法型维度': [
+      {name: '流程阶段型', pattern: /stage|pipeline|step|phase|流程|步骤|阶段/i, description: '结果围绕方法流程、处理阶段或操作步骤展开。'},
+      {name: '输入输出型', pattern: /input|output|schema|输入|输出|结构/i, description: '关注输入材料、输出结构和中间表示。'},
+      {name: '自动化程度型', pattern: /automatic|manual|semi|agent|自动|人工|半自动/i, description: '差异主要来自人工参与、自动化和 agent 化程度。'},
+      {name: '在线更新型', pattern: /online|update|continual|dynamic|实时|在线|更新|持续/i, description: '强调运行时、在线或持续更新能力。'},
+    ],
+  };
+  return [...(rules[type] || []), ...common];
+}
+
+function materialDeepDiveClusterEntries(entries, type) {
+  const rules = materialDeepDiveClusterRules(type);
+  const clusters = new Map();
+  entries.forEach(entry => {
+    const text = `${entry.content || ''} ${entry.paper?.metadata?.title || ''}`;
+    const rule = entry.notReported
+      ? rules.find(item => item.name === '未报告或表述不足')
+      : (rules.find(item => item.pattern.test(text)) || rules[rules.length - 1]);
+    if (!clusters.has(rule.name)) clusters.set(rule.name, {...rule, entries: []});
+    clusters.get(rule.name).entries.push(entry);
+  });
+  return [...clusters.values()].sort((a, b) => b.entries.length - a.entries.length);
+}
+
+function materialDeepDiveRecommendedAxes(type) {
+  const axes = {
+    '效果型维度': ['按指标分类', '按 baseline 分类', '按证据强度分类', '按效果类型分类', '按 trade-off 分类'],
+    '方法型维度': ['按流程阶段分类', '按输入输出分类', '按自动化程度分类', '按是否在线更新分类'],
+    '定义型维度': ['按定义方式分类', '按来源分类', '按功能分类', '按粒度分类'],
+    '局限型维度': ['按风险来源分类', '按证据强度分类', '按影响范围分类', '按可修复性分类'],
+  };
+  return axes[type] || ['按定义方式分类', '按来源分类', '按功能分类', '按粒度分类', '按证据强度分类', '按年份分类', '按任务类型分类'];
+}
+
+function materialDeepDiveAxisLabel(entry, axis, type) {
+  const text = `${entry.content || ''} ${entry.paper?.metadata?.title || ''}`;
+  if (entry.notReported) return '未报告';
+  if (/证据强度/.test(axis)) return {strong: '强证据', medium: '中等证据', weak: '弱证据'}[materialEvidenceStrength(entry.item)] || '未知证据';
+  if (/年份/.test(axis)) return String(entry.paper?.metadata?.year || '未知年份');
+  if (/来源/.test(axis)) return materialSourceGroupLabel(entry.paper);
+  if (/任务类型/.test(axis)) {
+    if (/math|reason|数学|推理/i.test(text)) return '数学/推理任务';
+    if (/agent|planning|tool|智能体|规划|工具/i.test(text)) return '智能体任务';
+    if (/chem|protein|bio|medical|化学|蛋白|生物|医疗/i.test(text)) return '科学发现任务';
+    return '通用任务';
+  }
+  if (/流程阶段/.test(axis)) {
+    if (/pre|before|offline|预处理|离线/i.test(text)) return '前处理阶段';
+    if (/during|runtime|online|运行|在线/i.test(text)) return '运行阶段';
+    if (/after|post|feedback|反思|反馈/i.test(text)) return '后处理阶段';
+    return '阶段未明确';
+  }
+  if (/输入输出/.test(axis)) {
+    if (/trajectory|trace|轨迹/i.test(text)) return '轨迹输入';
+    if (/memory|library|经验库|记忆/i.test(text)) return '记忆/库输出';
+    if (/rule|policy|策略|规则/i.test(text)) return '规则/策略输出';
+    return '输入输出未明确';
+  }
+  if (/自动化/.test(axis)) {
+    if (/manual|human|人工/i.test(text)) return '人工参与';
+    if (/semi|human-in-the-loop|半自动/i.test(text)) return '半自动';
+    if (/automatic|agent|自动|智能体/i.test(text)) return '自动化';
+    return '自动化程度未明确';
+  }
+  if (/baseline/i.test(axis)) {
+    if (/without|ablation|baseline|对比|消融/i.test(text)) return '有 baseline / 消融';
+    return 'baseline 未明确';
+  }
+  if (/trade.?off|trade-off|权衡/i.test(axis)) {
+    if (/cost|overhead|latency|成本|开销|延迟/i.test(text)) return '报告成本权衡';
+    return '未报告成本权衡';
+  }
+  if (/粒度/.test(axis)) {
+    if (/system|framework|系统|框架/i.test(text)) return '系统/框架级';
+    if (/module|component|模块|组件/i.test(text)) return '模块级';
+    if (/step|operation|步骤|操作/i.test(text)) return '步骤级';
+    if (/rule|policy|规则|策略/i.test(text)) return '规则级';
+    return '粒度未明确';
+  }
+  if (/功能|效果类型|定义方式/.test(axis)) {
+    const cluster = materialDeepDiveClusterEntries([entry], type)[0];
+    return cluster?.name || '未分类';
+  }
+  return '其他分类';
+}
+
+function materialDeepDiveGroupByAxis(entries, axis, type) {
+  const groups = new Map();
+  entries.forEach(entry => {
+    const label = materialDeepDiveAxisLabel(entry, axis, type);
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label).push(entry);
+  });
+  return [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
+}
+
+function materialDeepDiveCaseList(entries, dimensionName, limit = 3) {
+  return entries.slice(0, limit).map(entry => `
+    <li>
+      <button type="button" onclick="openMaterialCellDetail(${escapeHtml(JSON.stringify(entry.paper.id))}, ${escapeHtml(JSON.stringify(dimensionName))})">
+        ${escapeHtml(fmt(entry.paper.metadata?.title || entry.paper.id, 76))}
+      </button>
+    </li>
+  `).join('') || '<li class="muted">暂无代表论文。</li>';
+}
+
+function materialDeepDiveEvidenceSections(entries) {
+  const counts = new Map();
+  entries.forEach(entry => (entry.item?.evidence || []).forEach(ev => {
+    const section = ev.section_title || ev.section || '未标注章节';
+    counts.set(section, (counts.get(section) || 0) + 1);
+  }));
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+}
+
+function renderMaterialDimensionDeepDive(dim, items) {
+  const type = materialDeepDiveType(dim);
+  const entries = materialDeepDiveEntries(items, dim.value);
+  const resultEntries = entries.filter(entry => entry.item);
+  const validEntries = entries.filter(entry => !entry.notReported);
+  const notReportedCount = entries.filter(entry => entry.notReported).length;
+  const evidenceEntries = resultEntries.filter(entry => (entry.item?.evidence || []).length);
+  const confirmedEntries = resultEntries.filter(entry => materialItemAccepted(entry.item));
+  const inferredEntries = resultEntries.filter(entry => itemModelInferred(entry.item));
+  const clusters = materialDeepDiveClusterEntries(entries, type);
+  const axes = materialDeepDiveRecommendedAxes(type);
+  const axis = state.materialDeepDiveAxis || axes[0] || '按定义方式分类';
+  state.materialDeepDiveAxis = axis;
+  const axisGroups = materialDeepDiveGroupByAxis(entries, axis, type);
+  const weakEntries = resultEntries.filter(entry => materialEvidenceStrength(entry.item) === 'weak' || !(entry.item?.evidence || []).length);
+  const evidenceSections = materialDeepDiveEvidenceSections(entries);
+  const topClusters = clusters.filter(cluster => cluster.name !== '未报告或表述不足' && cluster.entries.some(entry => !entry.notReported));
+  const leadCluster = topClusters[0] || clusters[0];
+  const dimLabel = dim.label || dim.value;
+  const anomalyTemplates = {
+    '定义型维度': ['大量论文没有显式定义经验。', '经验与记忆、策略或规则的边界可能混淆。', '缺少经验质量或经验粒度的定义。'],
+    '效果型维度': ['多数论文没有直接消融。', '缺少跨任务泛化验证。', '只报告性能提升，不报告成本或失败案例。'],
+    '方法型维度': ['部分论文缺少关键实现细节。', '流程步骤不可复现。', '输入输出定义不清。'],
+    '局限型维度': ['局限常停留在笼统表述。', '风险来源和影响范围没有拆开。', '缺少可验证的失败条件。'],
+  };
+  const anomalies = [
+    ...(anomalyTemplates[type] || ['该维度存在跨论文表述不一致。', '部分结果依赖模型推断。', '证据位置和结论支撑关系需要复核。']),
+    notReportedCount ? `${notReportedCount} 篇论文在该维度上表现为未报告或弱报告。` : '',
+    weakEntries.length ? `${weakEntries.length} 条结果只有弱证据或没有证据。` : '',
+  ].filter(Boolean);
+  const clusterSentence = leadCluster ? `${dimLabel} 在当前论文中主要呈现为“${leadCluster.name}”，涉及 ${leadCluster.entries.length} 篇论文。` : `${dimLabel} 暂未形成明显主类。`;
+  return `
+    <section class="deep-dive-section">
+      <h3>1. 维度总览</h3>
+      <div class="deep-dive-stat-grid">
+        ${[
+          ['维度名称', dimLabel],
+          ['维度类型', type],
+          ['涉及论文数', entries.length],
+          ['有效结果数', validEntries.length],
+          ['not_reported 数', notReportedCount],
+          ['证据覆盖率', materialDeepDivePercent(evidenceEntries.length, resultEntries.length)],
+          ['人工确认率', materialDeepDivePercent(confirmedEntries.length, resultEntries.length)],
+          ['模型推断率', materialDeepDivePercent(inferredEntries.length, resultEntries.length)],
+        ].map(([label, value]) => `<div><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>`).join('')}
+      </div>
+    </section>
+
+    <section class="deep-dive-section">
+      <h3>2. 结果聚类</h3>
+      <div class="deep-dive-clusters">
+        ${clusters.map(cluster => `<article>
+          <header><b>${escapeHtml(cluster.name)}</b><span>${cluster.entries.length} 篇</span></header>
+          <p>${escapeHtml(cluster.description)}</p>
+          <ul>${materialDeepDiveCaseList(cluster.entries, dim.value, 3)}</ul>
+        </article>`).join('')}
+      </div>
+    </section>
+
+    <section class="deep-dive-section">
+      <h3>3. 多视角分类</h3>
+      <div class="deep-dive-axis-bar">
+        ${axes.map(item => `<button type="button" class="${item === axis ? 'active' : ''}" onclick="setMaterialDeepDiveAxis(${escapeHtml(JSON.stringify(item))})">${escapeHtml(item)}</button>`).join('')}
+      </div>
+      <div class="deep-dive-category-grid">
+        ${axisGroups.map(([label, group]) => `<article>
+          <b>${escapeHtml(label)}</b>
+          <span>${group.length} 篇论文</span>
+          <ul>${materialDeepDiveCaseList(group, dim.value, 4)}</ul>
+        </article>`).join('')}
+      </div>
+    </section>
+
+    <section class="deep-dive-section">
+      <h3>4. 代表性案例</h3>
+      <div class="deep-dive-case-grid">
+        ${(topClusters.length ? topClusters : clusters).slice(0, 4).map(cluster => {
+          const example = cluster.entries.find(entry => !entry.notReported) || cluster.entries[0];
+          const quote = (example?.item?.evidence || [])[0]?.quote || example?.content || '';
+          return `<article>
+            <h4>${escapeHtml(cluster.name)}</h4>
+            <p>${escapeHtml(cluster.description)}</p>
+            <b>代表论文</b>
+            <ul>${materialDeepDiveCaseList(cluster.entries, dim.value, 3)}</ul>
+            <b>代表性证据</b>
+            <blockquote>${escapeHtml(fmt(quote, 360) || '暂无直接证据。')}</blockquote>
+          </article>`;
+        }).join('')}
+      </div>
+    </section>
+
+    <section class="deep-dive-section">
+      <h3>5. 证据质量</h3>
+      <div class="deep-dive-evidence-grid">
+        <article><b>证据来自哪里？</b>${evidenceSections.map(([section, count]) => `<span>${escapeHtml(section)} · ${count}</span>`).join('') || '<span>暂无章节证据</span>'}</article>
+        <article><b>直接支撑情况</b><p>${evidenceEntries.length} / ${resultEntries.length || 0} 条结果带有原文证据。</p></article>
+        <article><b>弱证据结果</b><p>${weakEntries.length} 条结果缺少证据或置信度较低。</p></article>
+        <article><b>模型推断依赖</b><p>${inferredEntries.length} 条结果包含推断信号。</p></article>
+      </div>
+    </section>
+
+    <section class="deep-dive-section">
+      <h3>6. 异常与空白</h3>
+      <ul class="deep-dive-list">
+        ${anomalies.map(item => `<li>${escapeHtml(item)}</li>`).join('')}
+      </ul>
+    </section>
+
+    <section class="deep-dive-section">
+      <h3>7. 写作 / 方案素材</h3>
+      <div class="deep-dive-writing-grid">
+        <article><b>可用于综述的归纳句</b><p>${escapeHtml(clusterSentence)}</p></article>
+        <article><b>可引用观点</b><p>${escapeHtml(`${dimLabel} 的跨论文差异主要体现在 ${topClusters.slice(0, 3).map(item => item.name).join('、') || '是否报告和证据强弱'}。`)}</p></article>
+        <article><b>可支撑的 claim</b><p>${escapeHtml(`当前证据支持将“${dimLabel}”作为比较 ${materialCurrentTemplate()?.name || '科研对象'} 的关键维度。`)}</p></article>
+        <article><b>研究空白表述</b><p>${escapeHtml(anomalies[0] || `${dimLabel} 仍缺少一致的报告规范。`)}</p></article>
+        <article><b>方案设计启发</b><p>${escapeHtml(`后续方案可围绕“${leadCluster?.name || dimLabel}”建立更明确的输入、输出和验证协议。`)}</p></article>
+      </div>
+    </section>
+
+    <section class="deep-dive-section">
+      <h3>8. 用户自定义分类</h3>
+      <div class="deep-dive-custom">
+        <label><span>新增分类轴</span><input id="materialDeepDiveCustomAxis" placeholder="例如：按交互阶段 / 按失败类型" /></label>
+        <label><span>人工调整记录</span><textarea id="materialDeepDiveCustomNote" rows="5" placeholder="记录重命名类别、合并类别、拆分类别、移动论文或标记分类不合理的决定。"></textarea></label>
+        <div>
+          <button type="button" onclick="saveMaterialDeepDiveView()">保存为分析视图</button>
+          <button type="button" onclick="toast('已标记：当前系统分类需要人工复核')">标记分类不合理</button>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+window.setMaterialDeepDiveAxis = function(axis) {
+  state.materialDeepDiveAxis = axis;
+  const dim = materialDeepDiveDimension();
+  if (!dim) return;
+  const items = state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems();
+  $('materialDeepDiveBody').innerHTML = renderMaterialDimensionDeepDive(dim, items);
+};
+
+window.openMaterialDimensionDeepDive = function() {
+  const dim = materialDeepDiveDimension();
+  if (!dim) {
+    toast('请先在对比矩阵中选择一个维度列');
+    return;
+  }
+  const items = state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems();
+  $('materialDeepDiveTitle').textContent = `维度深挖：${dim.label || dim.value}`;
+  $('materialDeepDiveMeta').textContent = `${materialCurrentTemplate()?.name || '科研对象'} · ${materialCompareRows(items).length} 篇论文 · ${materialDeepDiveType(dim)}`;
+  $('materialDeepDiveBody').innerHTML = renderMaterialDimensionDeepDive(dim, items);
+  $('materialDeepDiveModal').hidden = false;
+  document.body.classList.add('modal-open');
+};
+
+window.closeMaterialDeepDiveModal = function() {
+  $('materialDeepDiveModal').hidden = true;
+  syncModalLock();
+};
+
+window.saveMaterialDeepDiveView = function() {
+  const dim = materialDeepDiveDimension();
+  if (!dim) return;
+  const saved = JSON.parse(localStorage.getItem('litmate_material_deep_dive_views') || '[]');
+  saved.unshift({
+    saved_at: new Date().toISOString(),
+    template_id: materialCurrentTemplate()?.id || '',
+    dimension_name: dim.value,
+    dimension_label: dim.label || dim.value,
+    axis: state.materialDeepDiveAxis || '',
+    custom_axis: $('materialDeepDiveCustomAxis')?.value || '',
+    note: $('materialDeepDiveCustomNote')?.value || '',
+  });
+  localStorage.setItem('litmate_material_deep_dive_views', JSON.stringify(saved.slice(0, 50)));
+  toast('维度深挖视图已保存');
 };
 
 function materialDetailItemsHtml(items) {
@@ -7153,6 +7538,8 @@ async function bindEvents() {
   $('simulationRawClose').onclick = closeSimulationRawModal;
   $('extractionResultClose').onclick = closeExtractionResultModal;
   $('materialCellClose').onclick = window.closeMaterialCellModal;
+  $('materialDeepDiveClose').onclick = window.closeMaterialDeepDiveModal;
+  $('materialDeepDiveSaveBtn').onclick = window.saveMaterialDeepDiveView;
   document.querySelectorAll('[data-paper-library-tab]').forEach(button => {
     button.onclick = () => {
       state.paperLibraryTab = button.dataset.paperLibraryTab;
@@ -7168,6 +7555,7 @@ async function bindEvents() {
   $('paperImportToggleBtn').onpointerdown = (event) => event.stopPropagation();
   $('paperImportToggleBtn').onclick = window.togglePaperImportPane;
   $('paperImportResizeHandle').onpointerdown = startPaperImportResize;
+  $('paperLibraryControlsToggle').onclick = window.togglePaperLibraryControls;
   $('createPaperSetBtn').onclick = () => togglePaperSetCreate(true);
   $('confirmCreatePaperSetBtn').onclick = () => createPaperSet().catch(err => toast(err.message));
   $('cancelCreatePaperSetBtn').onclick = () => togglePaperSetCreate(false);
@@ -7232,6 +7620,7 @@ async function bindEvents() {
       else if (el.dataset.closeModal === 'simulationRawModal') closeSimulationRawModal();
       else if (el.dataset.closeModal === 'extractionResultModal') closeExtractionResultModal();
       else if (el.dataset.closeModal === 'materialCellModal') closeMaterialCellModal();
+      else if (el.dataset.closeModal === 'materialDeepDiveModal') closeMaterialDeepDiveModal();
       else if (el.dataset.closeModal === 'objectConfigModal') closeObjectConfigModal();
       else if (el.dataset.closeModal === 'configModal') closeConfigModal();
       else closePaperDetail();
@@ -7246,6 +7635,7 @@ async function bindEvents() {
     else if (!$('objectImportModal').hidden) closeObjectImportModal();
     else if (!$('simulationRawModal').hidden) closeSimulationRawModal();
     else if (!$('extractionResultModal').hidden) closeExtractionResultModal();
+    else if (!$('materialDeepDiveModal').hidden) closeMaterialDeepDiveModal();
     else if (!$('materialCellModal').hidden) closeMaterialCellModal();
     else if (!$('promptPreviewModal').hidden) closePromptPreviewModal();
     else if (!$('paperDetailModal').hidden) closePaperDetail();
