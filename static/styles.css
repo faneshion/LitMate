@@ -1661,13 +1661,21 @@ body.materials-sidebar-resizing {
   background: #f8fbff;
 }
 .materials-result-header h3 {
-  margin: 0 0 4px;
+  margin: 0;
   color: #0f172a;
   font-size: 17px;
 }
-.materials-result-header p {
-  margin: 0;
+.materials-main-title-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0;
+}
+.materials-main-subtitle {
+  margin-left: 2ch;
   color: #64748b;
+  font-size: 15px;
+  font-weight: 600;
   line-height: 1.5;
 }
 .materials-result-actions {

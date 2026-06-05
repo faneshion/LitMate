@@ -6161,6 +6161,7 @@ function updateMaterialsContext(items = filteredMaterialItems()) {
   if ($('materialsScopeSummary')) $('materialsScopeSummary').textContent = '默认使用已审查且有证据的素材进行分析，可在顶部数据范围中调整。';
   if ($('materialMainTitle')) $('materialMainTitle').textContent = config.label;
   if ($('materialMainSubtitle')) $('materialMainSubtitle').textContent = config.description;
+  if ($('materialResultTitle')) $('materialResultTitle').textContent = config.description;
   if ($('materialAnalysisTypeHint')) $('materialAnalysisTypeHint').textContent = `当前：${config.label}`;
 }
 
@@ -7754,9 +7755,9 @@ async function bindEvents() {
   $('materialGenerateQuestionBtn').onclick = () => generateMaterialArtifact('question');
   $('materialGeneratePlanBtn').onclick = () => generateMaterialArtifact('plan');
   $('searchMaterialsBtn').onclick = searchMaterials;
-  $('compareBtn').onclick = comparePapers;
-  $('gapBtn').onclick = gapAnalysis;
-  $('graphBtn').onclick = evidenceGraph;
+  if ($('compareBtn')) $('compareBtn').onclick = comparePapers;
+  if ($('gapBtn')) $('gapBtn').onclick = gapAnalysis;
+  if ($('graphBtn')) $('graphBtn').onclick = evidenceGraph;
 }
 
 setupTabs(); bindEvents(); refreshAll().catch(err => toast(err.message));
