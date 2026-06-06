@@ -6162,6 +6162,7 @@ function updateMaterialsContext(items = filteredMaterialItems()) {
   if ($('materialMainTitle')) $('materialMainTitle').textContent = config.label;
   if ($('materialMainSubtitle')) $('materialMainSubtitle').textContent = config.description;
   if ($('materialResultTitle')) $('materialResultTitle').textContent = config.description;
+  if ($('materialsResultHeader')) $('materialsResultHeader').hidden = state.materialAnalysisType === 'compare';
   if ($('materialAnalysisTypeHint')) $('materialAnalysisTypeHint').textContent = `当前：${config.label}`;
 }
 
