@@ -4440,6 +4440,7 @@ window.selectRunForReview = function(id) {
   syncReviewDraftFromApplied(true);
   state.reviewItemIndex = 0;
   resetReviewActionMode();
+  if (!$('extractionResultModal').hidden) closeExtractionResultModal();
   document.querySelector('[data-tab="review"]').click();
   renderReviewPanel();
 };
