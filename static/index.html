@@ -675,11 +675,14 @@
 
     <section id="materials" class="panel">
       <div class="materials-workbench">
+        <div id="materialsContextBar" class="materials-context-bar">
+          <div id="materialsContextSummary" class="materials-context-summary">研究素材分析工作台 <span id="materialsScopeSummary">默认使用已审查且有证据的素材进行分析，可在顶部数据范围中调整。</span></div>
+          <nav id="materialsBreadcrumb" class="materials-breadcrumb" aria-label="素材分析层级导航" hidden></nav>
+        </div>
+
         <header class="materials-topbar">
-          <div class="materials-title-block">
-            <span class="kicker materials-kicker-line">研究素材分析工作台 <span id="materialsScopeSummary">默认使用已审查且有证据的素材进行分析。</span></span>
-          </div>
-          <div class="materials-top-actions">
+          <div class="materials-topbar-spacer" aria-hidden="true"></div>
+          <div id="materialsTopActions" class="materials-top-actions">
             <button id="refreshMaterialsBtn" type="button">刷新数据</button>
             <button id="saveAnalysisViewBtn" type="button">保存分析视图</button>
             <button id="exportAnalysisReportBtn" type="button">导出报告</button>
@@ -751,7 +754,7 @@
           <aside class="materials-sidebar">
             <section class="materials-side-section">
               <div class="materials-section-heading">
-                <h3>分析类型</h3>
+                <h3 id="materialAnalysisHeading">分析类型</h3>
                 <span id="materialAnalysisTypeHint">选择一种科研任务视角</span>
               </div>
               <nav id="materialAnalysisNav" class="materials-analysis-nav"></nav>
@@ -778,22 +781,26 @@
             </section>
           </main>
 
+          <div id="materialsInsightResizeHandle" class="materials-insight-resize" title="拖拽调整右侧面板宽度">
+            <button id="materialsInsightToggleBtn" class="materials-insight-toggle" type="button" title="收起/展开右侧面板">›</button>
+          </div>
+
           <aside class="materials-insight-pane">
-            <section class="materials-insight-card">
+            <section id="materialInsightCard" class="materials-insight-card">
               <div class="materials-section-heading">
-                <h3>洞察建议</h3>
-                <span>从当前分析范围自动总结</span>
+                <h3 id="materialInsightHeading">洞察建议</h3>
+                <span id="materialInsightHint">从当前分析范围自动总结</span>
               </div>
               <div id="materialInsightPanel" class="materials-insight-list"></div>
             </section>
-            <section class="materials-insight-card">
+            <section id="materialExplanationCard" class="materials-insight-card">
               <div class="materials-section-heading">
                 <h3>分析解释</h3>
                 <span>说明结果如何被生成</span>
               </div>
               <div id="materialExplanationPanel" class="materials-explain-list"></div>
             </section>
-            <section class="materials-insight-card">
+            <section id="materialGenerateCard" class="materials-insight-card">
               <div class="materials-section-heading">
                 <h3>一键生成素材</h3>
                 <span>沉淀下一步科研材料</span>
@@ -824,23 +831,6 @@
           </div>
         </header>
         <div id="materialCellBody" class="material-cell-body"></div>
-      </div>
-    </div>
-
-    <div id="materialDeepDiveModal" class="modal" hidden>
-      <div class="modal-backdrop" data-close-modal="materialDeepDiveModal"></div>
-      <div class="paper-modal material-deep-dive-modal">
-        <header class="modal-header">
-          <div>
-            <h2 id="materialDeepDiveTitle">维度深挖</h2>
-            <p id="materialDeepDiveMeta" class="meta"></p>
-          </div>
-          <div class="modal-actions">
-            <button id="materialDeepDiveSaveBtn" type="button">保存为分析视图</button>
-            <button id="materialDeepDiveClose" aria-label="关闭">关闭</button>
-          </div>
-        </header>
-        <div id="materialDeepDiveBody" class="material-deep-dive-body"></div>
       </div>
     </div>
 
