@@ -6149,13 +6149,20 @@ function renderMaterialsBreadcrumb() {
   }
   const template = materialCurrentTemplate();
   nav.innerHTML = `
-    <ol>
-      <li><button type="button" onclick="window.setMaterialAnalysisType('overview')">素材管理与分析</button></li>
-      <li><button type="button" onclick="returnToMaterialCompareMatrix()">跨论文对比矩阵</button></li>
-      <li><span>维度深挖</span></li>
-      <li aria-current="page"><b>${escapeHtml(dim.label || dim.value)}</b>${template ? `<small>${escapeHtml(template.name || template.id)}</small>` : ''}</li>
-    </ol>
+    <div class="materials-breadcrumb-row">
+      <ol>
+        <li><button type="button" onclick="window.setMaterialAnalysisType('overview')">素材管理与分析</button></li>
+        <li><button type="button" onclick="returnToMaterialCompareMatrix()">跨论文对比矩阵</button></li>
+        <li><span>维度深挖</span></li>
+        <li aria-current="page"><b>${escapeHtml(dim.label || dim.value)}</b>${template ? `<small>${escapeHtml(template.name || template.id)}</small>` : ''}</li>
+      </ol>
+      <div class="materials-breadcrumb-actions">
+        <button id="materialDeepDiveReturnBtn" type="button">返回矩阵</button>
+        <button id="materialDeepDiveSaveBtn" type="button" class="primary">保存为分析视图</button>
+      </div>
+    </div>
   `;
+  bindMaterialTopActions();
 }
 
 function renderMaterialAnalysisParams() {
@@ -6213,6 +6220,7 @@ function updateMaterialsContext(items = filteredMaterialItems()) {
 
 function renderMaterialScopePanel() {
   const workbench = document.querySelector('.materials-workbench');
+  const topbar = document.querySelector('.materials-topbar');
   const panel = document.querySelector('.materials-scope-panel');
   const body = $('materialsScopeBody');
   const text = $('materialsScopeToggleText');
@@ -6220,6 +6228,7 @@ function renderMaterialScopePanel() {
   const hideForDeepDive = state.materialAnalysisType === 'compare'
     && state.materialAnalysisDepth === 'deep_dive'
     && materialDeepDiveDimension();
+  if (topbar) topbar.hidden = Boolean(hideForDeepDive);
   if (panel) panel.hidden = Boolean(hideForDeepDive);
   if (body) body.hidden = Boolean(hideForDeepDive) || !state.materialScopePanelOpen;
   if (workbench) workbench.classList.toggle('materials-scope-collapsed', Boolean(hideForDeepDive) || !state.materialScopePanelOpen);
@@ -6252,16 +6261,22 @@ function renderMaterialTopActions() {
   const isDeepDive = state.materialAnalysisType === 'compare'
     && state.materialAnalysisDepth === 'deep_dive'
     && materialDeepDiveDimension();
-  actions.innerHTML = isDeepDive ? `
-    <button id="materialDeepDiveReturnBtn" type="button">返回矩阵</button>
-    <button id="materialDeepDiveSaveBtn" type="button" class="primary">保存为分析视图</button>
-  ` : `
+  actions.hidden = Boolean(isDeepDive);
+  actions.innerHTML = isDeepDive ? '' : `
     <button id="refreshMaterialsBtn" type="button">刷新数据</button>
     <button id="saveAnalysisViewBtn" type="button">保存分析视图</button>
     <button id="exportAnalysisReportBtn" type="button">导出报告</button>
     <button id="generateReviewPackageBtn" type="button" class="primary">生成综述素材包</button>
   `;
   bindMaterialTopActions();
+}
+
+function renderMaterialResultChrome() {
+  const isDeepDive = state.materialAnalysisType === 'compare'
+    && state.materialAnalysisDepth === 'deep_dive'
+    && materialDeepDiveDimension();
+  const heading = $('materialResultTitle')?.closest('.materials-section-heading');
+  if (heading) heading.hidden = Boolean(isDeepDive);
 }
 
 function materialItemContent(item) {
@@ -6603,6 +6618,7 @@ function renderMaterialCompareMatrixView(items) {
   renderMaterialsBreadcrumb();
   renderMaterialScopePanel();
   renderMaterialTopActions();
+  renderMaterialResultChrome();
   renderMaterialAnalysisNav();
   renderMaterialInsights(items);
   renderMaterialExplanations(items);
@@ -7504,6 +7520,7 @@ function renderMaterialDeepDivePage(dim, items) {
   renderMaterialsBreadcrumb();
   renderMaterialScopePanel();
   renderMaterialTopActions();
+  renderMaterialResultChrome();
   renderMaterialAnalysisNav();
   renderMaterialInsights(items);
   renderMaterialExplanations(items);
@@ -7722,6 +7739,7 @@ function renderMaterialsPanel() {
   renderComparePaperChecks();
   renderMaterialScopePanel();
   renderMaterialTopActions();
+  renderMaterialResultChrome();
   renderMaterialsLayout();
   refreshMaterialDerivedViews(filteredMaterialItems());
 }
@@ -7900,6 +7918,7 @@ window.setMaterialAnalysisType = function(type, options = {}) {
   renderMaterialsBreadcrumb();
   renderMaterialScopePanel();
   renderMaterialTopActions();
+  renderMaterialResultChrome();
   refreshMaterialDerivedViews(state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems());
   if (!options.silent) toast(`已切换到：${materialAnalysisConfig().label}`);
 };
