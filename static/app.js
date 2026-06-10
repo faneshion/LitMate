@@ -6214,7 +6214,6 @@ function updateMaterialsContext(items = filteredMaterialItems()) {
   if ($('materialMainTitle')) $('materialMainTitle').textContent = config.label;
   if ($('materialMainSubtitle')) $('materialMainSubtitle').textContent = config.description;
   if ($('materialResultTitle')) $('materialResultTitle').textContent = config.description;
-  if ($('materialsResultHeader')) $('materialsResultHeader').hidden = true;
   if ($('materialAnalysisTypeHint')) $('materialAnalysisTypeHint').textContent = `当前：${config.label}`;
 }
 
@@ -6275,8 +6274,15 @@ function renderMaterialResultChrome() {
   const isDeepDive = state.materialAnalysisType === 'compare'
     && state.materialAnalysisDepth === 'deep_dive'
     && materialDeepDiveDimension();
+  const mainPane = document.querySelector('.materials-main-pane');
+  const outputCard = document.querySelector('.materials-output-card');
   const heading = $('materialResultTitle')?.closest('.materials-section-heading');
-  if (heading) heading.hidden = Boolean(isDeepDive);
+  if (mainPane) mainPane.classList.toggle('deep-dive-main-pane', Boolean(isDeepDive));
+  if (outputCard) outputCard.classList.toggle('deep-dive-output-card', Boolean(isDeepDive));
+  if (heading) {
+    heading.hidden = false;
+    heading.classList.toggle('deep-dive-hidden-heading', Boolean(isDeepDive));
+  }
   if ($('analysisOutput')) $('analysisOutput').classList.toggle('deep-dive-output', Boolean(isDeepDive));
 }
 

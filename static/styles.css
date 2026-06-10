@@ -1451,6 +1451,12 @@ hr { border: none; border-top: 1px solid var(--line); margin: 18px 0; }
   background: #fff;
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.035);
 }
+.materials-main-pane.deep-dive-main-pane {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
 .materials-sidebar {
   grid-area: sidebar;
   display: grid;
@@ -1892,12 +1898,26 @@ body.materials-sidebar-resizing {
   gap: 12px;
   overflow: hidden;
 }
+.materials-output-card.deep-dive-output-card {
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.materials-output-card.deep-dive-output-card > .materials-section-heading,
+.materials-output-card .materials-section-heading.deep-dive-hidden-heading {
+  display: none;
+}
 .materials-output-card #analysisOutput {
   min-height: 40px;
   max-height: none;
   overflow: auto;
 }
 .materials-output-card #analysisOutput.deep-dive-output {
+  min-height: 0;
+  overflow: visible;
   white-space: normal;
 }
 .materials-result-list {
