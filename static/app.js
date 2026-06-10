@@ -68,7 +68,7 @@ const state = {
   materialCompareOnlyUnverified: false,
   materialDeepDiveDimension: null,
   materialDeepDiveAxis: '',
-  materialDeepDiveView: 'general',
+  materialDeepDiveView: 'overview_stats',
   reviewItemIndex: 0,
   reviewFilters: {dimension: 'all', status: 'all', risk: 'all', query: ''},
   reviewActionMode: null,
@@ -6110,8 +6110,10 @@ function renderMaterialAnalysisNav() {
     && state.materialAnalysisDepth === 'deep_dive'
     && deepDiveDim;
   nav.classList.toggle('deep-dive-outer-nav', Boolean(isDeepDive));
-  if ($('materialAnalysisHeading')) $('materialAnalysisHeading').textContent = isDeepDive ? '维度深挖' : '分析类型';
-  if ($('materialAnalysisTypeHint')) $('materialAnalysisTypeHint').textContent = isDeepDive ? '当前维度内部导航' : `当前：${materialAnalysisConfig().label}`;
+  const heading = $('materialAnalysisHeading')?.closest('.materials-section-heading');
+  if (heading) heading.hidden = Boolean(isDeepDive);
+  if ($('materialAnalysisHeading')) $('materialAnalysisHeading').textContent = '分析类型';
+  if ($('materialAnalysisTypeHint')) $('materialAnalysisTypeHint').textContent = `当前：${materialAnalysisConfig().label}`;
   if (isDeepDive) {
     const items = state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems();
     nav.innerHTML = renderMaterialDeepDiveSidebarContent(materialDeepDiveContext(deepDiveDim, items));
@@ -6234,6 +6236,33 @@ window.toggleMaterialScopePanel = function() {
   if (!state.materialScopePanelOpen) state.materialDropdownOpen = null;
   renderMaterialScopePanel();
 };
+
+function bindMaterialTopActions() {
+  if ($('refreshMaterialsBtn')) $('refreshMaterialsBtn').onclick = () => refreshAll().then(() => toast('素材分析数据已刷新')).catch(err => toast(err.message));
+  if ($('saveAnalysisViewBtn')) $('saveAnalysisViewBtn').onclick = saveMaterialAnalysisView;
+  if ($('exportAnalysisReportBtn')) $('exportAnalysisReportBtn').onclick = exportMaterialReport;
+  if ($('generateReviewPackageBtn')) $('generateReviewPackageBtn').onclick = () => generateMaterialArtifact('review_pack');
+  if ($('materialDeepDiveReturnBtn')) $('materialDeepDiveReturnBtn').onclick = returnToMaterialCompareMatrix;
+  if ($('materialDeepDiveSaveBtn')) $('materialDeepDiveSaveBtn').onclick = saveMaterialDeepDiveView;
+}
+
+function renderMaterialTopActions() {
+  const actions = $('materialsTopActions');
+  if (!actions) return;
+  const isDeepDive = state.materialAnalysisType === 'compare'
+    && state.materialAnalysisDepth === 'deep_dive'
+    && materialDeepDiveDimension();
+  actions.innerHTML = isDeepDive ? `
+    <button id="materialDeepDiveReturnBtn" type="button">返回矩阵</button>
+    <button id="materialDeepDiveSaveBtn" type="button" class="primary">保存为分析视图</button>
+  ` : `
+    <button id="refreshMaterialsBtn" type="button">刷新数据</button>
+    <button id="saveAnalysisViewBtn" type="button">保存分析视图</button>
+    <button id="exportAnalysisReportBtn" type="button">导出报告</button>
+    <button id="generateReviewPackageBtn" type="button" class="primary">生成综述素材包</button>
+  `;
+  bindMaterialTopActions();
+}
 
 function materialItemContent(item) {
   return item?.edited_content || item?.content || '';
@@ -6573,6 +6602,7 @@ function renderMaterialCompareMatrixView(items) {
   `;
   renderMaterialsBreadcrumb();
   renderMaterialScopePanel();
+  renderMaterialTopActions();
   renderMaterialAnalysisNav();
   renderMaterialInsights(items);
   renderMaterialExplanations(items);
@@ -6590,7 +6620,7 @@ function renderMaterialCompareView(items) {
 window.selectMaterialDeepDiveDimension = function(dimensionName) {
   state.materialDeepDiveDimension = state.materialDeepDiveDimension === dimensionName ? null : dimensionName;
   state.materialDeepDiveAxis = '';
-  state.materialDeepDiveView = 'general';
+  state.materialDeepDiveView = 'overview_stats';
   renderMaterialCompareMatrixView(state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems());
 };
 
@@ -7086,11 +7116,7 @@ function materialDeepDiveTermStats(entries) {
 
 function materialDeepDiveAnalysisViews(type) {
   const general = [
-    {id: 'general', label: '通用分析', hint: '总览'},
-    {id: 'result_coverage', label: '结果覆盖率', hint: '报告'},
-    {id: 'not_reported', label: 'not_reported 分布', hint: '缺口'},
-    {id: 'evidence_coverage', label: '证据覆盖率', hint: '质量'},
-    {id: 'top_terms', label: '高频术语', hint: '术语'},
+    {id: 'overview_stats', label: '总览统计', hint: '总览'},
     {id: 'semantic_clusters', label: '语义聚类', hint: '聚类'},
     {id: 'representative_results', label: '代表性结果', hint: '样例'},
     {id: 'anomaly_results', label: '异常结果', hint: '复核'},
@@ -7147,7 +7173,7 @@ function materialDeepDiveContext(dim, items) {
     weakEntries.length ? `${weakEntries.length} 条结果只有弱证据或没有证据。` : '',
   ].filter(Boolean);
   const views = materialDeepDiveAnalysisViews(type);
-  if (!views.all.some(view => view.id === state.materialDeepDiveView)) state.materialDeepDiveView = 'general';
+  if (!views.all.some(view => view.id === state.materialDeepDiveView)) state.materialDeepDiveView = 'overview_stats';
   return {
     dim,
     dimLabel,
@@ -7170,7 +7196,7 @@ function materialDeepDiveContext(dim, items) {
     anomalies,
     terms: materialDeepDiveTermStats(validEntries),
     views,
-    view: state.materialDeepDiveView || 'general',
+    view: state.materialDeepDiveView || 'overview_stats',
     clusterSentence: leadCluster
       ? `${dimLabel} 在当前论文中主要呈现为“${leadCluster.name}”，涉及 ${leadCluster.entries.length} 篇论文。`
       : `${dimLabel} 暂未形成明显主类。`,
@@ -7399,8 +7425,8 @@ function renderMaterialDeepDiveMain(ctx) {
     <section class="deep-dive-section">
       <header class="deep-dive-view-head">
         <div>
-          <h3>通用分析</h3>
-          <p>围绕报告覆盖、证据质量、典型说法、异常结果和综述可复用性建立统一的挖掘入口。</p>
+          <h3>总览统计</h3>
+          <p>合并展示报告覆盖、not_reported 分布、证据覆盖、高频术语和关键综述问题。</p>
         </div>
       </header>
       <div class="deep-dive-stat-grid">
@@ -7415,6 +7441,12 @@ function renderMaterialDeepDiveMain(ctx) {
           ['模型推断率', materialDeepDivePercent(ctx.inferredEntries.length, ctx.resultEntries.length)],
         ].map(([label, value]) => `<div><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>`).join('')}
       </div>
+      <div class="deep-dive-bar-list">${materialDeepDiveBars([['已报告', ctx.validEntries.length], ['not_reported', ctx.notReportedEntries.length, 'warn'], ['带证据结果', ctx.evidenceEntries.length]], ctx.entries.length)}</div>
+      <div class="deep-dive-evidence-grid">
+        <article><b>高频证据章节</b>${ctx.evidenceSections.map(([section, count]) => `<span>${escapeHtml(section)} · ${count}</span>`).join('') || '<span>暂无章节证据</span>'}</article>
+        <article><b>弱证据结果</b><p>${ctx.weakEntries.length} 条结果需要复核。</p></article>
+      </div>
+      <div class="deep-dive-term-cloud">${ctx.terms.map(([term, count]) => `<span>${escapeHtml(term)}<b>${count}</b></span>`).join('') || '<p class="muted">暂无可统计术语。</p>'}</div>
       <div class="deep-dive-question-grid">
         ${reportQuestionCards.map(([question, answer]) => `<article><b>${escapeHtml(question)}</b><p>${escapeHtml(answer)}</p></article>`).join('')}
       </div>
@@ -7467,24 +7499,11 @@ function renderMaterialDeepDivePage(dim, items) {
   const type = materialDeepDiveType(dim);
   $('materialResultTitle').textContent = `维度深挖：${dim.label || dim.value}`;
   $('materialResultHint').textContent = `${template?.name || '科研对象'} · ${rows.length} 篇论文 · ${type}`;
-  $('analysisOutput').innerHTML = `
-    <section class="materials-deep-dive-page">
-      <header class="materials-view-heading materials-deep-dive-heading">
-        <div>
-          <h3>维度深挖：${escapeHtml(dim.label || dim.value)}</h3>
-          <p>${escapeHtml(template?.name || '科研对象')} · ${rows.length} 篇论文 · ${escapeHtml(type)}</p>
-        </div>
-        <div class="materials-matrix-actions">
-          <button type="button" onclick="returnToMaterialCompareMatrix()">返回矩阵</button>
-          <button type="button" onclick="saveMaterialDeepDiveView()">保存为分析视图</button>
-        </div>
-      </header>
-      <div class="material-deep-dive-body">${renderMaterialDimensionDeepDiveLayout(dim, items)}</div>
-    </section>
-  `;
+  $('analysisOutput').innerHTML = `<div class="material-deep-dive-body">${renderMaterialDimensionDeepDiveLayout(dim, items)}</div>`;
   $('analysisOutput').scrollTop = 0;
   renderMaterialsBreadcrumb();
   renderMaterialScopePanel();
+  renderMaterialTopActions();
   renderMaterialAnalysisNav();
   renderMaterialInsights(items);
   renderMaterialExplanations(items);
@@ -7499,7 +7518,7 @@ window.setMaterialDeepDiveAxis = function(axis) {
 };
 
 window.setMaterialDeepDiveView = function(view) {
-  state.materialDeepDiveView = view || 'general';
+  state.materialDeepDiveView = view || 'overview_stats';
   const dim = materialDeepDiveDimension();
   if (!dim) return;
   const items = state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems();
@@ -7530,7 +7549,7 @@ window.saveMaterialDeepDiveView = function() {
     template_id: materialCurrentTemplate()?.id || '',
     dimension_name: dim.value,
     dimension_label: dim.label || dim.value,
-    view: state.materialDeepDiveView || 'general',
+    view: state.materialDeepDiveView || 'overview_stats',
     axis: state.materialDeepDiveAxis || '',
     custom_axis: $('materialDeepDiveCustomAxis')?.value || '',
     note: $('materialDeepDiveCustomNote')?.value || '',
@@ -7702,6 +7721,7 @@ function renderMaterialsPanel() {
   renderMaterialDimensionChecks();
   renderComparePaperChecks();
   renderMaterialScopePanel();
+  renderMaterialTopActions();
   renderMaterialsLayout();
   refreshMaterialDerivedViews(filteredMaterialItems());
 }
@@ -7873,12 +7893,13 @@ window.setMaterialAnalysisType = function(type, options = {}) {
   if (type !== 'compare') {
     state.materialDeepDiveDimension = null;
     state.materialDeepDiveAxis = '';
-    state.materialDeepDiveView = 'general';
+    state.materialDeepDiveView = 'overview_stats';
   }
   renderMaterialAnalysisNav();
   renderMaterialAnalysisParams();
   renderMaterialsBreadcrumb();
   renderMaterialScopePanel();
+  renderMaterialTopActions();
   refreshMaterialDerivedViews(state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems());
   if (!options.silent) toast(`已切换到：${materialAnalysisConfig().label}`);
 };
@@ -8466,10 +8487,7 @@ async function bindEvents() {
   };
   $('materialsScopeBody').addEventListener('change', handleMaterialFilterChange);
   $('materialsLayout').addEventListener('change', handleMaterialFilterChange);
-  $('refreshMaterialsBtn').onclick = () => refreshAll().then(() => toast('素材分析数据已刷新')).catch(err => toast(err.message));
-  $('saveAnalysisViewBtn').onclick = saveMaterialAnalysisView;
-  $('exportAnalysisReportBtn').onclick = exportMaterialReport;
-  $('generateReviewPackageBtn').onclick = () => generateMaterialArtifact('review_pack');
+  bindMaterialTopActions();
   $('materialGenerateOutlineBtn').onclick = () => generateMaterialArtifact('outline');
   $('materialGenerateCitationBtn').onclick = () => generateMaterialArtifact('citation');
   $('materialGenerateQuestionBtn').onclick = () => generateMaterialArtifact('question');
