@@ -6215,8 +6215,12 @@ function renderMaterialScopePanel() {
   const body = $('materialsScopeBody');
   const text = $('materialsScopeToggleText');
   const toggle = $('materialsScopeToggleBtn');
-  if (body) body.hidden = !state.materialScopePanelOpen;
-  if (workbench) workbench.classList.toggle('materials-scope-collapsed', !state.materialScopePanelOpen);
+  const hideForDeepDive = state.materialAnalysisType === 'compare'
+    && state.materialAnalysisDepth === 'deep_dive'
+    && materialDeepDiveDimension();
+  if (panel) panel.hidden = Boolean(hideForDeepDive);
+  if (body) body.hidden = Boolean(hideForDeepDive) || !state.materialScopePanelOpen;
+  if (workbench) workbench.classList.toggle('materials-scope-collapsed', Boolean(hideForDeepDive) || !state.materialScopePanelOpen);
   if (panel) panel.classList.toggle('scope-collapsed', !state.materialScopePanelOpen);
   if (text) text.textContent = state.materialScopePanelOpen ? '⌃' : '⌄';
   if (toggle) {
@@ -6568,6 +6572,7 @@ function renderMaterialCompareMatrixView(items) {
     </section>
   `;
   renderMaterialsBreadcrumb();
+  renderMaterialScopePanel();
   renderMaterialAnalysisNav();
   renderMaterialInsights(items);
   renderMaterialExplanations(items);
@@ -7479,6 +7484,7 @@ function renderMaterialDeepDivePage(dim, items) {
   `;
   $('analysisOutput').scrollTop = 0;
   renderMaterialsBreadcrumb();
+  renderMaterialScopePanel();
   renderMaterialAnalysisNav();
   renderMaterialInsights(items);
   renderMaterialExplanations(items);
@@ -7872,6 +7878,7 @@ window.setMaterialAnalysisType = function(type, options = {}) {
   renderMaterialAnalysisNav();
   renderMaterialAnalysisParams();
   renderMaterialsBreadcrumb();
+  renderMaterialScopePanel();
   refreshMaterialDerivedViews(state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems());
   if (!options.silent) toast(`已切换到：${materialAnalysisConfig().label}`);
 };
