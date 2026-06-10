@@ -55,6 +55,9 @@ const state = {
   materialsSidebarWidth: 320,
   materialsSidebarCollapsed: false,
   materialsSidebarResizing: false,
+  materialsInsightWidth: 340,
+  materialsInsightCollapsed: false,
+  materialsInsightResizing: false,
   materialScopePanelOpen: true,
   materialDropdownOpen: null,
   materialAnalysisType: 'overview',
@@ -7187,24 +7190,43 @@ function clampMaterialsSidebarWidth(width) {
   return Math.min(560, Math.max(280, Number(width) || 320));
 }
 
+function clampMaterialsInsightWidth(width) {
+  return Math.min(520, Math.max(300, Number(width) || 340));
+}
+
 function renderMaterialsLayout() {
   const layout = $('materialsLayout');
   if (!layout) return;
   const workbench = document.querySelector('.materials-workbench');
   state.materialsSidebarWidth = clampMaterialsSidebarWidth(state.materialsSidebarWidth);
+  state.materialsInsightWidth = clampMaterialsInsightWidth(state.materialsInsightWidth);
   layout.style.setProperty('--materials-sidebar-width', `${state.materialsSidebarWidth}px`);
+  layout.style.setProperty('--materials-insight-width', `${state.materialsInsightWidth}px`);
   if (workbench) workbench.style.setProperty('--materials-sidebar-width', `${state.materialsSidebarWidth}px`);
+  if (workbench) workbench.style.setProperty('--materials-insight-width', `${state.materialsInsightWidth}px`);
   layout.classList.toggle('materials-sidebar-collapsed', Boolean(state.materialsSidebarCollapsed));
+  layout.classList.toggle('materials-insight-collapsed', Boolean(state.materialsInsightCollapsed));
   if (workbench) workbench.classList.toggle('materials-sidebar-collapsed', Boolean(state.materialsSidebarCollapsed));
+  if (workbench) workbench.classList.toggle('materials-insight-collapsed', Boolean(state.materialsInsightCollapsed));
   const toggle = $('materialsSidebarToggleBtn');
   if (toggle) {
     toggle.textContent = state.materialsSidebarCollapsed ? '›' : '‹';
     toggle.title = state.materialsSidebarCollapsed ? '展开左侧面板' : '收起左侧面板';
   }
+  const insightToggle = $('materialsInsightToggleBtn');
+  if (insightToggle) {
+    insightToggle.textContent = state.materialsInsightCollapsed ? '‹' : '›';
+    insightToggle.title = state.materialsInsightCollapsed ? '展开右侧面板' : '收起右侧面板';
+  }
 }
 
 window.toggleMaterialsSidebar = function() {
   state.materialsSidebarCollapsed = !state.materialsSidebarCollapsed;
+  renderMaterialsLayout();
+};
+
+window.toggleMaterialsInsightPane = function() {
+  state.materialsInsightCollapsed = !state.materialsInsightCollapsed;
   renderMaterialsLayout();
 };
 
@@ -7222,6 +7244,30 @@ function startMaterialsSidebarResize(event) {
   };
   const stop = () => {
     state.materialsSidebarResizing = false;
+    document.body.classList.remove('materials-sidebar-resizing');
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', stop);
+    window.removeEventListener('pointercancel', stop);
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', stop);
+  window.addEventListener('pointercancel', stop);
+}
+
+function startMaterialsInsightResize(event) {
+  if (state.materialsInsightCollapsed) return;
+  event.preventDefault();
+  const startX = event.clientX;
+  const startWidth = state.materialsInsightWidth;
+  state.materialsInsightResizing = true;
+  document.body.classList.add('materials-sidebar-resizing');
+  const move = (moveEvent) => {
+    if (!state.materialsInsightResizing) return;
+    state.materialsInsightWidth = clampMaterialsInsightWidth(startWidth - (moveEvent.clientX - startX));
+    renderMaterialsLayout();
+  };
+  const stop = () => {
+    state.materialsInsightResizing = false;
     document.body.classList.remove('materials-sidebar-resizing');
     window.removeEventListener('pointermove', move);
     window.removeEventListener('pointerup', stop);
@@ -7812,6 +7858,9 @@ async function bindEvents() {
   $('materialsSidebarToggleBtn').onpointerdown = (event) => event.stopPropagation();
   $('materialsSidebarToggleBtn').onclick = window.toggleMaterialsSidebar;
   $('materialsSidebarResizeHandle').onpointerdown = startMaterialsSidebarResize;
+  $('materialsInsightToggleBtn').onpointerdown = (event) => event.stopPropagation();
+  $('materialsInsightToggleBtn').onclick = window.toggleMaterialsInsightPane;
+  $('materialsInsightResizeHandle').onpointerdown = startMaterialsInsightResize;
   $('materialPaperSetSelect').onchange = () => {
     renderComparePaperChecks();
     refreshMaterialDerivedViews(filteredMaterialItems());
