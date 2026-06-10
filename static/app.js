@@ -154,7 +154,7 @@ const MATERIAL_ANALYSIS_TYPES = [
 const MATERIAL_REVIEW_STATUS_OPTIONS = [
   {value: 'confirm', label: '已确认', defaultChecked: true},
   {value: 'revise', label: '修改后确认', defaultChecked: true},
-  {value: 'pending', label: '未审查', defaultChecked: false},
+  {value: 'pending', label: '未审查', defaultChecked: true},
   {value: 'reject', label: '已驳回', defaultChecked: false},
   {value: 'mark_not_reported', label: '应为未报告', defaultChecked: false},
   {value: 'mark_evidence_insufficient', label: '证据不足', defaultChecked: false},
