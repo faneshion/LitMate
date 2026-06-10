@@ -6277,6 +6277,7 @@ function renderMaterialResultChrome() {
     && materialDeepDiveDimension();
   const heading = $('materialResultTitle')?.closest('.materials-section-heading');
   if (heading) heading.hidden = Boolean(isDeepDive);
+  if ($('analysisOutput')) $('analysisOutput').classList.toggle('deep-dive-output', Boolean(isDeepDive));
 }
 
 function materialItemContent(item) {
@@ -7287,13 +7288,6 @@ function renderMaterialDeepDivePerspective(ctx, title, axis, description) {
   const groups = materialDeepDiveGroupByAxis(ctx.entries, axis, ctx.type);
   return `
     <section class="deep-dive-section">
-      <header class="deep-dive-view-head">
-        <div>
-          <h3>${escapeHtml(title)}</h3>
-          <p>${escapeHtml(description)}</p>
-        </div>
-        <span>${escapeHtml(axis)}</span>
-      </header>
       <div class="deep-dive-category-grid">
         ${groups.map(([label, group]) => `<article>
           <b>${escapeHtml(label)}</b>
@@ -7439,12 +7433,6 @@ function renderMaterialDeepDiveMain(ctx) {
   }
   return `
     <section class="deep-dive-section">
-      <header class="deep-dive-view-head">
-        <div>
-          <h3>总览统计</h3>
-          <p>合并展示报告覆盖、not_reported 分布、证据覆盖、高频术语和关键综述问题。</p>
-        </div>
-      </header>
       <div class="deep-dive-stat-grid">
         ${[
           ['维度名称', ctx.dimLabel],
