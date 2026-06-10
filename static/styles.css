@@ -2577,6 +2577,16 @@ body.materials-sidebar-resizing {
   grid-template-columns: 128px minmax(0, 1fr) 48px;
   gap: 12px;
   align-items: center;
+  width: 100%;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.deep-dive-overview-bar:hover b {
+  color: #1d4ed8;
 }
 .deep-dive-overview-bar b {
   overflow: hidden;
@@ -2608,6 +2618,13 @@ body.materials-sidebar-resizing {
   font-size: 12px;
   font-style: normal;
   text-align: right;
+}
+.deep-dive-detail-entry > button {
+  justify-self: start;
+  min-height: 30px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  font-size: 12px;
 }
 .deep-dive-overview-conclusion {
   display: grid;

@@ -7251,16 +7251,17 @@ function materialDeepDiveEntryList(entries, dimensionName, limit = 8) {
 }
 
 function materialDeepDiveBarRows(rows, total, options = {}) {
-  return rows.map(([label, value, tone = 'default']) => {
+  return rows.map(([label, value, tone = 'default', key = '']) => {
     const numeric = Number(value || 0);
     const width = options.percentValues ? numeric : (total ? Math.round(numeric / total * 100) : 0);
     const display = options.percentValues ? `${numeric}%` : numeric;
+    const openAttr = key ? ` onclick="openMaterialDeepDiveOverviewDetails(${escapeHtml(JSON.stringify(key))}, ${escapeHtml(JSON.stringify(label))})"` : '';
     return `
-      <div class="deep-dive-overview-bar ${escapeHtml(tone)}">
+      <button type="button" class="deep-dive-overview-bar ${escapeHtml(tone)}"${openAttr}>
         <b>${escapeHtml(label)}</b>
         <span><i style="width:${Math.max(4, Math.min(100, width))}%"></i></span>
         <em>${escapeHtml(display)}</em>
-      </div>
+      </button>
     `;
   }).join('');
 }
@@ -7271,28 +7272,42 @@ function materialDefinitionOverviewStats(ctx) {
   const explicitEntries = valid.filter(entry => /define|definition|concept|称为|定义为|是指|概念/i.test(textOf(entry)));
   const operationalEntries = valid.filter(entry => /operational|implement|use as|通过.*表示|以.*形式|构造为|用于|使用|流程|方法/i.test(textOf(entry)));
   const boundaryEntries = valid.filter(entry => /boundary|scope|distinguish|区别|边界|不包括|排除/i.test(textOf(entry)));
-  const implicitCount = Math.max(0, valid.length - new Set([...explicitEntries, ...operationalEntries, ...boundaryEntries]).size);
+  const categorizedEntries = new Set([...explicitEntries, ...operationalEntries, ...boundaryEntries]);
+  const implicitEntries = valid.filter(entry => !categorizedEntries.has(entry));
   const denominator = Math.max(1, ctx.entries.length);
+  const formEntries = [...new Set([...explicitEntries, ...operationalEntries])];
+  const useEntries = valid.filter(entry => /use|function|purpose|用于|功能|作用|support|guide|帮助|服务于/i.test(textOf(entry)));
+  const directEntries = ctx.evidenceEntries.filter(entry => materialEvidenceStrength(entry.item) === 'strong');
   const sourcePercent = Math.round(ctx.evidenceEntries.length / Math.max(1, ctx.resultEntries.length) * 100);
-  const formPercent = Math.round((explicitEntries.length + operationalEntries.length) / denominator * 100);
-  const usePercent = Math.round(valid.filter(entry => /use|function|purpose|用于|功能|作用|support|guide|帮助|服务于/i.test(textOf(entry))).length / denominator * 100);
-  const directPercent = Math.round(ctx.evidenceEntries.filter(entry => materialEvidenceStrength(entry.item) === 'strong').length / Math.max(1, ctx.resultEntries.length) * 100);
+  const formPercent = Math.round(formEntries.length / denominator * 100);
+  const usePercent = Math.round(useEntries.length / denominator * 100);
+  const directPercent = Math.round(directEntries.length / Math.max(1, ctx.resultEntries.length) * 100);
   return {
     explicitRows: [
-      ['显式定义', explicitEntries.length],
-      ['操作性定义', operationalEntries.length],
-      ['隐含定义', implicitCount],
-      ['未定义', ctx.notReportedEntries.length, 'warn'],
+      ['显式定义', explicitEntries.length, 'default', 'explicit'],
+      ['操作性定义', operationalEntries.length, 'default', 'operational'],
+      ['隐含定义', implicitEntries.length, 'default', 'implicit'],
+      ['未定义', ctx.notReportedEntries.length, 'warn', 'undefined'],
     ],
     completenessRows: [
-      ['说明来源', sourcePercent],
-      ['说明形式', formPercent],
-      ['说明用途', usePercent],
-      ['直接验证', directPercent, directPercent < 50 ? 'danger' : 'default'],
+      ['说明来源', sourcePercent, 'default', 'source'],
+      ['说明形式', formPercent, 'default', 'form'],
+      ['说明用途', usePercent, 'default', 'use'],
+      ['直接验证', directPercent, directPercent < 50 ? 'danger' : 'default', 'direct'],
     ],
+    detailGroups: {
+      explicit: explicitEntries,
+      operational: operationalEntries,
+      implicit: implicitEntries,
+      undefined: ctx.notReportedEntries,
+      source: ctx.evidenceEntries,
+      form: formEntries,
+      use: useEntries,
+      direct: directEntries,
+    },
     explicitEntries,
     operationalEntries,
-    implicitCount,
+    implicitCount: implicitEntries.length,
     sourcePercent,
     formPercent,
     usePercent,
@@ -7701,12 +7716,62 @@ function openMaterialDetailModal(title, meta, items) {
   $('materialCellTitle').textContent = title;
   $('materialCellMeta').textContent = meta;
   $('materialCellBody').innerHTML = materialDetailItemsHtml(items);
+  $('materialCellAddBtn').hidden = false;
   $('materialCellAddBtn').onclick = () => {
     toast('已加入综述素材候选');
   };
   $('materialCellModal').hidden = false;
   document.body.classList.add('modal-open');
 }
+
+function materialDeepDiveOverviewDetailHtml(entries, dimensionName) {
+  return entries.map((entry, index) => {
+    const paper = entry.paper;
+    const item = entry.item;
+    const evidence = (item?.evidence || []).slice(0, 2);
+    const content = entry.notReported
+      ? '该论文未报告该维度，或当前结果被识别为 not_reported。'
+      : (entry.content || materialItemContent(item) || '暂无内容');
+    return `
+      <article class="material-detail-item deep-dive-detail-entry">
+        <header>
+          <b>${index + 1}. ${escapeHtml(fmt(paper?.metadata?.title || paper?.id || '未知论文', 96))}</b>
+          <span class="badge ${escapeHtml(item?.review_status || 'pending')}">${entry.notReported ? 'not_reported' : escapeHtml(reviewStatusLabel(item?.review_status || 'pending'))}</span>
+        </header>
+        <section>
+          <h4>具体内容</h4>
+          <p>${escapeHtml(content)}</p>
+        </section>
+        <section>
+          <h4>原文证据</h4>
+          ${evidence.map(ev => `
+            <blockquote>
+              ${escapeHtml(ev.quote || '无证据原文')}
+              <span>${escapeHtml(ev.section_title || ev.section || 'Evidence')}${ev.page_start || ev.page ? ` · p.${escapeHtml(ev.page_start || ev.page)}` : ''}</span>
+            </blockquote>
+          `).join('') || '<p class="muted">暂无证据绑定。</p>'}
+        </section>
+        <button type="button" onclick="openMaterialCellDetail(${escapeHtml(JSON.stringify(paper?.id || ''))}, ${escapeHtml(JSON.stringify(dimensionName))})">查看该论文该维度详情</button>
+      </article>
+    `;
+  }).join('') || '<p class="muted">当前分类下暂无具体内容。</p>';
+}
+
+window.openMaterialDeepDiveOverviewDetails = function(key, label) {
+  const dim = materialDeepDiveDimension();
+  if (!dim) return;
+  const items = state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems();
+  const ctx = materialDeepDiveContext(dim, items);
+  if (ctx.type !== '定义类维度') return;
+  const stats = materialDefinitionOverviewStats(ctx);
+  const entries = stats.detailGroups[key] || [];
+  $('materialCellTitle').textContent = `${label}明细`;
+  $('materialCellMeta').textContent = `${ctx.dimLabel} · ${entries.length} 条`;
+  $('materialCellBody').innerHTML = materialDeepDiveOverviewDetailHtml(entries, dim.value);
+  $('materialCellAddBtn').hidden = true;
+  $('materialCellModal').hidden = false;
+  document.body.classList.add('modal-open');
+};
 
 window.openMaterialItemDetail = function(itemId) {
   const item = (state.materials || []).find(entry => entry.id === itemId);
