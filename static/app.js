@@ -6105,6 +6105,18 @@ function filteredMaterialItems(items = state.materials || []) {
 function renderMaterialAnalysisNav() {
   const nav = $('materialAnalysisNav');
   if (!nav) return;
+  const deepDiveDim = materialDeepDiveDimension();
+  const isDeepDive = state.materialAnalysisType === 'compare'
+    && state.materialAnalysisDepth === 'deep_dive'
+    && deepDiveDim;
+  nav.classList.toggle('deep-dive-outer-nav', Boolean(isDeepDive));
+  if ($('materialAnalysisHeading')) $('materialAnalysisHeading').textContent = isDeepDive ? '维度深挖' : '分析类型';
+  if ($('materialAnalysisTypeHint')) $('materialAnalysisTypeHint').textContent = isDeepDive ? '当前维度内部导航' : `当前：${materialAnalysisConfig().label}`;
+  if (isDeepDive) {
+    const items = state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems();
+    nav.innerHTML = renderMaterialDeepDiveSidebarContent(materialDeepDiveContext(deepDiveDim, items));
+    return;
+  }
   nav.innerHTML = MATERIAL_ANALYSIS_TYPES.map(item => `
     <button type="button" class="materials-analysis-item ${item.id === state.materialAnalysisType ? 'active' : ''}" data-material-analysis="${escapeHtml(item.id)}">
       <span class="materials-analysis-icon">${escapeHtml(item.icon)}</span>
@@ -6556,6 +6568,9 @@ function renderMaterialCompareMatrixView(items) {
     </section>
   `;
   renderMaterialsBreadcrumb();
+  renderMaterialAnalysisNav();
+  renderMaterialInsights(items);
+  renderMaterialExplanations(items);
 }
 
 function renderMaterialCompareView(items) {
@@ -7181,7 +7196,7 @@ function materialDeepDiveEntryList(entries, dimensionName, limit = 8) {
   `).join('') || '<li class="muted">暂无匹配论文。</li>';
 }
 
-function renderMaterialDeepDiveNav(ctx) {
+function renderMaterialDeepDiveSidebarContent(ctx) {
   const navButton = view => `
     <button type="button" class="deep-dive-nav-item ${ctx.view === view.id ? 'active' : ''}" onclick="setMaterialDeepDiveView(${escapeHtml(JSON.stringify(view.id))})">
       <span>${escapeHtml(view.label)}</span>
@@ -7189,34 +7204,36 @@ function renderMaterialDeepDiveNav(ctx) {
     </button>
   `;
   return `
-    <aside class="deep-dive-nav-panel">
+    <section>
+      <h4>维度深挖</h4>
+      <p>${escapeHtml(ctx.dimLabel)}</p>
+      <dl>
+        <div><dt>维度类型</dt><dd>${escapeHtml(ctx.type)}</dd></div>
+        <div><dt>纳入论文</dt><dd>${ctx.entries.length} 篇</dd></div>
+        <div><dt>有效结果</dt><dd>${ctx.validEntries.length} 条</dd></div>
+      </dl>
+    </section>
+    <section>
+      <h4>分析视图</h4>
+      <div class="deep-dive-nav-list">${ctx.views.general.map(navButton).join('')}</div>
+    </section>
+    ${ctx.views.definition.length ? `
       <section>
-        <h4>维度深挖</h4>
-        <p>${escapeHtml(ctx.dimLabel)}</p>
-        <dl>
-          <div><dt>维度类型</dt><dd>${escapeHtml(ctx.type)}</dd></div>
-          <div><dt>纳入论文</dt><dd>${ctx.entries.length} 篇</dd></div>
-          <div><dt>有效结果</dt><dd>${ctx.validEntries.length} 条</dd></div>
-        </dl>
+        <h4>定义类分析视角</h4>
+        <div class="deep-dive-nav-list">${ctx.views.definition.map(navButton).join('')}</div>
       </section>
-      <section>
-        <h4>分析视图</h4>
-        <div class="deep-dive-nav-list">${ctx.views.general.map(navButton).join('')}</div>
-      </section>
-      ${ctx.views.definition.length ? `
-        <section>
-          <h4>定义类分析视角</h4>
-          <div class="deep-dive-nav-list">${ctx.views.definition.map(navButton).join('')}</div>
-        </section>
-      ` : ''}
-      <section>
-        <h4>分类视角</h4>
-        <div class="deep-dive-axis-bar compact">
-          ${ctx.axes.map(item => `<button type="button" class="${item === ctx.axis ? 'active' : ''}" onclick="setMaterialDeepDiveAxis(${escapeHtml(JSON.stringify(item))})">${escapeHtml(item)}</button>`).join('')}
-        </div>
-      </section>
-    </aside>
+    ` : ''}
+    <section>
+      <h4>分类视角</h4>
+      <div class="deep-dive-axis-bar compact">
+        ${ctx.axes.map(item => `<button type="button" class="${item === ctx.axis ? 'active' : ''}" onclick="setMaterialDeepDiveAxis(${escapeHtml(JSON.stringify(item))})">${escapeHtml(item)}</button>`).join('')}
+      </div>
+    </section>
   `;
+}
+
+function renderMaterialDeepDiveNav(ctx) {
+  return `<aside class="deep-dive-nav-panel">${renderMaterialDeepDiveSidebarContent(ctx)}</aside>`;
 }
 
 function renderMaterialDeepDivePerspective(ctx, title, axis, description) {
@@ -7400,40 +7417,36 @@ function renderMaterialDeepDiveMain(ctx) {
   `;
 }
 
-function renderMaterialDeepDiveAside(ctx) {
+function renderMaterialDeepDiveInsightContent(ctx) {
   return `
-    <aside class="deep-dive-suggestion-panel">
-      <section>
-        <h4>洞察建议</h4>
-        <p>${escapeHtml(ctx.clusterSentence)}</p>
-      </section>
-      <section>
-        <h4>下一步</h4>
-        <ul>
-          <li>优先复核 ${ctx.weakEntries.length} 条弱证据结果。</li>
-          <li>检查 ${ctx.notReportedEntries.length} 篇未报告论文是否应补充为 not_reported。</li>
-          <li>将“${escapeHtml(ctx.axis)}”下的主类结果整理为综述段落。</li>
-        </ul>
-      </section>
-      <section>
-        <h4>人工调整</h4>
-        <label><span>新增分类轴</span><input id="materialDeepDiveCustomAxis" placeholder="例如：按交互阶段 / 按失败类型" /></label>
-        <label><span>调整记录</span><textarea id="materialDeepDiveCustomNote" rows="5" placeholder="记录重命名、合并、拆分或移动论文的决定。"></textarea></label>
-        <button type="button" onclick="saveMaterialDeepDiveView()">保存为分析视图</button>
-      </section>
-    </aside>
+    <section>
+      <h4>洞察建议</h4>
+      <p>${escapeHtml(ctx.clusterSentence)}</p>
+    </section>
+    <section>
+      <h4>下一步</h4>
+      <ul>
+        <li>优先复核 ${ctx.weakEntries.length} 条弱证据结果。</li>
+        <li>检查 ${ctx.notReportedEntries.length} 篇未报告论文是否应补充为 not_reported。</li>
+        <li>将“${escapeHtml(ctx.axis)}”下的主类结果整理为综述段落。</li>
+      </ul>
+    </section>
+    <section>
+      <h4>人工调整</h4>
+      <label><span>新增分类轴</span><input id="materialDeepDiveCustomAxis" placeholder="例如：按交互阶段 / 按失败类型" /></label>
+      <label><span>调整记录</span><textarea id="materialDeepDiveCustomNote" rows="5" placeholder="记录重命名、合并、拆分或移动论文的决定。"></textarea></label>
+      <button type="button" onclick="saveMaterialDeepDiveView()">保存为分析视图</button>
+    </section>
   `;
+}
+
+function renderMaterialDeepDiveAside(ctx) {
+  return `<aside class="deep-dive-suggestion-panel">${renderMaterialDeepDiveInsightContent(ctx)}</aside>`;
 }
 
 function renderMaterialDimensionDeepDiveLayout(dim, items) {
   const ctx = materialDeepDiveContext(dim, items);
-  return `
-    <div class="deep-dive-layout">
-      ${renderMaterialDeepDiveNav(ctx)}
-      <main class="deep-dive-main-panel">${renderMaterialDeepDiveMain(ctx)}</main>
-      ${renderMaterialDeepDiveAside(ctx)}
-    </div>
-  `;
+  return `<div class="deep-dive-main-panel">${renderMaterialDeepDiveMain(ctx)}</div>`;
 }
 
 function renderMaterialDeepDivePage(dim, items) {
@@ -7466,6 +7479,9 @@ function renderMaterialDeepDivePage(dim, items) {
   `;
   $('analysisOutput').scrollTop = 0;
   renderMaterialsBreadcrumb();
+  renderMaterialAnalysisNav();
+  renderMaterialInsights(items);
+  renderMaterialExplanations(items);
 }
 
 window.setMaterialDeepDiveAxis = function(axis) {
@@ -7594,6 +7610,19 @@ window.closeMaterialCellModal = function() {
 function renderMaterialInsights(items) {
   const panel = $('materialInsightPanel');
   if (!panel) return;
+  const deepDiveDim = materialDeepDiveDimension();
+  const isDeepDive = state.materialAnalysisType === 'compare'
+    && state.materialAnalysisDepth === 'deep_dive'
+    && deepDiveDim;
+  if ($('materialInsightHeading')) $('materialInsightHeading').textContent = isDeepDive ? '维度深挖洞察' : '洞察建议';
+  if ($('materialInsightHint')) $('materialInsightHint').textContent = isDeepDive ? '跟随当前深挖视图更新' : '从当前分析范围自动总结';
+  if ($('materialExplanationCard')) $('materialExplanationCard').hidden = Boolean(isDeepDive);
+  if ($('materialGenerateCard')) $('materialGenerateCard').hidden = Boolean(isDeepDive);
+  panel.classList.toggle('deep-dive-insight-list', Boolean(isDeepDive));
+  if (isDeepDive) {
+    panel.innerHTML = renderMaterialDeepDiveInsightContent(materialDeepDiveContext(deepDiveDim, items));
+    return;
+  }
   const dimensions = selectedMaterialDimensions();
   const missingDims = dimensions.filter(dim => !items.some(item => item.dimension_name === dim));
   const evidenceIssues = items.filter(item => item.review_status === 'mark_evidence_insufficient' || !(item.evidence || []).length).length;
@@ -7627,6 +7656,10 @@ function renderMaterialInsights(items) {
 function renderMaterialExplanations(items) {
   const panel = $('materialExplanationPanel');
   if (!panel) return;
+  if (state.materialAnalysisType === 'compare' && state.materialAnalysisDepth === 'deep_dive' && materialDeepDiveDimension()) {
+    panel.innerHTML = '';
+    return;
+  }
   const config = materialAnalysisConfig();
   const statuses = materialSelectedStatuses().map(reviewStatusLabel).join('、') || '全部状态';
   const dims = selectedMaterialDimensions().map(materialDimensionLabel).join('、') || '全部维度';

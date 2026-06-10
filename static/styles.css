@@ -2364,6 +2364,8 @@ body.materials-sidebar-resizing {
   top: 8px;
 }
 .deep-dive-nav-panel section,
+.deep-dive-outer-nav section,
+.deep-dive-insight-list section,
 .deep-dive-suggestion-panel section {
   display: grid;
   gap: 10px;
@@ -2373,12 +2375,17 @@ body.materials-sidebar-resizing {
   background: #fff;
 }
 .deep-dive-nav-panel h4,
+.deep-dive-outer-nav h4,
+.deep-dive-insight-list h4,
 .deep-dive-suggestion-panel h4 {
   margin: 0;
   color: #0f172a;
   font-size: 13px;
 }
 .deep-dive-nav-panel p,
+.deep-dive-outer-nav p,
+.deep-dive-insight-list p,
+.deep-dive-insight-list li,
 .deep-dive-suggestion-panel p,
 .deep-dive-suggestion-panel li {
   margin: 0;
@@ -2386,27 +2393,33 @@ body.materials-sidebar-resizing {
   font-size: 12px;
   line-height: 1.55;
 }
-.deep-dive-nav-panel dl {
+.deep-dive-nav-panel dl,
+.deep-dive-outer-nav dl {
   display: grid;
   gap: 6px;
   margin: 0;
 }
-.deep-dive-nav-panel dl div {
+.deep-dive-nav-panel dl div,
+.deep-dive-outer-nav dl div {
   display: grid;
   grid-template-columns: 68px minmax(0, 1fr);
   gap: 8px;
   align-items: center;
 }
 .deep-dive-nav-panel dt,
-.deep-dive-nav-panel dd {
+.deep-dive-nav-panel dd,
+.deep-dive-outer-nav dt,
+.deep-dive-outer-nav dd {
   margin: 0;
   min-width: 0;
   font-size: 12px;
 }
-.deep-dive-nav-panel dt {
+.deep-dive-nav-panel dt,
+.deep-dive-outer-nav dt {
   color: #64748b;
 }
-.deep-dive-nav-panel dd {
+.deep-dive-nav-panel dd,
+.deep-dive-outer-nav dd {
   overflow: hidden;
   color: #0f172a;
   font-weight: 800;
@@ -2698,6 +2711,8 @@ body.materials-sidebar-resizing {
 }
 .deep-dive-custom input,
 .deep-dive-custom textarea,
+.deep-dive-insight-list input,
+.deep-dive-insight-list textarea,
 .deep-dive-suggestion-panel input,
 .deep-dive-suggestion-panel textarea {
   min-height: 34px;
@@ -2708,13 +2723,19 @@ body.materials-sidebar-resizing {
   margin: 0;
   padding-left: 16px;
 }
-.deep-dive-suggestion-panel label {
+.deep-dive-insight-list ul {
+  margin: 0;
+  padding-left: 16px;
+}
+.deep-dive-suggestion-panel label,
+.deep-dive-insight-list label {
   display: grid;
   gap: 6px;
   color: #475569;
   font-size: 12px;
 }
-.deep-dive-suggestion-panel button {
+.deep-dive-suggestion-panel button,
+.deep-dive-insight-list button {
   min-height: 32px;
   border-radius: 8px;
   font-size: 12px;
@@ -6425,10 +6446,12 @@ body.modal-open { overflow: hidden; }
   .deep-dive-suggestion-panel {
     position: static;
   }
-  .deep-dive-nav-panel dl {
+  .deep-dive-nav-panel dl,
+  .deep-dive-outer-nav dl {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-  .deep-dive-nav-panel dl div {
+  .deep-dive-nav-panel dl div,
+  .deep-dive-outer-nav dl div {
     grid-template-columns: 1fr;
   }
   .deep-dive-nav-list,
