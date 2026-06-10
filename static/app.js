@@ -6614,15 +6614,17 @@ function materialDeepDivePercent(count, total) {
 }
 
 function materialDeepDiveType(dim) {
-  const text = `${dim?.value || ''} ${dim?.label || ''} ${dim?.question || ''}`.toLowerCase();
-  if (/definition|定义|concept|what is/.test(text)) return '定义型维度';
-  if (/effect|evaluation|experiment|result|performance|效果|验证|评估|实验|指标|性能/.test(text)) return '效果型维度';
-  if (/limitation|risk|boundary|condition|局限|风险|边界|适用/.test(text)) return '局限型维度';
-  if (/method|step|pipeline|process|procedure|extraction|方法|步骤|流程|抽取|构建/.test(text)) return '方法型维度';
-  if (/source|origin|data|来源|生产|收集/.test(text)) return '来源型维度';
-  if (/representation|storage|memory|表示|存储|记忆/.test(text)) return '表示型维度';
-  if (/usage|use|function|应用|使用|功能/.test(text)) return '功能型维度';
-  return '通用维度';
+  const text = `${dim?.value || ''} ${dim?.label || ''} ${dim?.question || ''} ${(dim?.description || '')}`.toLowerCase();
+  const matches = pattern => pattern.test(text);
+  if (matches(/limitation|risk|failure|fail|applicable|condition|scope|局限|失败|风险|适用边界|适用条件|边界条件/)) return '局限类维度';
+  if (matches(/evidence|claim|support|validation|verify|proof|case evidence|支撑|证据|实验验证|理论证明|案例证据|验证方式/)) return '证据类维度';
+  if (matches(/effect|evaluation|experiment result|performance|improvement|ablation|metric|score|效果|实验结果|性能|提升|消融|指标|评估结果/)) return '效果类维度';
+  if (matches(/reusable|material|citation|inspiration|review material|literature review|可复用|综述素材|引用点|研究启发|素材/)) return '素材类维度';
+  if (matches(/mechanism|usage|use|retrieval|attention|update|trigger|interaction|机制|使用方式|检索机制|注意力机制|更新机制|触发条件|调用方式/)) return '机制类维度';
+  if (matches(/process|procedure|pipeline|workflow|step|training|construction|extraction|流程|步骤|过程|训练流程|数据构造|抽取流程|方法步骤/)) return '过程类维度';
+  if (matches(/structure|architecture|organization|module|component|schema|representation|storage|memory organization|data structure|结构|架构|组织方式|模块|组成|数据结构|表示|存储/)) return '结构类维度';
+  if (matches(/definition|concept|boundary|identity|what is|local term|定义|概念边界|任务定义|经验定义|记忆定义|对象存在|术语/)) return '定义类维度';
+  return '素材类维度';
 }
 
 function materialDeepDiveClusterRules(type) {
@@ -6631,31 +6633,53 @@ function materialDeepDiveClusterRules(type) {
     {name: '其他模式', pattern: /.*/i, description: '当前结果暂未落入高频模式，可作为人工复核和再命名候选。'},
   ];
   const rules = {
-    '定义型维度': [
-      {name: '反思生成型经验', pattern: /reflection|reflect|反思|失败|成功|lesson|经验总结/i, description: '将经验视为对历史轨迹、失败案例或成功案例的反思总结。'},
-      {name: '轨迹案例型经验', pattern: /trajectory|case|trace|demonstration|episode|轨迹|案例|示范/i, description: '强调经验来自可复用的交互轨迹、案例库或示范记录。'},
-      {name: '策略规则型经验', pattern: /rule|policy|heuristic|strategy|规则|策略|启发式/i, description: '把经验组织为策略规则、行动准则或可执行的启发式。'},
-      {name: '记忆存储型经验', pattern: /memory|store|library|retrieval|记忆|存储|经验库|检索/i, description: '将经验放入显式记忆、经验库或检索索引中供后续任务使用。'},
+    '定义类维度': [
+      {name: '显式定义', pattern: /define|definition|concept|称为|定义为|是指|概念/i, description: '论文直接给出对象或概念定义，适合抽取标准定义句。'},
+      {name: '操作性定义', pattern: /operational|implement|use as|通过.*表示|以.*形式|构造为/i, description: '定义体现在系统实现、输入输出或操作方式中。'},
+      {name: '边界型定义', pattern: /boundary|scope|distinguish|区别|边界|不包括|排除/i, description: '重点说明对象与相邻概念的边界或排除规则。'},
+      {name: '术语替代', pattern: /term|called|named|术语|称作|命名|别称/i, description: '论文使用了本地术语或别名，需要统一映射。'},
     ],
-    '效果型维度': [
-      {name: '性能提升型', pattern: /improv|boost|accuracy|score|性能|提升|准确率|效果更好/i, description: '核心证据是任务分数或质量指标提升。'},
-      {name: '效率优化型', pattern: /efficient|speed|latency|cost|token|效率|速度|成本|开销/i, description: '强调推理、训练、检索或标注成本的优化。'},
-      {name: '泛化增强型', pattern: /generaliz|transfer|robust|cross|泛化|迁移|鲁棒|跨任务/i, description: '结果主张在新任务、新领域或跨模型环境中保持有效。'},
-      {name: '成本增加但效果提升型', pattern: /trade.?off|overhead|cost.*improv|开销.*提升|成本.*效果/i, description: '承认额外成本或复杂度，但认为收益足以抵消。'},
-      {name: '无直接验证型', pattern: /no direct|not evaluated|未验证|无消融|未报告/i, description: '没有直接实验、消融或量化指标支撑。'},
+    '结构类维度': [
+      {name: '层级组织', pattern: /hierarchy|tree|level|layer|层级|树|分层/i, description: '结构以层级、树或多层模块组织。'},
+      {name: '模块组成', pattern: /module|component|block|模块|组件|组成|子模块/i, description: '重点是系统或方法由哪些模块组成。'},
+      {name: '数据结构', pattern: /schema|graph|table|vector|embedding|memory|数据结构|图|表|向量|嵌入|记忆/i, description: '重点是素材、记忆或中间结果的结构化表示。'},
+      {name: '连接关系', pattern: /connect|link|relation|dependency|连接|关系|依赖|交互/i, description: '强调结构单元之间的关系、连接或依赖。'},
     ],
-    '局限型维度': [
+    '过程类维度': [
+      {name: '阶段流程', pattern: /stage|phase|pipeline|workflow|阶段|流程|管线/i, description: '结果按阶段、流程或管线展开。'},
+      {name: '步骤序列', pattern: /step|procedure|algorithm|步骤|过程|算法/i, description: '结果以可执行步骤或顺序动作呈现。'},
+      {name: '训练/构造流程', pattern: /train|training|construct|build|generate|训练|构造|生成|数据构造/i, description: '重点是训练、构造、生成或数据制作过程。'},
+      {name: '抽取/筛选流程', pattern: /extract|filter|retrieve|select|抽取|筛选|检索|选择/i, description: '重点是从原始材料到目标素材的抽取或筛选过程。'},
+    ],
+    '机制类维度': [
+      {name: '检索调用机制', pattern: /retriev|search|query|lookup|检索|搜索|查询|调用/i, description: '机制依赖检索、查询或调用外部/内部记忆。'},
+      {name: '更新机制', pattern: /update|refresh|revise|learn|更新|刷新|修订|学习/i, description: '重点是状态、记忆或策略如何更新。'},
+      {name: '注意力/选择机制', pattern: /attention|select|rank|weight|注意力|选择|排序|权重/i, description: '机制通过注意力、排序或选择控制信息流。'},
+      {name: '触发与反馈机制', pattern: /trigger|feedback|condition|signal|触发|反馈|条件|信号/i, description: '机制由特定条件、反馈或信号触发。'},
+    ],
+    '效果类维度': [
+      {name: '性能提升', pattern: /improv|boost|accuracy|score|performance|性能|提升|准确率|分数/i, description: '核心证据是任务分数或质量指标提升。'},
+      {name: '效率优化', pattern: /efficient|speed|latency|cost|token|效率|速度|成本|开销|延迟/i, description: '强调推理、训练、检索或标注成本的优化。'},
+      {name: '泛化增强', pattern: /generaliz|transfer|robust|cross|泛化|迁移|鲁棒|跨任务/i, description: '结果主张在新任务、新领域或跨模型环境中保持有效。'},
+      {name: '消融贡献', pattern: /ablation|without|baseline|component|消融|去除|baseline|组件贡献/i, description: '通过消融或对照解释某组件的贡献。'},
+    ],
+    '证据类维度': [
+      {name: '实验验证', pattern: /experiment|metric|benchmark|实验|指标|基准/i, description: '证据来自实验、指标或 benchmark。'},
+      {name: '理论证明', pattern: /proof|theorem|analysis|理论|证明|推导/i, description: '证据来自理论推导、证明或形式化分析。'},
+      {name: '案例证据', pattern: /case|example|study|案例|示例|个案/i, description: '证据来自案例、示例或 case study。'},
+      {name: 'claim 支撑', pattern: /claim|support|argue|主张|支撑|论证/i, description: '证据用于支撑论文的主张或结论。'},
+    ],
+    '局限类维度': [
       {name: '数据依赖', pattern: /data|dataset|sample|annotation|数据|样本|标注/i, description: '局限主要来自数据质量、覆盖范围或标注成本。'},
       {name: '泛化不足', pattern: /generaliz|transfer|domain|泛化|迁移|领域/i, description: '方法可能难以迁移到新领域、新任务或新模型。'},
-      {name: '错误传播', pattern: /error|noise|hallucination|propagat|错误|噪声|幻觉|传播/i, description: '上游抽取、检索或判断错误会影响后续结果。'},
-      {name: '计算成本', pattern: /cost|compute|latency|token|scal|成本|算力|延迟|扩展/i, description: '成本、延迟或规模化部署是主要限制。'},
-      {name: '评估不足', pattern: /evaluation|ablation|metric|评估|消融|指标|验证不足/i, description: '评估覆盖不足，缺少消融、跨任务验证或可靠指标。'},
+      {name: '失败场景', pattern: /failure|error|noise|hallucination|失败|错误|噪声|幻觉/i, description: '说明方法在什么场景下容易失败。'},
+      {name: '适用边界', pattern: /scope|condition|boundary|assumption|适用|边界|条件|假设/i, description: '限制来自适用条件、前提假设或场景边界。'},
     ],
-    '方法型维度': [
-      {name: '流程阶段型', pattern: /stage|pipeline|step|phase|流程|步骤|阶段/i, description: '结果围绕方法流程、处理阶段或操作步骤展开。'},
-      {name: '输入输出型', pattern: /input|output|schema|输入|输出|结构/i, description: '关注输入材料、输出结构和中间表示。'},
-      {name: '自动化程度型', pattern: /automatic|manual|semi|agent|自动|人工|半自动/i, description: '差异主要来自人工参与、自动化和 agent 化程度。'},
-      {name: '在线更新型', pattern: /online|update|continual|dynamic|实时|在线|更新|持续/i, description: '强调运行时、在线或持续更新能力。'},
+    '素材类维度': [
+      {name: '综述素材', pattern: /survey|review|related work|综述|相关工作|背景/i, description: '适合转化为综述段落、背景脉络或研究谱系。'},
+      {name: '引用点', pattern: /citation|cite|quote|claim|引用|观点|论据/i, description: '适合提炼为论文引用点或观点-证据对。'},
+      {name: '方法设计素材', pattern: /design|method|framework|pipeline|方法|方案|框架|流程/i, description: '可复用于后续方法设计、方案构思或系统搭建。'},
+      {name: '研究启发', pattern: /future|inspiration|insight|idea|启发|未来|问题|机会/i, description: '可转化为研究问题、未来方向或方案灵感。'},
     ],
   };
   return [...(rules[type] || []), ...common];
@@ -6677,12 +6701,16 @@ function materialDeepDiveClusterEntries(entries, type) {
 
 function materialDeepDiveRecommendedAxes(type) {
   const axes = {
-    '效果型维度': ['按指标分类', '按 baseline 分类', '按证据强度分类', '按效果类型分类', '按 trade-off 分类'],
-    '方法型维度': ['按流程阶段分类', '按输入输出分类', '按自动化程度分类', '按是否在线更新分类'],
-    '定义型维度': ['按定义方式分类', '按来源分类', '按功能分类', '按粒度分类'],
-    '局限型维度': ['按风险来源分类', '按证据强度分类', '按影响范围分类', '按可修复性分类'],
+    '定义类维度': ['按定义方式分类', '按概念边界分类', '按本地术语分类', '按作者明确性分类', '按证据强度分类'],
+    '结构类维度': ['按组成层级分类', '按组织方式分类', '按数据结构分类', '按存储位置分类', '按模块职责分类'],
+    '过程类维度': ['按流程阶段分类', '按输入输出分类', '按自动化程度分类', '按训练/运行阶段分类', '按数据构造方式分类'],
+    '机制类维度': ['按作用阶段分类', '按触发条件分类', '按信息流分类', '按更新方式分类', '按检索/调用方式分类'],
+    '效果类维度': ['按指标分类', '按 baseline 分类', '按效果类型分类', '按 trade-off 分类', '按消融因素分类'],
+    '证据类维度': ['按证据类型分类', '按证据强度分类', '按验证方式分类', '按 claim 支撑关系分类', '按案例来源分类'],
+    '局限类维度': ['按风险来源分类', '按失败场景分类', '按适用边界分类', '按影响范围分类', '按可修复性分类'],
+    '素材类维度': ['按素材用途分类', '按综述位置分类', '按引用价值分类', '按研究启发分类', '按复用方式分类'],
   };
-  return axes[type] || ['按定义方式分类', '按来源分类', '按功能分类', '按粒度分类', '按证据强度分类', '按年份分类', '按任务类型分类'];
+  return axes[type] || axes['素材类维度'];
 }
 
 function materialDeepDiveAxisLabel(entry, axis, type) {
@@ -6691,6 +6719,84 @@ function materialDeepDiveAxisLabel(entry, axis, type) {
   if (/证据强度/.test(axis)) return {strong: '强证据', medium: '中等证据', weak: '弱证据'}[materialEvidenceStrength(entry.item)] || '未知证据';
   if (/年份/.test(axis)) return String(entry.paper?.metadata?.year || '未知年份');
   if (/来源/.test(axis)) return materialSourceGroupLabel(entry.paper);
+  if (/作者明确性/.test(axis)) return itemModelInferred(entry.item) ? '模型推断' : '作者明确表述';
+  if (/定义方式|概念边界|本地术语/.test(axis)) {
+    if (/boundary|scope|distinguish|区别|边界|不包括|排除/i.test(text)) return '边界/排除式定义';
+    if (/operational|implement|通过|以.*形式|构造为/i.test(text)) return '操作性定义';
+    if (/called|named|term|称为|命名|术语/i.test(text)) return '本地术语定义';
+    return '直接概念定义';
+  }
+  if (/组成层级|组织方式|模块职责|数据结构|存储位置/.test(axis)) {
+    if (/hierarchy|tree|level|layer|层级|分层|树/i.test(text)) return '层级组织';
+    if (/graph|table|schema|vector|embedding|图|表|向量|嵌入|数据结构/i.test(text)) return '结构化数据表示';
+    if (/store|memory|cache|database|存储|记忆|缓存|数据库/i.test(text)) return '存储/记忆结构';
+    if (/module|component|block|模块|组件|单元/i.test(text)) return '模块组成';
+    return '结构关系未细分';
+  }
+  if (/作用阶段|训练\/运行阶段/.test(axis)) {
+    if (/pre|before|offline|train|training|预处理|离线|训练/i.test(text)) return '训练/离线阶段';
+    if (/during|runtime|online|inference|运行|在线|推理/i.test(text)) return '运行/推理阶段';
+    if (/after|post|feedback|evaluation|反馈|评估|后处理/i.test(text)) return '反馈/后处理阶段';
+    return '阶段未明确';
+  }
+  if (/触发条件/.test(axis)) {
+    if (/error|failure|uncertain|错误|失败|不确定/i.test(text)) return '错误或不确定性触发';
+    if (/user|human|feedback|用户|人工|反馈/i.test(text)) return '用户/人工反馈触发';
+    if (/threshold|score|metric|阈值|分数|指标/i.test(text)) return '阈值/指标触发';
+    return '常规流程触发';
+  }
+  if (/信息流/.test(axis)) {
+    if (/retrieve|memory|context|检索|记忆|上下文/i.test(text)) return '记忆/上下文注入';
+    if (/attention|weight|select|注意力|权重|选择/i.test(text)) return '加权选择';
+    if (/feedback|update|反馈|更新/i.test(text)) return '反馈更新闭环';
+    return '线性信息流';
+  }
+  if (/更新方式/.test(axis)) {
+    if (/online|continual|dynamic|实时|在线|持续/i.test(text)) return '在线持续更新';
+    if (/batch|offline|periodic|批量|离线|周期/i.test(text)) return '离线批量更新';
+    if (/manual|human|人工/i.test(text)) return '人工更新';
+    return '更新方式未明确';
+  }
+  if (/检索\/调用方式/.test(axis)) {
+    if (/semantic|embedding|vector|语义|嵌入|向量/i.test(text)) return '语义检索';
+    if (/keyword|term|关键词|术语/i.test(text)) return '关键词检索';
+    if (/tool|api|function|工具|接口|函数/i.test(text)) return '工具/API 调用';
+    return '直接上下文调用';
+  }
+  if (/证据类型|验证方式/.test(axis)) {
+    if (/experiment|benchmark|metric|实验|基准|指标/i.test(text)) return '实验/指标证据';
+    if (/proof|theorem|theory|理论|证明|推导/i.test(text)) return '理论证明';
+    if (/case|example|study|案例|示例/i.test(text)) return '案例证据';
+    if (/quote|section|原文|引用/i.test(text)) return '原文引用证据';
+    return '证据类型未明确';
+  }
+  if (/claim 支撑关系/.test(axis)) {
+    if (/direct|explicit|直接|明确/i.test(text)) return '直接支撑 claim';
+    if (/indirect|suggest|间接|暗示/i.test(text)) return '间接支撑 claim';
+    if (/contradict|conflict|反例|冲突/i.test(text)) return '冲突/反例';
+    return '支撑关系待复核';
+  }
+  if (/案例来源/.test(axis)) {
+    if (/benchmark|dataset|数据集|基准/i.test(text)) return '基准/数据集案例';
+    if (/user|real|deployment|用户|真实|部署/i.test(text)) return '真实场景案例';
+    if (/synthetic|simulat|合成|模拟/i.test(text)) return '合成/模拟案例';
+    return '论文内部案例';
+  }
+  if (/风险来源|失败场景|适用边界|影响范围|可修复性/.test(axis)) {
+    if (/data|dataset|sample|annotation|数据|样本|标注/i.test(text)) return '数据/样本限制';
+    if (/domain|transfer|generaliz|领域|迁移|泛化/i.test(text)) return '领域泛化限制';
+    if (/cost|compute|latency|token|成本|算力|延迟/i.test(text)) return '成本/规模限制';
+    if (/error|noise|hallucination|错误|噪声|幻觉/i.test(text)) return '错误传播风险';
+    if (/fix|mitigat|future|可修复|缓解|未来/i.test(text)) return '可缓解问题';
+    return '适用边界未细分';
+  }
+  if (/素材用途|综述位置|引用价值|研究启发|复用方式/.test(axis)) {
+    if (/survey|review|background|综述|背景|相关工作/i.test(text)) return '综述背景素材';
+    if (/citation|claim|quote|引用|观点|论据/i.test(text)) return '引用论据素材';
+    if (/method|design|framework|方法|方案|框架/i.test(text)) return '方法设计素材';
+    if (/future|idea|question|启发|问题|未来/i.test(text)) return '研究启发素材';
+    return '通用复用素材';
+  }
   if (/任务类型/.test(axis)) {
     if (/math|reason|数学|推理/i.test(text)) return '数学/推理任务';
     if (/agent|planning|tool|智能体|规划|工具/i.test(text)) return '智能体任务';
@@ -6786,10 +6892,14 @@ function renderMaterialDimensionDeepDive(dim, items) {
   const leadCluster = topClusters[0] || clusters[0];
   const dimLabel = dim.label || dim.value;
   const anomalyTemplates = {
-    '定义型维度': ['大量论文没有显式定义经验。', '经验与记忆、策略或规则的边界可能混淆。', '缺少经验质量或经验粒度的定义。'],
-    '效果型维度': ['多数论文没有直接消融。', '缺少跨任务泛化验证。', '只报告性能提升，不报告成本或失败案例。'],
-    '方法型维度': ['部分论文缺少关键实现细节。', '流程步骤不可复现。', '输入输出定义不清。'],
-    '局限型维度': ['局限常停留在笼统表述。', '风险来源和影响范围没有拆开。', '缺少可验证的失败条件。'],
+    '定义类维度': ['部分论文没有显式定义该对象。', '概念边界、术语别名和操作性定义可能混在一起。', '需要区分作者明确表述与模型归纳。'],
+    '结构类维度': ['结构层级、模块职责和数据结构可能没有分开报告。', '部分结果只描述组件名，缺少连接关系。', '存储位置和组织方式需要进一步核验。'],
+    '过程类维度': ['流程步骤可能缺少执行顺序或输入输出。', '训练、构造、抽取和运行阶段容易混在一起。', '部分论文没有给出可复现的过程细节。'],
+    '机制类维度': ['机制描述可能停留在功能层，没有说明触发条件。', '信息流、检索调用和更新方式需要拆开核验。', '部分机制缺少失败或边界条件。'],
+    '效果类维度': ['多数论文需要区分性能提升、效率优化和消融贡献。', '只报告效果提升时，需要补充成本或 trade-off。', '跨任务泛化和鲁棒性证据可能不足。'],
+    '证据类维度': ['claim 与证据的支撑关系需要逐条核验。', '实验验证、理论证明和案例证据应分开统计。', '弱证据或间接证据可能被过度使用。'],
+    '局限类维度': ['局限常停留在笼统表述。', '风险来源、失败场景和适用边界需要拆开。', '缺少可验证的失败条件或缓解方式。'],
+    '素材类维度': ['需要区分综述素材、引用点、方法设计素材和研究启发。', '部分素材可复用价值不明确。', '引用价值和原文证据位置需要复核。'],
   };
   const anomalies = [
     ...(anomalyTemplates[type] || ['该维度存在跨论文表述不一致。', '部分结果依赖模型推断。', '证据位置和结论支撑关系需要复核。']),
