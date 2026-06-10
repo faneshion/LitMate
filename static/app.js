@@ -58,6 +58,7 @@ const state = {
   materialScopePanelOpen: true,
   materialDropdownOpen: null,
   materialAnalysisType: 'overview',
+  materialAnalysisDepth: 'root',
   materialCurrentItems: [],
   materialListQuery: '',
   materialCompareGroupMode: 'none',
@@ -6114,6 +6115,31 @@ function renderMaterialAnalysisNav() {
   });
 }
 
+function renderMaterialsBreadcrumb() {
+  const nav = $('materialsBreadcrumb');
+  const summary = $('materialsContextSummary');
+  if (!nav) return;
+  const dim = materialDeepDiveDimension();
+  const showDeepDiveTrail = state.materialAnalysisType === 'compare'
+    && state.materialAnalysisDepth === 'deep_dive'
+    && dim;
+  nav.hidden = !showDeepDiveTrail;
+  if (summary) summary.hidden = showDeepDiveTrail;
+  if (!showDeepDiveTrail) {
+    nav.innerHTML = '';
+    return;
+  }
+  const template = materialCurrentTemplate();
+  nav.innerHTML = `
+    <ol>
+      <li><button type="button" onclick="window.setMaterialAnalysisType('overview')">素材管理与分析</button></li>
+      <li><button type="button" onclick="returnToMaterialCompareMatrix()">跨论文对比矩阵</button></li>
+      <li><span>维度深挖</span></li>
+      <li aria-current="page"><b>${escapeHtml(dim.label || dim.value)}</b>${template ? `<small>${escapeHtml(template.name || template.id)}</small>` : ''}</li>
+    </ol>
+  `;
+}
+
 function renderMaterialAnalysisParams() {
   const options = MATERIAL_ANALYSIS_PARAMS[state.materialAnalysisType] || [];
   const panel = $('materialAnalysisParams');
@@ -6360,6 +6386,11 @@ window.updateMaterialListQuery = function(value) {
 function renderMaterialResults(items) {
   const list = $('materialResults');
   if (!list) return;
+  list.hidden = state.materialAnalysisDepth === 'deep_dive';
+  if (list.hidden) {
+    list.innerHTML = '';
+    return;
+  }
   if (['overview', 'compare'].includes(state.materialAnalysisType)) {
     list.innerHTML = '';
     return;
@@ -6443,9 +6474,12 @@ function materialCompareCellSummary(item) {
 }
 
 function renderMaterialCompareMatrixView(items) {
+  state.materialAnalysisDepth = 'root';
   const template = materialCurrentTemplate();
   const dims = materialCompareDimensions();
   const rows = materialCompareRows(items);
+  $('materialResultTitle').textContent = '跨论文对比矩阵';
+  $('materialResultHint').textContent = `当前矩阵包含 ${rows.length} 篇论文、${dims.length} 个维度。`;
   if (state.materialDeepDiveDimension && !dims.some(dim => dim.value === state.materialDeepDiveDimension)) {
     state.materialDeepDiveDimension = null;
   }
@@ -6482,6 +6516,8 @@ function renderMaterialCompareMatrixView(items) {
     `).join('')}
   `).join('');
   $('analysisOutput').classList.remove('muted');
+  const list = $('materialResults');
+  if (list) list.hidden = false;
   $('analysisOutput').innerHTML = `
     <section class="materials-matrix-page">
       <header class="materials-view-heading">
@@ -6515,6 +6551,16 @@ function renderMaterialCompareMatrixView(items) {
       </div>
     </section>
   `;
+  renderMaterialsBreadcrumb();
+}
+
+function renderMaterialCompareView(items) {
+  const dim = materialDeepDiveDimension();
+  if (state.materialAnalysisDepth === 'deep_dive' && dim) {
+    renderMaterialDeepDivePage(dim, items);
+    return;
+  }
+  renderMaterialCompareMatrixView(items);
 }
 
 window.selectMaterialDeepDiveDimension = function(dimensionName) {
@@ -6850,12 +6896,44 @@ function renderMaterialDimensionDeepDive(dim, items) {
   `;
 }
 
+function renderMaterialDeepDivePage(dim, items) {
+  state.materialAnalysisDepth = 'deep_dive';
+  $('analysisOutput').classList.remove('muted');
+  const list = $('materialResults');
+  if (list) {
+    list.hidden = true;
+    list.innerHTML = '';
+  }
+  const template = materialCurrentTemplate();
+  const rows = materialCompareRows(items);
+  const type = materialDeepDiveType(dim);
+  $('materialResultTitle').textContent = `维度深挖：${dim.label || dim.value}`;
+  $('materialResultHint').textContent = `${template?.name || '科研对象'} · ${rows.length} 篇论文 · ${type}`;
+  $('analysisOutput').innerHTML = `
+    <section class="materials-deep-dive-page">
+      <header class="materials-view-heading materials-deep-dive-heading">
+        <div>
+          <h3>维度深挖：${escapeHtml(dim.label || dim.value)}</h3>
+          <p>${escapeHtml(template?.name || '科研对象')} · ${rows.length} 篇论文 · ${escapeHtml(type)}</p>
+        </div>
+        <div class="materials-matrix-actions">
+          <button type="button" onclick="returnToMaterialCompareMatrix()">返回矩阵</button>
+          <button type="button" onclick="saveMaterialDeepDiveView()">保存为分析视图</button>
+        </div>
+      </header>
+      <div class="material-deep-dive-body">${renderMaterialDimensionDeepDive(dim, items)}</div>
+    </section>
+  `;
+  $('analysisOutput').scrollTop = 0;
+  renderMaterialsBreadcrumb();
+}
+
 window.setMaterialDeepDiveAxis = function(axis) {
   state.materialDeepDiveAxis = axis;
   const dim = materialDeepDiveDimension();
   if (!dim) return;
   const items = state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems();
-  $('materialDeepDiveBody').innerHTML = renderMaterialDimensionDeepDive(dim, items);
+  renderMaterialDeepDivePage(dim, items);
 };
 
 window.openMaterialDimensionDeepDive = function() {
@@ -6865,16 +6943,12 @@ window.openMaterialDimensionDeepDive = function() {
     return;
   }
   const items = state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems();
-  $('materialDeepDiveTitle').textContent = `维度深挖：${dim.label || dim.value}`;
-  $('materialDeepDiveMeta').textContent = `${materialCurrentTemplate()?.name || '科研对象'} · ${materialCompareRows(items).length} 篇论文 · ${materialDeepDiveType(dim)}`;
-  $('materialDeepDiveBody').innerHTML = renderMaterialDimensionDeepDive(dim, items);
-  $('materialDeepDiveModal').hidden = false;
-  document.body.classList.add('modal-open');
+  renderMaterialDeepDivePage(dim, items);
 };
 
-window.closeMaterialDeepDiveModal = function() {
-  $('materialDeepDiveModal').hidden = true;
-  syncModalLock();
+window.returnToMaterialCompareMatrix = function() {
+  state.materialAnalysisDepth = 'root';
+  renderMaterialCompareMatrixView(state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems());
 };
 
 window.saveMaterialDeepDiveView = function() {
@@ -7017,7 +7091,7 @@ function renderMaterialExplanations(items) {
 function refreshMaterialDerivedViews(items = filteredMaterialItems()) {
   state.materialCurrentItems = items;
   updateMaterialsContext(items);
-  if (state.materialAnalysisType === 'compare') renderMaterialCompareMatrixView(items);
+  if (state.materialAnalysisType === 'compare') renderMaterialCompareView(items);
   else renderMaterialOverview(items);
   renderMaterialResults(items);
   renderMaterialInsights(items);
@@ -7116,9 +7190,12 @@ function clampMaterialsSidebarWidth(width) {
 function renderMaterialsLayout() {
   const layout = $('materialsLayout');
   if (!layout) return;
+  const workbench = document.querySelector('.materials-workbench');
   state.materialsSidebarWidth = clampMaterialsSidebarWidth(state.materialsSidebarWidth);
   layout.style.setProperty('--materials-sidebar-width', `${state.materialsSidebarWidth}px`);
+  if (workbench) workbench.style.setProperty('--materials-sidebar-width', `${state.materialsSidebarWidth}px`);
   layout.classList.toggle('materials-sidebar-collapsed', Boolean(state.materialsSidebarCollapsed));
+  if (workbench) workbench.classList.toggle('materials-sidebar-collapsed', Boolean(state.materialsSidebarCollapsed));
   const toggle = $('materialsSidebarToggleBtn');
   if (toggle) {
     toggle.textContent = state.materialsSidebarCollapsed ? '›' : '‹';
@@ -7157,9 +7234,18 @@ function startMaterialsSidebarResize(event) {
 
 window.setMaterialAnalysisType = function(type, options = {}) {
   if (!MATERIAL_ANALYSIS_TYPES.some(item => item.id === type)) return;
+  const changed = state.materialAnalysisType !== type;
   state.materialAnalysisType = type;
+  if (changed || type !== 'compare') {
+    state.materialAnalysisDepth = 'root';
+  }
+  if (type !== 'compare') {
+    state.materialDeepDiveDimension = null;
+    state.materialDeepDiveAxis = '';
+  }
   renderMaterialAnalysisNav();
   renderMaterialAnalysisParams();
+  renderMaterialsBreadcrumb();
   refreshMaterialDerivedViews(state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems());
   if (!options.silent) toast(`已切换到：${materialAnalysisConfig().label}`);
 };
@@ -7541,8 +7627,6 @@ async function bindEvents() {
   $('simulationRawClose').onclick = closeSimulationRawModal;
   $('extractionResultClose').onclick = closeExtractionResultModal;
   $('materialCellClose').onclick = window.closeMaterialCellModal;
-  $('materialDeepDiveClose').onclick = window.closeMaterialDeepDiveModal;
-  $('materialDeepDiveSaveBtn').onclick = window.saveMaterialDeepDiveView;
   document.querySelectorAll('[data-paper-library-tab]').forEach(button => {
     button.onclick = () => {
       state.paperLibraryTab = button.dataset.paperLibraryTab;
@@ -7623,7 +7707,6 @@ async function bindEvents() {
       else if (el.dataset.closeModal === 'simulationRawModal') closeSimulationRawModal();
       else if (el.dataset.closeModal === 'extractionResultModal') closeExtractionResultModal();
       else if (el.dataset.closeModal === 'materialCellModal') closeMaterialCellModal();
-      else if (el.dataset.closeModal === 'materialDeepDiveModal') closeMaterialDeepDiveModal();
       else if (el.dataset.closeModal === 'objectConfigModal') closeObjectConfigModal();
       else if (el.dataset.closeModal === 'configModal') closeConfigModal();
       else closePaperDetail();
@@ -7638,7 +7721,6 @@ async function bindEvents() {
     else if (!$('objectImportModal').hidden) closeObjectImportModal();
     else if (!$('simulationRawModal').hidden) closeSimulationRawModal();
     else if (!$('extractionResultModal').hidden) closeExtractionResultModal();
-    else if (!$('materialDeepDiveModal').hidden) closeMaterialDeepDiveModal();
     else if (!$('materialCellModal').hidden) closeMaterialCellModal();
     else if (!$('promptPreviewModal').hidden) closePromptPreviewModal();
     else if (!$('paperDetailModal').hidden) closePaperDetail();

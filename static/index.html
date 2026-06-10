@@ -675,10 +675,13 @@
 
     <section id="materials" class="panel">
       <div class="materials-workbench">
+        <div id="materialsContextBar" class="materials-context-bar">
+          <div id="materialsContextSummary" class="materials-context-summary">研究素材分析工作台 <span id="materialsScopeSummary">默认使用已审查且有证据的素材进行分析，可在顶部数据范围中调整。</span></div>
+          <nav id="materialsBreadcrumb" class="materials-breadcrumb" aria-label="素材分析层级导航" hidden></nav>
+        </div>
+
         <header class="materials-topbar">
-          <div class="materials-title-block">
-            <span class="kicker materials-kicker-line">研究素材分析工作台 <span id="materialsScopeSummary">默认使用已审查且有证据的素材进行分析。</span></span>
-          </div>
+          <div class="materials-topbar-spacer" aria-hidden="true"></div>
           <div class="materials-top-actions">
             <button id="refreshMaterialsBtn" type="button">刷新数据</button>
             <button id="saveAnalysisViewBtn" type="button">保存分析视图</button>
@@ -824,23 +827,6 @@
           </div>
         </header>
         <div id="materialCellBody" class="material-cell-body"></div>
-      </div>
-    </div>
-
-    <div id="materialDeepDiveModal" class="modal" hidden>
-      <div class="modal-backdrop" data-close-modal="materialDeepDiveModal"></div>
-      <div class="paper-modal material-deep-dive-modal">
-        <header class="modal-header">
-          <div>
-            <h2 id="materialDeepDiveTitle">维度深挖</h2>
-            <p id="materialDeepDiveMeta" class="meta"></p>
-          </div>
-          <div class="modal-actions">
-            <button id="materialDeepDiveSaveBtn" type="button">保存为分析视图</button>
-            <button id="materialDeepDiveClose" aria-label="关闭">关闭</button>
-          </div>
-        </header>
-        <div id="materialDeepDiveBody" class="material-deep-dive-body"></div>
       </div>
     </div>
 
