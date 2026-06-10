@@ -68,6 +68,7 @@ const state = {
   materialCompareOnlyUnverified: false,
   materialDeepDiveDimension: null,
   materialDeepDiveAxis: '',
+  materialDeepDiveView: 'general',
   reviewItemIndex: 0,
   reviewFilters: {dimension: 'all', status: 'all', risk: 'all', query: ''},
   reviewActionMode: null,
@@ -6569,6 +6570,7 @@ function renderMaterialCompareView(items) {
 window.selectMaterialDeepDiveDimension = function(dimensionName) {
   state.materialDeepDiveDimension = state.materialDeepDiveDimension === dimensionName ? null : dimensionName;
   state.materialDeepDiveAxis = '';
+  state.materialDeepDiveView = 'general';
   renderMaterialCompareMatrixView(state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems());
 };
 
@@ -6716,6 +6718,44 @@ function materialDeepDiveRecommendedAxes(type) {
 function materialDeepDiveAxisLabel(entry, axis, type) {
   const text = `${entry.content || ''} ${entry.paper?.metadata?.title || ''}`;
   if (entry.notReported) return '未报告';
+  if (/定义对象类型/.test(axis)) {
+    if (/experience|lesson|经验|教训|策略/i.test(text)) return '经验/教训对象';
+    if (/memory|case library|记忆|案例库/i.test(text)) return '记忆对象';
+    if (/task|goal|任务|目标/i.test(text)) return '任务对象';
+    if (/concept|term|概念|术语/i.test(text)) return '概念对象';
+    return '对象类型未明确';
+  }
+  if (/定义来源/.test(axis)) {
+    if (itemModelInferred(entry.item)) return '模型归纳定义';
+    if ((entry.item?.evidence || []).length) return '作者原文定义';
+    return '来源未绑定证据';
+  }
+  if (/定义证据来源/.test(axis)) {
+    const evidence = entry.item?.evidence || [];
+    if (!evidence.length) return '无原文证据';
+    const first = evidence[0]?.section_title || evidence[0]?.section || '';
+    if (/abstract|introduction|intro|摘要|引言/i.test(first)) return '摘要/引言证据';
+    if (/method|approach|方法|系统|框架/i.test(first)) return '方法章节证据';
+    if (/experiment|evaluation|实验|评估/i.test(first)) return '实验章节证据';
+    return '其他章节证据';
+  }
+  if (/定义完整性/.test(axis)) {
+    const parts = [
+      /define|definition|定义|是指|称为/i.test(text),
+      /use|function|purpose|用于|功能|作用/i.test(text),
+      /boundary|scope|区别|边界|不包括/i.test(text),
+      (entry.item?.evidence || []).length > 0,
+    ].filter(Boolean).length;
+    if (parts >= 3) return '完整定义';
+    if (parts >= 2) return '部分完整';
+    return '定义要素不足';
+  }
+  if (/相邻概念关系/.test(axis)) {
+    if (/boundary|scope|distinguish|区别|边界|不包括|排除/i.test(text)) return '边界区分关系';
+    if (/similar|related|analog|相似|相关|类似/i.test(text)) return '相似/相关关系';
+    if (/include|part of|component|包含|组成|属于/i.test(text)) return '包含/组成关系';
+    return '关系未明确';
+  }
   if (/证据强度/.test(axis)) return {strong: '强证据', medium: '中等证据', weak: '弱证据'}[materialEvidenceStrength(entry.item)] || '未知证据';
   if (/年份/.test(axis)) return String(entry.paper?.metadata?.year || '未知年份');
   if (/来源/.test(axis)) return materialSourceGroupLabel(entry.paper);
@@ -7009,6 +7049,393 @@ function renderMaterialDimensionDeepDive(dim, items) {
   `;
 }
 
+function materialDeepDiveTermStats(entries) {
+  const stopWords = new Set(['the', 'and', 'for', 'with', 'that', 'this', 'from', 'into', 'using', 'used', 'based', 'paper', 'method', 'model', 'result', 'results']);
+  const counts = new Map();
+  entries.forEach(entry => {
+    const text = `${entry.content || ''} ${entry.paper?.metadata?.title || ''}`.toLowerCase();
+    (text.match(/[a-z][a-z0-9_-]{2,}/g) || [])
+      .filter(term => !stopWords.has(term))
+      .forEach(term => counts.set(term, (counts.get(term) || 0) + 1));
+    ['定义', '结构', '流程', '机制', '效果', '证据', '局限', '素材', '记忆', '经验', '检索', '训练', '消融', '风险'].forEach(term => {
+      if (text.includes(term)) counts.set(term, (counts.get(term) || 0) + 1);
+    });
+  });
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 18);
+}
+
+function materialDeepDiveAnalysisViews(type) {
+  const general = [
+    {id: 'general', label: '通用分析', hint: '总览'},
+    {id: 'result_coverage', label: '结果覆盖率', hint: '报告'},
+    {id: 'not_reported', label: 'not_reported 分布', hint: '缺口'},
+    {id: 'evidence_coverage', label: '证据覆盖率', hint: '质量'},
+    {id: 'top_terms', label: '高频术语', hint: '术语'},
+    {id: 'semantic_clusters', label: '语义聚类', hint: '聚类'},
+    {id: 'representative_results', label: '代表性结果', hint: '样例'},
+    {id: 'anomaly_results', label: '异常结果', hint: '复核'},
+    {id: 'cross_paper_differences', label: '跨论文差异', hint: '对比'},
+    {id: 'research_gaps', label: '研究空白', hint: '问题'},
+    {id: 'review_material', label: '综述素材', hint: '写作'},
+  ];
+  const definition = type === '定义类维度' ? [
+    {id: 'definition_explicitness', label: '定义显性程度', axis: '按定义方式分类'},
+    {id: 'definition_object_type', label: '定义对象类型', axis: '按定义对象类型分类'},
+    {id: 'definition_source', label: '定义来源', axis: '按定义来源分类'},
+    {id: 'definition_function', label: '定义功能指向', axis: '按定义功能指向分类'},
+    {id: 'definition_granularity', label: '定义粒度', axis: '按定义粒度分类'},
+    {id: 'definition_relations', label: '相邻概念关系', axis: '按相邻概念关系分类'},
+    {id: 'definition_completeness', label: '定义完整性', axis: '按定义完整性分类'},
+    {id: 'definition_evidence_source', label: '定义证据来源', axis: '按定义证据来源分类'},
+    {id: 'definition_evolution', label: '定义演化趋势', axis: '按年份分类'},
+  ] : [];
+  return {general, definition, all: [...general, ...definition]};
+}
+
+function materialDeepDiveContext(dim, items) {
+  const type = materialDeepDiveType(dim);
+  const entries = materialDeepDiveEntries(items, dim.value);
+  const resultEntries = entries.filter(entry => entry.item);
+  const validEntries = entries.filter(entry => !entry.notReported);
+  const notReportedEntries = entries.filter(entry => entry.notReported);
+  const evidenceEntries = resultEntries.filter(entry => (entry.item?.evidence || []).length);
+  const weakEntries = resultEntries.filter(entry => materialEvidenceStrength(entry.item) === 'weak' || !(entry.item?.evidence || []).length);
+  const confirmedEntries = resultEntries.filter(entry => materialItemAccepted(entry.item));
+  const inferredEntries = resultEntries.filter(entry => itemModelInferred(entry.item));
+  const clusters = materialDeepDiveClusterEntries(entries, type);
+  const topClusters = clusters.filter(cluster => cluster.name !== '未报告或表述不足' && cluster.entries.some(entry => !entry.notReported));
+  const axes = materialDeepDiveRecommendedAxes(type);
+  const axis = state.materialDeepDiveAxis || axes[0] || '按定义方式分类';
+  state.materialDeepDiveAxis = axis;
+  const axisGroups = materialDeepDiveGroupByAxis(entries, axis, type);
+  const evidenceSections = materialDeepDiveEvidenceSections(entries);
+  const leadCluster = topClusters[0] || clusters[0];
+  const dimLabel = dim.label || dim.value;
+  const anomalyTemplates = {
+    '定义类维度': ['部分论文没有显式定义该对象。', '概念边界、术语别名和操作性定义可能混在一起。', '需要区分作者明确表述与模型归纳。'],
+    '结构类维度': ['结构层级、模块职责和数据结构可能没有分开报告。', '部分结果只描述组件名，缺少连接关系。', '存储位置和组织方式需要进一步核验。'],
+    '过程类维度': ['流程步骤可能缺少执行顺序或输入输出。', '训练、构造、抽取和运行阶段容易混在一起。', '部分论文没有给出可复现的过程细节。'],
+    '机制类维度': ['机制描述可能停留在功能层，没有说明触发条件。', '信息流、检索调用和更新方式需要拆开核验。', '部分机制缺少失败或边界条件。'],
+    '效果类维度': ['多数论文需要区分性能提升、效率优化和消融贡献。', '只报告效果提升时，需要补充成本或 trade-off。', '跨任务泛化和鲁棒性证据可能不足。'],
+    '证据类维度': ['claim 与证据的支撑关系需要逐条核验。', '实验验证、理论证明和案例证据应分开统计。', '弱证据或间接证据可能被过度使用。'],
+    '局限类维度': ['局限常停留在笼统表述。', '风险来源、失败场景和适用边界需要拆开。', '缺少可验证的失败条件或缓解方式。'],
+    '素材类维度': ['需要区分综述素材、引用点、方法设计素材和研究启发。', '部分素材可复用价值不明确。', '引用价值和原文证据位置需要复核。'],
+  };
+  const anomalies = [
+    ...(anomalyTemplates[type] || []),
+    notReportedEntries.length ? `${notReportedEntries.length} 篇论文在该维度上表现为未报告或弱报告。` : '',
+    weakEntries.length ? `${weakEntries.length} 条结果只有弱证据或没有证据。` : '',
+  ].filter(Boolean);
+  const views = materialDeepDiveAnalysisViews(type);
+  if (!views.all.some(view => view.id === state.materialDeepDiveView)) state.materialDeepDiveView = 'general';
+  return {
+    dim,
+    dimLabel,
+    type,
+    entries,
+    resultEntries,
+    validEntries,
+    notReportedEntries,
+    evidenceEntries,
+    weakEntries,
+    confirmedEntries,
+    inferredEntries,
+    clusters,
+    topClusters,
+    axes,
+    axis,
+    axisGroups,
+    evidenceSections,
+    leadCluster,
+    anomalies,
+    terms: materialDeepDiveTermStats(validEntries),
+    views,
+    view: state.materialDeepDiveView || 'general',
+    clusterSentence: leadCluster
+      ? `${dimLabel} 在当前论文中主要呈现为“${leadCluster.name}”，涉及 ${leadCluster.entries.length} 篇论文。`
+      : `${dimLabel} 暂未形成明显主类。`,
+  };
+}
+
+function materialDeepDiveBars(rows, total) {
+  return rows.map(([label, count, tone = 'default']) => {
+    const width = total ? Math.max(4, Math.round(Number(count || 0) / total * 100)) : 0;
+    return `
+      <div class="deep-dive-bar-row ${escapeHtml(tone)}">
+        <span>${escapeHtml(label)}</span>
+        <b><i style="width:${width}%"></i></b>
+        <em>${escapeHtml(count)}</em>
+      </div>
+    `;
+  }).join('');
+}
+
+function materialDeepDiveEntryList(entries, dimensionName, limit = 8) {
+  return entries.slice(0, limit).map(entry => `
+    <li>
+      <button type="button" onclick="openMaterialCellDetail(${escapeHtml(JSON.stringify(entry.paper.id))}, ${escapeHtml(JSON.stringify(dimensionName))})">
+        ${escapeHtml(fmt(entry.paper.metadata?.title || entry.paper.id, 96))}
+      </button>
+      ${entry.notReported ? '<span>not_reported</span>' : `<small>${escapeHtml(fmt(entry.content || '', 120))}</small>`}
+    </li>
+  `).join('') || '<li class="muted">暂无匹配论文。</li>';
+}
+
+function renderMaterialDeepDiveNav(ctx) {
+  const navButton = view => `
+    <button type="button" class="deep-dive-nav-item ${ctx.view === view.id ? 'active' : ''}" onclick="setMaterialDeepDiveView(${escapeHtml(JSON.stringify(view.id))})">
+      <span>${escapeHtml(view.label)}</span>
+      ${view.hint ? `<em>${escapeHtml(view.hint)}</em>` : ''}
+    </button>
+  `;
+  return `
+    <aside class="deep-dive-nav-panel">
+      <section>
+        <h4>维度深挖</h4>
+        <p>${escapeHtml(ctx.dimLabel)}</p>
+        <dl>
+          <div><dt>维度类型</dt><dd>${escapeHtml(ctx.type)}</dd></div>
+          <div><dt>纳入论文</dt><dd>${ctx.entries.length} 篇</dd></div>
+          <div><dt>有效结果</dt><dd>${ctx.validEntries.length} 条</dd></div>
+        </dl>
+      </section>
+      <section>
+        <h4>分析视图</h4>
+        <div class="deep-dive-nav-list">${ctx.views.general.map(navButton).join('')}</div>
+      </section>
+      ${ctx.views.definition.length ? `
+        <section>
+          <h4>定义类分析视角</h4>
+          <div class="deep-dive-nav-list">${ctx.views.definition.map(navButton).join('')}</div>
+        </section>
+      ` : ''}
+      <section>
+        <h4>分类视角</h4>
+        <div class="deep-dive-axis-bar compact">
+          ${ctx.axes.map(item => `<button type="button" class="${item === ctx.axis ? 'active' : ''}" onclick="setMaterialDeepDiveAxis(${escapeHtml(JSON.stringify(item))})">${escapeHtml(item)}</button>`).join('')}
+        </div>
+      </section>
+    </aside>
+  `;
+}
+
+function renderMaterialDeepDivePerspective(ctx, title, axis, description) {
+  const groups = materialDeepDiveGroupByAxis(ctx.entries, axis, ctx.type);
+  return `
+    <section class="deep-dive-section">
+      <header class="deep-dive-view-head">
+        <div>
+          <h3>${escapeHtml(title)}</h3>
+          <p>${escapeHtml(description)}</p>
+        </div>
+        <span>${escapeHtml(axis)}</span>
+      </header>
+      <div class="deep-dive-category-grid">
+        ${groups.map(([label, group]) => `<article>
+          <b>${escapeHtml(label)}</b>
+          <span>${group.length} 篇论文</span>
+          <ul>${materialDeepDiveCaseList(group, ctx.dim.value, 4)}</ul>
+        </article>`).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function renderMaterialDeepDiveMain(ctx) {
+  const viewDef = ctx.views.all.find(item => item.id === ctx.view) || ctx.views.general[0];
+  const reportQuestionCards = [
+    ['哪些论文报告了这个维度？', `${ctx.validEntries.length} / ${ctx.entries.length} 篇论文有有效结果。`],
+    ['哪些论文没有报告？', `${ctx.notReportedEntries.length} 篇论文为 not_reported 或弱报告。`],
+    ['哪些说法最典型？', ctx.leadCluster ? `当前主类是“${ctx.leadCluster.name}”。` : '暂未形成稳定主类。'],
+    ['哪些说法比较特殊？', ctx.anomalies[0] || '暂无显著异常。'],
+    ['哪些结论证据强？', `${ctx.evidenceEntries.length} 条结果带有原文证据。`],
+    ['哪些结果适合作为综述素材？', ctx.clusterSentence],
+  ];
+  if (viewDef.axis) {
+    return renderMaterialDeepDivePerspective(ctx, viewDef.label, viewDef.axis, `围绕“${ctx.dimLabel}”检查${viewDef.label}，用于统一不同论文对该定义类维度的报告方式。`);
+  }
+  if (ctx.view === 'result_coverage') {
+    return `
+      <section class="deep-dive-section">
+        <h3>结果覆盖率</h3>
+        <div class="deep-dive-stat-grid">
+          ${[
+            ['纳入论文', ctx.entries.length],
+            ['有效结果', ctx.validEntries.length],
+            ['not_reported', ctx.notReportedEntries.length],
+            ['覆盖率', materialDeepDivePercent(ctx.validEntries.length, ctx.entries.length)],
+          ].map(([label, value]) => `<div><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>`).join('')}
+        </div>
+        <div class="deep-dive-bar-list">${materialDeepDiveBars([['已报告', ctx.validEntries.length], ['未报告', ctx.notReportedEntries.length, 'warn']], ctx.entries.length)}</div>
+        <ul class="deep-dive-entry-list">${materialDeepDiveEntryList(ctx.validEntries, ctx.dim.value, 10)}</ul>
+      </section>
+    `;
+  }
+  if (ctx.view === 'not_reported') {
+    return `
+      <section class="deep-dive-section">
+        <h3>not_reported 分布</h3>
+        <p>用于定位没有报告该维度、只有间接描述或证据不足的论文。</p>
+        <ul class="deep-dive-entry-list">${materialDeepDiveEntryList(ctx.notReportedEntries, ctx.dim.value, 12)}</ul>
+      </section>
+    `;
+  }
+  if (ctx.view === 'evidence_coverage') {
+    return `
+      <section class="deep-dive-section">
+        <h3>证据覆盖率</h3>
+        <div class="deep-dive-evidence-grid">
+          <article><b>原文证据覆盖</b><p>${ctx.evidenceEntries.length} / ${ctx.resultEntries.length || 0} 条结果绑定证据。</p></article>
+          <article><b>弱证据结果</b><p>${ctx.weakEntries.length} 条结果需要复核。</p></article>
+          <article><b>人工确认结果</b><p>${ctx.confirmedEntries.length} 条结果已通过审查。</p></article>
+          <article><b>模型推断结果</b><p>${ctx.inferredEntries.length} 条结果含推断信号。</p></article>
+        </div>
+        <div class="deep-dive-evidence-grid">
+          <article><b>高频证据章节</b>${ctx.evidenceSections.map(([section, count]) => `<span>${escapeHtml(section)} · ${count}</span>`).join('') || '<span>暂无章节证据</span>'}</article>
+        </div>
+      </section>
+    `;
+  }
+  if (ctx.view === 'top_terms') {
+    return `
+      <section class="deep-dive-section">
+        <h3>高频术语</h3>
+        <div class="deep-dive-term-cloud">${ctx.terms.map(([term, count]) => `<span>${escapeHtml(term)}<b>${count}</b></span>`).join('') || '<p class="muted">暂无可统计术语。</p>'}</div>
+      </section>
+    `;
+  }
+  if (ctx.view === 'semantic_clusters') {
+    return `
+      <section class="deep-dive-section">
+        <h3>语义聚类</h3>
+        <div class="deep-dive-clusters">
+          ${ctx.clusters.map(cluster => `<article>
+            <header><b>${escapeHtml(cluster.name)}</b><span>${cluster.entries.length} 篇</span></header>
+            <p>${escapeHtml(cluster.description)}</p>
+            <ul>${materialDeepDiveCaseList(cluster.entries, ctx.dim.value, 4)}</ul>
+          </article>`).join('')}
+        </div>
+      </section>
+    `;
+  }
+  if (ctx.view === 'representative_results') {
+    return `
+      <section class="deep-dive-section">
+        <h3>代表性结果</h3>
+        <div class="deep-dive-case-grid">
+          ${(ctx.topClusters.length ? ctx.topClusters : ctx.clusters).slice(0, 5).map(cluster => {
+            const example = cluster.entries.find(entry => !entry.notReported) || cluster.entries[0];
+            const quote = (example?.item?.evidence || [])[0]?.quote || example?.content || '';
+            return `<article>
+              <h4>${escapeHtml(cluster.name)}</h4>
+              <p>${escapeHtml(cluster.description)}</p>
+              <ul>${materialDeepDiveCaseList(cluster.entries, ctx.dim.value, 3)}</ul>
+              <blockquote>${escapeHtml(fmt(quote, 320) || '暂无直接证据。')}</blockquote>
+            </article>`;
+          }).join('')}
+        </div>
+      </section>
+    `;
+  }
+  if (ctx.view === 'anomaly_results' || ctx.view === 'research_gaps') {
+    return `
+      <section class="deep-dive-section">
+        <h3>${ctx.view === 'research_gaps' ? '研究空白' : '异常结果'}</h3>
+        <ul class="deep-dive-list">${ctx.anomalies.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
+      </section>
+    `;
+  }
+  if (ctx.view === 'cross_paper_differences') {
+    return `
+      <section class="deep-dive-section">
+        <h3>跨论文差异</h3>
+        <p>当前按“${escapeHtml(ctx.axis)}”展示差异，可在左侧切换分类视角。</p>
+        <div class="deep-dive-category-grid">
+          ${ctx.axisGroups.map(([label, group]) => `<article>
+            <b>${escapeHtml(label)}</b>
+            <span>${group.length} 篇论文</span>
+            <ul>${materialDeepDiveCaseList(group, ctx.dim.value, 4)}</ul>
+          </article>`).join('')}
+        </div>
+      </section>
+    `;
+  }
+  if (ctx.view === 'review_material') {
+    return `
+      <section class="deep-dive-section">
+        <h3>综述素材</h3>
+        <div class="deep-dive-writing-grid">
+          <article><b>可用于综述的归纳句</b><p>${escapeHtml(ctx.clusterSentence)}</p></article>
+          <article><b>可引用观点</b><p>${escapeHtml(`${ctx.dimLabel} 的跨论文差异主要体现在 ${ctx.topClusters.slice(0, 3).map(item => item.name).join('、') || '是否报告和证据强弱'}。`)}</p></article>
+          <article><b>可支撑的 claim</b><p>${escapeHtml(`当前证据支持将“${ctx.dimLabel}”作为比较 ${materialCurrentTemplate()?.name || '科研对象'} 的关键维度。`)}</p></article>
+          <article><b>研究空白表述</b><p>${escapeHtml(ctx.anomalies[0] || `${ctx.dimLabel} 仍缺少一致的报告规范。`)}</p></article>
+        </div>
+      </section>
+    `;
+  }
+  return `
+    <section class="deep-dive-section">
+      <header class="deep-dive-view-head">
+        <div>
+          <h3>通用分析</h3>
+          <p>围绕报告覆盖、证据质量、典型说法、异常结果和综述可复用性建立统一的挖掘入口。</p>
+        </div>
+      </header>
+      <div class="deep-dive-stat-grid">
+        ${[
+          ['维度名称', ctx.dimLabel],
+          ['维度类型', ctx.type],
+          ['涉及论文数', ctx.entries.length],
+          ['有效结果数', ctx.validEntries.length],
+          ['not_reported 数', ctx.notReportedEntries.length],
+          ['证据覆盖率', materialDeepDivePercent(ctx.evidenceEntries.length, ctx.resultEntries.length)],
+          ['人工确认率', materialDeepDivePercent(ctx.confirmedEntries.length, ctx.resultEntries.length)],
+          ['模型推断率', materialDeepDivePercent(ctx.inferredEntries.length, ctx.resultEntries.length)],
+        ].map(([label, value]) => `<div><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>`).join('')}
+      </div>
+      <div class="deep-dive-question-grid">
+        ${reportQuestionCards.map(([question, answer]) => `<article><b>${escapeHtml(question)}</b><p>${escapeHtml(answer)}</p></article>`).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function renderMaterialDeepDiveAside(ctx) {
+  return `
+    <aside class="deep-dive-suggestion-panel">
+      <section>
+        <h4>洞察建议</h4>
+        <p>${escapeHtml(ctx.clusterSentence)}</p>
+      </section>
+      <section>
+        <h4>下一步</h4>
+        <ul>
+          <li>优先复核 ${ctx.weakEntries.length} 条弱证据结果。</li>
+          <li>检查 ${ctx.notReportedEntries.length} 篇未报告论文是否应补充为 not_reported。</li>
+          <li>将“${escapeHtml(ctx.axis)}”下的主类结果整理为综述段落。</li>
+        </ul>
+      </section>
+      <section>
+        <h4>人工调整</h4>
+        <label><span>新增分类轴</span><input id="materialDeepDiveCustomAxis" placeholder="例如：按交互阶段 / 按失败类型" /></label>
+        <label><span>调整记录</span><textarea id="materialDeepDiveCustomNote" rows="5" placeholder="记录重命名、合并、拆分或移动论文的决定。"></textarea></label>
+        <button type="button" onclick="saveMaterialDeepDiveView()">保存为分析视图</button>
+      </section>
+    </aside>
+  `;
+}
+
+function renderMaterialDimensionDeepDiveLayout(dim, items) {
+  const ctx = materialDeepDiveContext(dim, items);
+  return `
+    <div class="deep-dive-layout">
+      ${renderMaterialDeepDiveNav(ctx)}
+      <main class="deep-dive-main-panel">${renderMaterialDeepDiveMain(ctx)}</main>
+      ${renderMaterialDeepDiveAside(ctx)}
+    </div>
+  `;
+}
+
 function renderMaterialDeepDivePage(dim, items) {
   state.materialAnalysisDepth = 'deep_dive';
   $('analysisOutput').classList.remove('muted');
@@ -7034,7 +7461,7 @@ function renderMaterialDeepDivePage(dim, items) {
           <button type="button" onclick="saveMaterialDeepDiveView()">保存为分析视图</button>
         </div>
       </header>
-      <div class="material-deep-dive-body">${renderMaterialDimensionDeepDive(dim, items)}</div>
+      <div class="material-deep-dive-body">${renderMaterialDimensionDeepDiveLayout(dim, items)}</div>
     </section>
   `;
   $('analysisOutput').scrollTop = 0;
@@ -7043,6 +7470,14 @@ function renderMaterialDeepDivePage(dim, items) {
 
 window.setMaterialDeepDiveAxis = function(axis) {
   state.materialDeepDiveAxis = axis;
+  const dim = materialDeepDiveDimension();
+  if (!dim) return;
+  const items = state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems();
+  renderMaterialDeepDivePage(dim, items);
+};
+
+window.setMaterialDeepDiveView = function(view) {
+  state.materialDeepDiveView = view || 'general';
   const dim = materialDeepDiveDimension();
   if (!dim) return;
   const items = state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems();
@@ -7073,6 +7508,7 @@ window.saveMaterialDeepDiveView = function() {
     template_id: materialCurrentTemplate()?.id || '',
     dimension_name: dim.value,
     dimension_label: dim.label || dim.value,
+    view: state.materialDeepDiveView || 'general',
     axis: state.materialDeepDiveAxis || '',
     custom_axis: $('materialDeepDiveCustomAxis')?.value || '',
     note: $('materialDeepDiveCustomNote')?.value || '',
@@ -7398,6 +7834,7 @@ window.setMaterialAnalysisType = function(type, options = {}) {
   if (type !== 'compare') {
     state.materialDeepDiveDimension = null;
     state.materialDeepDiveAxis = '';
+    state.materialDeepDiveView = 'general';
   }
   renderMaterialAnalysisNav();
   renderMaterialAnalysisParams();
