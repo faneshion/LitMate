@@ -69,6 +69,10 @@ const state = {
   materialDeepDiveDimension: null,
   materialDeepDiveAxis: '',
   materialDeepDiveView: 'overview_stats',
+  materialSemanticClusters: {},
+  materialSemanticClusterRenames: {},
+  materialSemanticClusterMergeSelection: [],
+  materialOverviewDetailSelection: null,
   reviewItemIndex: 0,
   reviewFilters: {dimension: 'all', status: 'all', risk: 'all', query: ''},
   reviewActionMode: null,
@@ -6774,6 +6778,119 @@ function materialDeepDiveClusterEntries(entries, type) {
   return [...clusters.values()].sort((a, b) => b.entries.length - a.entries.length);
 }
 
+function materialDeepDiveClusterCacheKey(dim, entries) {
+  const ids = entries.map(entry => `${entry.item?.id || entry.paper?.id || ''}:${entry.notReported ? '0' : '1'}`).join('|');
+  return `${dim?.value || ''}::${ids}`;
+}
+
+function materialDeepDiveEntryPaperIndex(entry, entries) {
+  const seen = [];
+  entries.forEach(item => {
+    const id = item.paper?.id || item.item?.paper_id;
+    if (id && !seen.includes(id)) seen.push(id);
+  });
+  const id = entry.paper?.id || entry.item?.paper_id;
+  const index = seen.indexOf(id);
+  return index >= 0 ? index + 1 : null;
+}
+
+function materialSemanticClusterEntriesPayload(entries) {
+  return entries.map(entry => ({
+    paper_id: entry.paper?.id || entry.item?.paper_id || '',
+    material_id: entry.item?.id || '',
+    paper_index: materialDeepDiveEntryPaperIndex(entry, entries),
+    paper_title: entry.paper?.metadata?.title || entry.paper?.id || '',
+    content: entry.content || materialItemContent(entry.item) || '',
+    evidence_quotes: (entry.item?.evidence || []).slice(0, 3).map(ev => ev.quote || '').filter(Boolean),
+    not_reported: Boolean(entry.notReported),
+  }));
+}
+
+function materialLocalSemanticClusters(ctx) {
+  return ctx.clusters.map((cluster, index) => ({
+    id: `local_${index + 1}`,
+    name: cluster.name,
+    description: cluster.description,
+    keywords: materialClusterKeywords(cluster.entries).slice(0, 3),
+    paper_ids: cluster.entries.map(entry => entry.paper?.id || entry.item?.paper_id).filter(Boolean),
+    paper_indices: cluster.entries.map(entry => materialDeepDiveEntryPaperIndex(entry, ctx.entries)).filter(Boolean).sort((a, b) => a - b),
+    material_ids: cluster.entries.map(entry => entry.item?.id).filter(Boolean),
+    entry_count: cluster.entries.length,
+    confidence: 0.6,
+  }));
+}
+
+function materialSemanticClustersForContext(ctx) {
+  const key = materialDeepDiveClusterCacheKey(ctx.dim, ctx.entries);
+  const cached = state.materialSemanticClusters[key];
+  const clusters = cached?.clusters || materialLocalSemanticClusters(ctx);
+  return materialApplySemanticClusterAdjustments(key, clusters);
+}
+
+function materialClusterKeywords(entries) {
+  const stop = new Set(['the','and','for','with','that','this','from','into','paper','method','model','agent','agents','task','任务','论文','方法','模型','经验','定义','用于','通过']);
+  const counts = new Map();
+  entries.forEach(entry => {
+    const text = `${entry.content || ''} ${(entry.item?.evidence || []).map(ev => ev.quote || '').join(' ')}`.toLowerCase();
+    (text.match(/[a-z][a-z0-9_-]{2,}|[\u4e00-\u9fff]{2,}/g) || []).forEach(token => {
+      if (!stop.has(token) && token.length <= 24) counts.set(token, (counts.get(token) || 0) + 1);
+    });
+  });
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([token]) => token);
+}
+
+function materialApplySemanticClusterAdjustments(key, clusters) {
+  const renames = state.materialSemanticClusterRenames[key] || {};
+  const selected = new Set(state.materialSemanticClusterMergeSelection || []);
+  const adjusted = clusters.map(cluster => ({
+    ...cluster,
+    name: renames[cluster.id] || cluster.name,
+    selected: selected.has(cluster.id),
+  }));
+  const mergeIds = [...selected];
+  if (mergeIds.length < 2) return adjusted;
+  const mergeSet = new Set(mergeIds);
+  const picked = adjusted.filter(cluster => mergeSet.has(cluster.id));
+  const merged = {
+    id: `merged_${mergeIds.join('_')}`,
+    name: picked.map(cluster => cluster.name).join(' / '),
+    description: `人工合并 ${picked.length} 个语义相近类别，用于统一综述口径。`,
+    keywords: [...new Set(picked.flatMap(cluster => cluster.keywords || []))].slice(0, 3),
+    paper_ids: [...new Set(picked.flatMap(cluster => cluster.paper_ids || []))],
+    paper_indices: [...new Set(picked.flatMap(cluster => cluster.paper_indices || []))].sort((a, b) => a - b),
+    material_ids: [...new Set(picked.flatMap(cluster => cluster.material_ids || []))],
+    entry_count: picked.reduce((sum, cluster) => sum + Number(cluster.entry_count || 0), 0),
+    confidence: Math.max(...picked.map(cluster => Number(cluster.confidence || 0.6))),
+    selected: true,
+    merged_from: mergeIds,
+  };
+  return [merged, ...adjusted.filter(cluster => !mergeSet.has(cluster.id))];
+}
+
+async function refreshMaterialSemanticClusters(ctx, options = {}) {
+  const key = materialDeepDiveClusterCacheKey(ctx.dim, ctx.entries);
+  if (!options.force && state.materialSemanticClusters[key]) return state.materialSemanticClusters[key];
+  state.materialSemanticClusters[key] = {loading: true, clusters: materialLocalSemanticClusters(ctx)};
+  const payload = {
+    dimension_name: ctx.dim.value,
+    dimension_label: ctx.dimLabel,
+    dimension_type: ctx.type,
+    entries: materialSemanticClusterEntriesPayload(ctx.entries),
+  };
+  try {
+    const result = await api('/api/analysis/semantic-clusters', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    state.materialSemanticClusters[key] = {...result, loading: false};
+  } catch (err) {
+    state.materialSemanticClusters[key] = {loading: false, error: err.message, clusters: materialLocalSemanticClusters(ctx)};
+    toast(`语义聚类接口不可用，已使用本地聚类：${err.message}`);
+  }
+  return state.materialSemanticClusters[key];
+}
+
 function materialDeepDiveRecommendedAxes(type) {
   const axes = {
     '定义类维度': ['按定义方式分类', '按概念边界分类', '按本地术语分类', '按作者明确性分类', '按证据强度分类'],
@@ -7220,6 +7337,7 @@ function materialDeepDiveContext(dim, items) {
     terms: materialDeepDiveTermStats(validEntries),
     views,
     view: state.materialDeepDiveView || 'overview_stats',
+    clusterCacheKey: materialDeepDiveClusterCacheKey(dim, entries),
     clusterSentence: leadCluster
       ? `${dimLabel} 在当前论文中主要呈现为“${leadCluster.name}”，涉及 ${leadCluster.entries.length} 篇论文。`
       : `${dimLabel} 暂未形成明显主类。`,
@@ -7249,6 +7367,181 @@ function materialDeepDiveEntryList(entries, dimensionName, limit = 8) {
     </li>
   `).join('') || '<li class="muted">暂无匹配论文。</li>';
 }
+
+function materialSemanticClusterEntryMap(ctx) {
+  const map = new Map();
+  ctx.entries.forEach(entry => {
+    if (entry.item?.id) map.set(entry.item.id, entry);
+  });
+  return map;
+}
+
+function materialEntriesForSemanticCluster(ctx, cluster) {
+  const materialIds = new Set(cluster.material_ids || []);
+  const paperIds = new Set(cluster.paper_ids || []);
+  const matched = ctx.entries.filter(entry => (entry.item?.id && materialIds.has(entry.item.id)) || paperIds.has(entry.paper?.id));
+  return matched.length ? matched : ctx.entries.filter(entry => paperIds.has(entry.paper?.id));
+}
+
+function materialSemanticClusterReviewText(ctx, cluster) {
+  const papers = (cluster.paper_indices || []).length
+    ? `论文 ${cluster.paper_indices.join('、')}`
+    : `${cluster.entry_count || 0} 篇论文`;
+  const keywords = (cluster.keywords || []).length ? `关键词包括 ${cluster.keywords.join('、')}` : '关键词尚不稳定';
+  return `【${cluster.name}】${cluster.description} ${keywords}。可在综述中将其作为一类${ctx.type === '定义类维度' ? '经验定义' : '维度表述'}来讨论，涉及${papers}。`;
+}
+
+function renderMaterialSemanticClusterCards(ctx) {
+  const key = ctx.clusterCacheKey;
+  const cached = state.materialSemanticClusters[key];
+  const clusters = materialSemanticClustersForContext(ctx);
+  const selectedCount = clusters.filter(cluster => cluster.selected).length;
+  return `
+    <section class="deep-dive-section semantic-cluster-section">
+      <div class="deep-dive-section-heading">
+        <div>
+          <h3>语义聚类</h3>
+          <p>${ctx.type === '定义类维度' ? '按定义语义将不同论文中的经验定义聚成若干类型，可人工重命名、合并并生成综述素材。' : '按当前维度的语义相近性聚合结果。'}</p>
+        </div>
+        <div class="semantic-cluster-actions">
+          <button type="button" onclick="refreshCurrentMaterialSemanticClusters(true)">重新聚类</button>
+          <button type="button" ${selectedCount >= 2 ? '' : 'disabled'} onclick="mergeSelectedMaterialSemanticClusters()">合并所选</button>
+          <button type="button" onclick="clearMaterialSemanticClusterSelection()">清空选择</button>
+        </div>
+      </div>
+      ${cached?.loading ? '<p class="muted">正在生成智能语义聚类...</p>' : ''}
+      ${cached?.error ? `<p class="muted">后端聚类暂不可用，已展示本地兜底结果：${escapeHtml(cached.error)}</p>` : ''}
+      <div class="semantic-cluster-grid">
+        ${clusters.map(cluster => `
+          <article class="semantic-cluster-card ${cluster.selected ? 'selected' : ''}">
+            <header>
+              <label>
+                <input type="checkbox" ${cluster.selected ? 'checked' : ''} onchange="toggleMaterialSemanticClusterSelection(${escapeHtml(JSON.stringify(cluster.id))})" />
+                <span>${escapeHtml(cluster.name)}</span>
+              </label>
+              <div>
+                <button type="button" onclick="openMaterialSemanticClusterDetail(${escapeHtml(JSON.stringify(cluster.id))})">查看详情</button>
+                <button type="button" onclick="openMaterialSemanticClusterMaterial(${escapeHtml(JSON.stringify(cluster.id))})">生成素材</button>
+              </div>
+            </header>
+            <small>${escapeHtml(cluster.entry_count || cluster.paper_ids?.length || 0)} 篇论文</small>
+            <p>${escapeHtml(cluster.description)}</p>
+            <div class="semantic-cluster-keywords">
+              ${(cluster.keywords || []).slice(0, 3).map(keyword => `<span>${escapeHtml(keyword)}</span>`).join('') || '<span>待提炼</span>'}
+            </div>
+            <div class="semantic-cluster-paper-ids">
+              ${(cluster.paper_indices || []).slice(0, 12).map(index => `<b>P${escapeHtml(index)}</b>`).join('') || '<b>-</b>'}
+            </div>
+            <footer>
+              <input value="${escapeHtml(cluster.name)}" onchange="renameMaterialSemanticCluster(${escapeHtml(JSON.stringify(cluster.id))}, this.value)" aria-label="重命名类别" />
+            </footer>
+          </article>
+        `).join('') || '<p class="muted">当前维度暂无可聚类结果。</p>'}
+      </div>
+    </section>
+  `;
+}
+
+function currentMaterialSemanticCluster(clusterId) {
+  const dim = materialDeepDiveDimension();
+  if (!dim) return null;
+  const items = state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems();
+  const ctx = materialDeepDiveContext(dim, items);
+  const clusters = materialSemanticClustersForContext(ctx);
+  const cluster = clusters.find(item => item.id === clusterId);
+  return cluster ? {ctx, cluster} : null;
+}
+
+window.refreshCurrentMaterialSemanticClusters = async function(force = false) {
+  const dim = materialDeepDiveDimension();
+  if (!dim) return;
+  const items = state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems();
+  const ctx = materialDeepDiveContext(dim, items);
+  await refreshMaterialSemanticClusters(ctx, {force});
+  renderMaterialDeepDivePage(dim, items);
+};
+
+window.renameMaterialSemanticCluster = function(clusterId, value) {
+  const dim = materialDeepDiveDimension();
+  if (!dim) return;
+  const items = state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems();
+  const ctx = materialDeepDiveContext(dim, items);
+  const key = ctx.clusterCacheKey;
+  state.materialSemanticClusterRenames[key] = state.materialSemanticClusterRenames[key] || {};
+  state.materialSemanticClusterRenames[key][clusterId] = (value || '').trim() || '未命名类别';
+  renderMaterialDeepDivePage(dim, items);
+};
+
+window.toggleMaterialSemanticClusterSelection = function(clusterId) {
+  const selected = new Set(state.materialSemanticClusterMergeSelection || []);
+  selected.has(clusterId) ? selected.delete(clusterId) : selected.add(clusterId);
+  state.materialSemanticClusterMergeSelection = [...selected];
+  const dim = materialDeepDiveDimension();
+  if (dim) renderMaterialDeepDivePage(dim, state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems());
+};
+
+window.clearMaterialSemanticClusterSelection = function() {
+  state.materialSemanticClusterMergeSelection = [];
+  const dim = materialDeepDiveDimension();
+  if (dim) renderMaterialDeepDivePage(dim, state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems());
+};
+
+window.mergeSelectedMaterialSemanticClusters = function() {
+  const dim = materialDeepDiveDimension();
+  if (!dim) return;
+  const items = state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems();
+  const ctx = materialDeepDiveContext(dim, items);
+  const selectedCount = materialSemanticClustersForContext(ctx).filter(cluster => cluster.selected).length;
+  if (selectedCount < 2) return toast('请至少选择两个类别');
+  renderMaterialDeepDivePage(dim, items);
+  toast('已在当前视图中合并所选类别');
+};
+
+window.openMaterialSemanticClusterDetail = function(clusterId) {
+  const found = currentMaterialSemanticCluster(clusterId);
+  if (!found) return toast('未找到类别详情');
+  const {ctx, cluster} = found;
+  const entries = materialEntriesForSemanticCluster(ctx, cluster);
+  state.materialOverviewDetailSelection = null;
+  $('materialCellTitle').textContent = cluster.name;
+  $('materialCellMeta').textContent = `${ctx.dimLabel} · ${entries.length} 篇论文 · 置信度 ${Math.round(Number(cluster.confidence || 0) * 100)}%`;
+  $('materialCellBody').innerHTML = `
+    <section class="semantic-cluster-detail">
+      <p>${escapeHtml(cluster.description)}</p>
+      <div class="semantic-cluster-keywords">${(cluster.keywords || []).map(keyword => `<span>${escapeHtml(keyword)}</span>`).join('')}</div>
+    </section>
+    ${materialDeepDiveOverviewDetailHtml(entries, ctx.dim.value)}
+  `;
+  $('materialCellAddBtn').hidden = true;
+  $('materialCellModal').hidden = false;
+  document.body.classList.add('modal-open');
+};
+
+window.openMaterialSemanticClusterMaterial = function(clusterId) {
+  const found = currentMaterialSemanticCluster(clusterId);
+  if (!found) return toast('未找到类别素材');
+  const {ctx, cluster} = found;
+  const entries = materialEntriesForSemanticCluster(ctx, cluster);
+  const examples = entries.slice(0, 3).map((entry, index) => {
+    const paperIndex = materialDeepDiveEntryPaperIndex(entry, ctx.entries) || index + 1;
+    return `P${paperIndex}: ${fmt(entry.content || materialItemContent(entry.item) || '', 180)}`;
+  }).join('\n');
+  const material = `${materialSemanticClusterReviewText(ctx, cluster)}\n\n可引用样例：\n${examples || '暂无可引用样例。'}\n\n写作提示：可先说明该类别如何界定经验，再对比其与其他类别在来源、表示和使用方式上的差异。`;
+  $('materialCellTitle').textContent = `${cluster.name} · 综述素材`;
+  $('materialCellMeta').textContent = `${ctx.dimLabel} · 可编辑草稿`;
+  $('materialCellBody').innerHTML = `
+    <section class="semantic-material-editor">
+      <label>
+        <span>生成后的综述素材</span>
+        <textarea rows="14">${escapeHtml(material)}</textarea>
+      </label>
+    </section>
+  `;
+  $('materialCellAddBtn').hidden = false;
+  $('materialCellAddBtn').onclick = () => toast('已保留在当前弹窗中，可继续编辑后复制到写作区');
+  $('materialCellModal').hidden = false;
+  document.body.classList.add('modal-open');
+};
 
 function materialDeepDiveBarRows(rows, total, options = {}) {
   return rows.map(([label, value, tone = 'default', key = '']) => {
@@ -7499,18 +7792,7 @@ function renderMaterialDeepDiveMain(ctx) {
     `;
   }
   if (ctx.view === 'semantic_clusters') {
-    return `
-      <section class="deep-dive-section">
-        <h3>语义聚类</h3>
-        <div class="deep-dive-clusters">
-          ${ctx.clusters.map(cluster => `<article>
-            <header><b>${escapeHtml(cluster.name)}</b><span>${cluster.entries.length} 篇</span></header>
-            <p>${escapeHtml(cluster.description)}</p>
-            <ul>${materialDeepDiveCaseList(cluster.entries, ctx.dim.value, 4)}</ul>
-          </article>`).join('')}
-        </div>
-      </section>
-    `;
+    return renderMaterialSemanticClusterCards(ctx);
   }
   if (ctx.view === 'representative_results') {
     return `
@@ -7604,6 +7886,14 @@ function renderMaterialDimensionDeepDiveLayout(dim, items) {
 
 function renderMaterialDeepDivePage(dim, items) {
   state.materialAnalysisDepth = 'deep_dive';
+  const ctx = materialDeepDiveContext(dim, items);
+  if (ctx.view === 'semantic_clusters' && !state.materialSemanticClusters[ctx.clusterCacheKey]?.loading && !state.materialSemanticClusters[ctx.clusterCacheKey]) {
+    refreshMaterialSemanticClusters(ctx).then(() => {
+      if (state.materialAnalysisDepth === 'deep_dive' && state.materialDeepDiveView === 'semantic_clusters' && state.materialDeepDiveDimension === dim.value) {
+        renderMaterialDeepDivePage(dim, items);
+      }
+    });
+  }
   $('analysisOutput').classList.remove('muted');
   const list = $('materialResults');
   if (list) {
@@ -7615,7 +7905,7 @@ function renderMaterialDeepDivePage(dim, items) {
   const type = materialDeepDiveType(dim);
   $('materialResultTitle').textContent = `维度深挖：${dim.label || dim.value}`;
   $('materialResultHint').textContent = `${template?.name || '科研对象'} · ${rows.length} 篇论文 · ${type}`;
-  $('analysisOutput').innerHTML = `<div class="material-deep-dive-body">${renderMaterialDimensionDeepDiveLayout(dim, items)}</div>`;
+  $('analysisOutput').innerHTML = `<div class="material-deep-dive-body"><div class="deep-dive-main-panel">${renderMaterialDeepDiveMain(ctx)}</div></div>`;
   $('analysisOutput').scrollTop = 0;
   renderMaterialsBreadcrumb();
   renderMaterialScopePanel();
@@ -7724,16 +8014,43 @@ function openMaterialDetailModal(title, meta, items) {
   document.body.classList.add('modal-open');
 }
 
+function materialDeepDiveOverviewInlineDetailHtml(selection) {
+  if (!selection?.paperId || !selection?.dimensionName) {
+    return `
+      <aside class="deep-dive-inline-detail empty">
+        <h3>详情</h3>
+        <p>点击左侧任一条的“查看详情”，这里会显示该论文在当前维度下的完整抽取结果和证据。</p>
+      </aside>
+    `;
+  }
+  const items = materialItemsForPaperDimension(state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems(), selection.paperId, selection.dimensionName);
+  const paper = paperById(selection.paperId);
+  return `
+    <aside class="deep-dive-inline-detail">
+      <header>
+        <div>
+          <h3>详情</h3>
+          <p>${escapeHtml(fmt(paper?.metadata?.title || selection.paperId, 90))}</p>
+        </div>
+        <button type="button" onclick="toggleMaterialDeepDiveInlineDetail(${escapeHtml(JSON.stringify(selection.paperId))}, ${escapeHtml(JSON.stringify(selection.dimensionName))})">关闭</button>
+      </header>
+      <div>${materialDetailItemsHtml(items)}</div>
+    </aside>
+  `;
+}
+
 function materialDeepDiveOverviewDetailHtml(entries, dimensionName) {
-  return entries.map((entry, index) => {
+  const selection = state.materialOverviewDetailSelection;
+  const list = entries.map((entry, index) => {
     const paper = entry.paper;
     const item = entry.item;
     const evidence = (item?.evidence || []).slice(0, 2);
     const content = entry.notReported
       ? '该论文未报告该维度，或当前结果被识别为 not_reported。'
       : (entry.content || materialItemContent(item) || '暂无内容');
+    const selected = selection?.paperId === paper?.id && selection?.dimensionName === dimensionName;
     return `
-      <article class="material-detail-item deep-dive-detail-entry">
+      <article class="material-detail-item deep-dive-detail-entry ${selected ? 'selected' : ''}">
         <header>
           <b>${index + 1}. ${escapeHtml(fmt(paper?.metadata?.title || paper?.id || '未知论文', 96))}</b>
           <span class="badge ${escapeHtml(item?.review_status || 'pending')}">${entry.notReported ? 'not_reported' : escapeHtml(reviewStatusLabel(item?.review_status || 'pending'))}</span>
@@ -7751,10 +8068,16 @@ function materialDeepDiveOverviewDetailHtml(entries, dimensionName) {
             </blockquote>
           `).join('') || '<p class="muted">暂无证据绑定。</p>'}
         </section>
-        <button type="button" onclick="openMaterialCellDetail(${escapeHtml(JSON.stringify(paper?.id || ''))}, ${escapeHtml(JSON.stringify(dimensionName))})">查看该论文该维度详情</button>
+        <button type="button" onclick="toggleMaterialDeepDiveInlineDetail(${escapeHtml(JSON.stringify(paper?.id || ''))}, ${escapeHtml(JSON.stringify(dimensionName))})">${selected ? '关闭详情' : '查看详情'}</button>
       </article>
     `;
   }).join('') || '<p class="muted">当前分类下暂无具体内容。</p>';
+  return `
+    <div class="deep-dive-overview-detail-layout ${selection ? 'has-detail' : ''}">
+      <div class="deep-dive-overview-detail-list">${list}</div>
+      ${materialDeepDiveOverviewInlineDetailHtml(selection)}
+    </div>
+  `;
 }
 
 window.openMaterialDeepDiveOverviewDetails = function(key, label) {
@@ -7765,12 +8088,30 @@ window.openMaterialDeepDiveOverviewDetails = function(key, label) {
   if (ctx.type !== '定义类维度') return;
   const stats = materialDefinitionOverviewStats(ctx);
   const entries = stats.detailGroups[key] || [];
+  state.materialOverviewDetailSelection = null;
+  state.materialOverviewDetailKey = key;
+  state.materialOverviewDetailLabel = label;
   $('materialCellTitle').textContent = `${label}明细`;
   $('materialCellMeta').textContent = `${ctx.dimLabel} · ${entries.length} 条`;
   $('materialCellBody').innerHTML = materialDeepDiveOverviewDetailHtml(entries, dim.value);
   $('materialCellAddBtn').hidden = true;
   $('materialCellModal').hidden = false;
   document.body.classList.add('modal-open');
+};
+
+window.toggleMaterialDeepDiveInlineDetail = function(paperId, dimensionName) {
+  const current = state.materialOverviewDetailSelection;
+  state.materialOverviewDetailSelection = current?.paperId === paperId && current?.dimensionName === dimensionName
+    ? null
+    : {paperId, dimensionName};
+  const dim = materialDeepDiveDimension();
+  if (!dim) return;
+  const items = state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems();
+  const ctx = materialDeepDiveContext(dim, items);
+  const stats = materialDefinitionOverviewStats(ctx);
+  const key = state.materialOverviewDetailKey;
+  const entries = stats.detailGroups[key] || [];
+  $('materialCellBody').innerHTML = materialDeepDiveOverviewDetailHtml(entries, dim.value);
 };
 
 window.openMaterialItemDetail = function(itemId) {
@@ -7796,6 +8137,7 @@ window.openMaterialCellDetail = function(paperId, dimensionName) {
 
 window.closeMaterialCellModal = function() {
   $('materialCellModal').hidden = true;
+  state.materialOverviewDetailSelection = null;
   syncModalLock();
 };
 

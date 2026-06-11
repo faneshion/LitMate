@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import math
+import re
 import shutil
 import json
 import time
+from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -11,7 +14,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .analysis_service import build_compare_report, build_evidence_graph, build_gap_summary, search_materials
 from .bootstrap import default_experience_template
@@ -76,6 +79,23 @@ class PaperParsingConfig(BaseModel):
     mineru_online_language: str = "en"
     mineru_online_timeout_seconds: int = 900
     mineru_online_poll_interval_seconds: float = 6.0
+
+
+class SemanticClusterEntryPayload(BaseModel):
+    paper_id: str
+    material_id: Optional[str] = None
+    paper_index: Optional[int] = None
+    paper_title: str = ""
+    content: str = ""
+    evidence_quotes: List[str] = Field(default_factory=list)
+    not_reported: bool = False
+
+
+class SemanticClusterRequest(BaseModel):
+    dimension_name: str = ""
+    dimension_label: str = ""
+    dimension_type: str = ""
+    entries: List[SemanticClusterEntryPayload] = Field(default_factory=list)
 
 
 class ExperienceConfig(BaseModel):
@@ -865,6 +885,162 @@ def evidence_graph(paper_ids: Optional[str] = None, max_evidence_nodes: int = 10
         papers = [paper for paper in papers if paper.id in selected_ids]
         materials = [material for material in materials if material.paper_id in selected_ids]
     return build_evidence_graph(materials, papers, max_evidence_nodes=max(0, min(max_evidence_nodes, 5000)))
+
+
+CLUSTER_STOPWORDS = {
+    "the", "and", "for", "with", "that", "this", "from", "into", "are", "was", "were", "has", "have",
+    "their", "these", "those", "paper", "method", "model", "agent", "agents", "task", "tasks", "use",
+    "used", "using", "based", "through", "which", "when", "where", "what", "how", "can", "may", "such",
+    "论文", "方法", "模型", "系统", "任务", "通过", "用于", "进行", "一个", "一种", "可以", "能够", "包括",
+    "定义", "经验", "策略经验", "研究", "本文", "作者", "描述", "说明", "对象", "维度",
+}
+
+DEFINITION_THEME_RULES = [
+    ("历史轨迹与交互经验", ["trajectory", "interaction", "history", "episode", "rollout", "log", "轨迹", "交互", "历史", "任务过程"]),
+    ("反思与教训总结", ["reflection", "lesson", "critique", "mistake", "failure", "feedback", "反思", "教训", "失败", "反馈"]),
+    ("规则与策略知识", ["rule", "policy", "heuristic", "guideline", "principle", "strategy", "规则", "策略", "准则", "启发式"]),
+    ("记忆与可检索知识", ["memory", "retrieve", "retrieval", "store", "case", "exemplar", "记忆", "检索", "案例", "存储"]),
+    ("参数化或训练内化", ["parameter", "fine-tun", "distill", "train", "consolidat", "参数", "训练", "蒸馏", "内化"]),
+]
+
+
+def _cluster_text(entry: SemanticClusterEntryPayload) -> str:
+    quotes = " ".join(entry.evidence_quotes[:3])
+    return f"{entry.content or ''} {quotes}".strip()
+
+
+def _tokenize_for_cluster(text: str) -> List[str]:
+    lowered = (text or "").lower()
+    ascii_tokens = re.findall(r"[a-z][a-z0-9_-]{2,}", lowered)
+    cjk_tokens = re.findall(r"[\u4e00-\u9fff]{2,}", lowered)
+    tokens = ascii_tokens + cjk_tokens
+    return [token for token in tokens if token not in CLUSTER_STOPWORDS and len(token) <= 32]
+
+
+def _definition_theme(text: str) -> Optional[str]:
+    lowered = (text or "").lower()
+    best_name = None
+    best_score = 0
+    for name, keywords in DEFINITION_THEME_RULES:
+        score = sum(1 for keyword in keywords if keyword in lowered)
+        if score > best_score:
+            best_name = name
+            best_score = score
+    return best_name if best_score else None
+
+
+def _tfidf_vectors(token_lists: List[List[str]]) -> List[Dict[str, float]]:
+    doc_count = max(1, len(token_lists))
+    df = Counter(token for tokens in token_lists for token in set(tokens))
+    vectors: List[Dict[str, float]] = []
+    for tokens in token_lists:
+        counts = Counter(tokens)
+        total = max(1, sum(counts.values()))
+        vector = {
+            token: (count / total) * (math.log((doc_count + 1) / (df[token] + 1)) + 1)
+            for token, count in counts.items()
+        }
+        norm = math.sqrt(sum(value * value for value in vector.values())) or 1.0
+        vectors.append({token: value / norm for token, value in vector.items()})
+    return vectors
+
+
+def _cosine_similarity(left: Dict[str, float], right: Dict[str, float]) -> float:
+    if len(left) > len(right):
+        left, right = right, left
+    return sum(value * right.get(token, 0.0) for token, value in left.items())
+
+
+def _cluster_keywords(entries: List[SemanticClusterEntryPayload]) -> List[str]:
+    counter = Counter()
+    for entry in entries:
+        counter.update(_tokenize_for_cluster(_cluster_text(entry)))
+    return [token for token, _ in counter.most_common(3)]
+
+
+def _cluster_name(entries: List[SemanticClusterEntryPayload], keywords: List[str], dimension_type: str) -> str:
+    if dimension_type == "定义类维度":
+        theme_counts = Counter(_definition_theme(_cluster_text(entry)) for entry in entries)
+        theme_counts.pop(None, None)
+        if theme_counts:
+            return theme_counts.most_common(1)[0][0]
+    if keywords:
+        return " / ".join(keywords[:2])
+    return "语义相近定义"
+
+
+def _cluster_description(name: str, entries: List[SemanticClusterEntryPayload], keywords: List[str], dimension_type: str) -> str:
+    count = len(entries)
+    if dimension_type == "定义类维度":
+        if name == "历史轨迹与交互经验":
+            return f"将经验理解为来自历史任务、交互轨迹或执行过程的可复用信息，覆盖 {count} 篇论文。"
+        if name == "反思与教训总结":
+            return f"强调从反馈、失败或自我反思中总结 lesson / reflection，并用于后续改进，覆盖 {count} 篇论文。"
+        if name == "规则与策略知识":
+            return f"把经验组织成规则、准则或策略知识，用于指导决策和行动选择，覆盖 {count} 篇论文。"
+        if name == "记忆与可检索知识":
+            return f"将经验表示为可存储、检索和复用的记忆或案例，覆盖 {count} 篇论文。"
+        if name == "参数化或训练内化":
+            return f"关注将上下文或经验内化到参数、训练过程或长期能力中，覆盖 {count} 篇论文。"
+    topic = "、".join(keywords) if keywords else "相近语义"
+    return f"该类围绕 {topic} 形成相近表述，覆盖 {count} 篇论文。"
+
+
+def _semantic_cluster_payload(payload: SemanticClusterRequest) -> dict:
+    usable = [entry for entry in payload.entries if not entry.not_reported and _cluster_text(entry)]
+    missing = [entry for entry in payload.entries if entry.not_reported or not _cluster_text(entry)]
+    token_lists = [_tokenize_for_cluster(_cluster_text(entry)) for entry in usable]
+    vectors = _tfidf_vectors(token_lists)
+    threshold = 0.22 if payload.dimension_type == "定义类维度" else 0.18
+    buckets: List[dict] = []
+    for entry, vector in zip(usable, vectors):
+        theme = _definition_theme(_cluster_text(entry)) if payload.dimension_type == "定义类维度" else None
+        best_index = -1
+        best_score = 0.0
+        for idx, bucket in enumerate(buckets):
+            if theme and bucket.get("theme") == theme:
+                score = max(0.55, _cosine_similarity(vector, bucket["centroid"]))
+            else:
+                score = _cosine_similarity(vector, bucket["centroid"])
+            if score > best_score:
+                best_score = score
+                best_index = idx
+        if best_index >= 0 and best_score >= threshold:
+            bucket = buckets[best_index]
+            bucket["entries"].append(entry)
+            size = len(bucket["entries"])
+            tokens = set(bucket["centroid"]) | set(vector)
+            bucket["centroid"] = {token: (bucket["centroid"].get(token, 0.0) * (size - 1) + vector.get(token, 0.0)) / size for token in tokens}
+            bucket["score"] = max(bucket.get("score", 0.0), best_score)
+        else:
+            buckets.append({"theme": theme, "entries": [entry], "centroid": dict(vector), "score": 1.0})
+
+    if missing:
+        buckets.append({"theme": "未报告或表述不足", "entries": missing, "centroid": {}, "score": 1.0})
+
+    clusters = []
+    for idx, bucket in enumerate(sorted(buckets, key=lambda item: len(item["entries"]), reverse=True), start=1):
+        entries = bucket["entries"]
+        keywords = _cluster_keywords(entries)
+        name = bucket["theme"] if bucket.get("theme") else _cluster_name(entries, keywords, payload.dimension_type)
+        paper_indices = [entry.paper_index for entry in entries if entry.paper_index is not None]
+        clusters.append({
+            "id": f"cluster_{idx}",
+            "name": name,
+            "description": _cluster_description(name, entries, keywords, payload.dimension_type),
+            "keywords": keywords,
+            "paper_ids": [entry.paper_id for entry in entries],
+            "paper_indices": sorted(paper_indices),
+            "material_ids": [entry.material_id for entry in entries if entry.material_id],
+            "entry_count": len(entries),
+            "confidence": round(min(0.98, max(0.55, float(bucket.get("score", 0.65)))), 2),
+        })
+    return {"dimension_name": payload.dimension_name, "dimension_label": payload.dimension_label, "clusters": clusters}
+
+
+@app.post("/api/analysis/semantic-clusters")
+def semantic_clusters(payload: SemanticClusterRequest) -> dict:
+    return _semantic_cluster_payload(payload)
 
 
 @app.get("/api/export/run/{run_id}")

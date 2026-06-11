@@ -2630,6 +2630,65 @@ body.materials-sidebar-resizing {
   border-radius: 8px;
   font-size: 12px;
 }
+.deep-dive-detail-entry.selected {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+.deep-dive-overview-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+}
+.deep-dive-overview-detail-layout.has-detail {
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  align-items: start;
+}
+.deep-dive-overview-detail-list {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.deep-dive-inline-detail {
+  display: grid;
+  gap: 12px;
+  position: sticky;
+  top: 0;
+  max-height: calc(100vh - 170px);
+  overflow: auto;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #f8fbff;
+}
+.deep-dive-inline-detail.empty {
+  display: none;
+}
+.deep-dive-inline-detail header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.deep-dive-inline-detail h3,
+.semantic-cluster-detail h3 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 14px;
+}
+.deep-dive-inline-detail p {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.deep-dive-inline-detail .material-detail-item {
+  padding: 10px;
+}
+.deep-dive-inline-detail .material-detail-item header {
+  display: grid;
+}
 .deep-dive-overview-conclusion {
   display: grid;
   align-content: start;
@@ -2666,6 +2725,18 @@ body.materials-sidebar-resizing {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #fff;
+}
+.deep-dive-section-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.deep-dive-section-heading p {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
 }
 .deep-dive-section h3,
 .deep-dive-case-grid h4 {
@@ -2719,6 +2790,139 @@ body.materials-sidebar-resizing {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 10px;
+}
+.semantic-cluster-section {
+  gap: 14px;
+}
+.semantic-cluster-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.semantic-cluster-actions button {
+  min-height: 30px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+.semantic-cluster-actions button:hover,
+.semantic-cluster-card header button:hover,
+.deep-dive-inline-detail header button:hover,
+.deep-dive-detail-entry > button:hover {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+.semantic-cluster-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 12px;
+}
+.semantic-cluster-card {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  background: #fff;
+}
+.semantic-cluster-card.selected {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+}
+.semantic-cluster-card header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.semantic-cluster-card header label {
+  display: flex;
+  align-items: start;
+  gap: 7px;
+  min-width: 0;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 850;
+  line-height: 1.35;
+}
+.semantic-cluster-card header label span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.semantic-cluster-card header div {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+}
+.semantic-cluster-card header button {
+  min-height: 26px;
+  padding: 3px 7px;
+  border-radius: 7px;
+  font-size: 11px;
+}
+.semantic-cluster-card small {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+}
+.semantic-cluster-card p,
+.semantic-cluster-detail p {
+  margin: 0;
+  color: #334155;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.semantic-cluster-keywords,
+.semantic-cluster-paper-ids {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.semantic-cluster-keywords span {
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 800;
+}
+.semantic-cluster-paper-ids b {
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 11px;
+}
+.semantic-cluster-card footer input {
+  width: 100%;
+  min-height: 30px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+.semantic-cluster-detail,
+.semantic-material-editor {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fbfdff;
+}
+.semantic-material-editor label {
+  display: grid;
+  gap: 8px;
+  color: #475569;
+  font-size: 12px;
+}
+.semantic-material-editor textarea {
+  width: 100%;
+  min-height: 260px;
+  resize: vertical;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.65;
 }
 .deep-dive-clusters header {
   display: flex;
