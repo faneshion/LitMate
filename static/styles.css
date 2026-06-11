@@ -2856,6 +2856,45 @@ body.materials-sidebar-resizing {
   background: #eff6ff;
   color: #1d4ed8;
 }
+.semantic-cluster-progress {
+  display: grid;
+  gap: 7px;
+  padding: 10px 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+.semantic-cluster-progress div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.semantic-cluster-progress span {
+  color: #334155;
+  font-size: 12px;
+  font-weight: 800;
+}
+.semantic-cluster-progress b {
+  color: #1d4ed8;
+  font-size: 12px;
+}
+.semantic-cluster-progress i {
+  overflow: hidden;
+  height: 8px;
+  border-radius: 999px;
+  background: #dbeafe;
+}
+.semantic-cluster-progress em {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #2563eb;
+  transition: width .24s ease;
+}
+.semantic-cluster-progress.active em {
+  background: linear-gradient(90deg, #2563eb, #059669);
+}
 .semantic-cluster-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));

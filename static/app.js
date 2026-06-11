@@ -72,6 +72,8 @@ const state = {
   materialSemanticClusters: {},
   materialSemanticClusterRenames: {},
   materialSemanticClusterMergeSelection: [],
+  materialSemanticClusterMergeSelectionKey: '',
+  materialSemanticClusterMergeGroups: {},
   materialOverviewDetailSelection: null,
   materialOverviewExpandedEvidence: {},
   reviewItemIndex: 0,
@@ -6842,36 +6844,53 @@ function materialClusterKeywords(entries) {
 
 function materialApplySemanticClusterAdjustments(key, clusters) {
   const renames = state.materialSemanticClusterRenames[key] || {};
-  const selected = new Set(state.materialSemanticClusterMergeSelection || []);
+  const selected = new Set(state.materialSemanticClusterMergeSelectionKey === key ? (state.materialSemanticClusterMergeSelection || []) : []);
   const adjusted = clusters.map(cluster => ({
     ...cluster,
     name: renames[cluster.id] || cluster.name,
     selected: selected.has(cluster.id),
   }));
-  const mergeIds = [...selected];
-  if (mergeIds.length < 2) return adjusted;
-  const mergeSet = new Set(mergeIds);
-  const picked = adjusted.filter(cluster => mergeSet.has(cluster.id));
-  const merged = {
-    id: `merged_${mergeIds.join('_')}`,
-    name: picked.map(cluster => cluster.name).join(' / '),
-    description: `人工合并 ${picked.length} 个语义相近类别，用于统一综述口径。`,
-    keywords: [...new Set(picked.flatMap(cluster => cluster.keywords || []))].slice(0, 3),
-    paper_ids: [...new Set(picked.flatMap(cluster => cluster.paper_ids || []))],
-    paper_indices: [...new Set(picked.flatMap(cluster => cluster.paper_indices || []))].sort((a, b) => a - b),
-    material_ids: [...new Set(picked.flatMap(cluster => cluster.material_ids || []))],
-    entry_count: picked.reduce((sum, cluster) => sum + Number(cluster.entry_count || 0), 0),
-    confidence: Math.max(...picked.map(cluster => Number(cluster.confidence || 0.6))),
-    selected: true,
-    merged_from: mergeIds,
-  };
-  return [merged, ...adjusted.filter(cluster => !mergeSet.has(cluster.id))];
+  const groups = state.materialSemanticClusterMergeGroups[key] || [];
+  const consumed = new Set();
+  const merged = groups.map(group => {
+    const picked = adjusted.filter(cluster => (group.cluster_ids || []).includes(cluster.id));
+    if (picked.length < 2) return null;
+    picked.forEach(cluster => consumed.add(cluster.id));
+    const groupName = renames[group.id] || group.name || picked.map(cluster => cluster.name).join(' / ');
+    return {
+      id: group.id,
+      name: groupName,
+      description: group.description || `人工合并 ${picked.length} 个语义相近类别，用于统一综述口径。`,
+      keywords: [...new Set(picked.flatMap(cluster => cluster.keywords || []))].slice(0, 3),
+      paper_ids: [...new Set(picked.flatMap(cluster => cluster.paper_ids || []))],
+      paper_indices: [...new Set(picked.flatMap(cluster => cluster.paper_indices || []))].sort((a, b) => a - b),
+      material_ids: [...new Set(picked.flatMap(cluster => cluster.material_ids || []))],
+      entry_count: picked.reduce((sum, cluster) => sum + Number(cluster.entry_count || 0), 0),
+      confidence: Math.max(...picked.map(cluster => Number(cluster.confidence || 0.6))),
+      selected: selected.has(group.id),
+      merged_from: group.cluster_ids || [],
+    };
+  }).filter(Boolean);
+  return [...merged, ...adjusted.filter(cluster => !consumed.has(cluster.id))];
 }
 
 async function refreshMaterialSemanticClusters(ctx, options = {}) {
   const key = materialDeepDiveClusterCacheKey(ctx.dim, ctx.entries);
   if (!options.force && state.materialSemanticClusters[key]) return state.materialSemanticClusters[key];
-  state.materialSemanticClusters[key] = {loading: true, clusters: materialLocalSemanticClusters(ctx)};
+  if (options.keepLoading && state.materialSemanticClusters[key]?.loading) {
+    state.materialSemanticClusters[key] = {
+      ...state.materialSemanticClusters[key],
+      progress: Math.max(18, Number(state.materialSemanticClusters[key]?.progress || 0)),
+      message: state.materialSemanticClusters[key]?.message || '正在准备聚类数据',
+    };
+  } else {
+    state.materialSemanticClusters[key] = {
+      loading: true,
+      progress: 18,
+      message: '正在准备聚类数据',
+      clusters: materialLocalSemanticClusters(ctx),
+    };
+  }
   const payload = {
     dimension_name: ctx.dim.value,
     dimension_label: ctx.dimLabel,
@@ -6879,14 +6898,33 @@ async function refreshMaterialSemanticClusters(ctx, options = {}) {
     entries: materialSemanticClusterEntriesPayload(ctx.entries),
   };
   try {
+    state.materialSemanticClusters[key] = {
+      ...state.materialSemanticClusters[key],
+      progress: Math.max(55, state.materialSemanticClusters[key]?.progress || 0),
+      message: '正在计算语义相似度',
+    };
     const result = await api('/api/analysis/semantic-clusters', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(payload),
     });
-    state.materialSemanticClusters[key] = {...result, loading: false};
+    state.materialSemanticClusters[key] = {
+      ...result,
+      loading: false,
+      progress: 100,
+      message: `聚类完成：${result.clusters?.length || 0} 类`,
+      updated_at: new Date().toISOString(),
+    };
   } catch (err) {
-    state.materialSemanticClusters[key] = {loading: false, error: err.message, clusters: materialLocalSemanticClusters(ctx)};
+    const localClusters = materialLocalSemanticClusters(ctx);
+    state.materialSemanticClusters[key] = {
+      loading: false,
+      error: err.message,
+      progress: 100,
+      message: `已使用本地兜底聚类：${localClusters.length} 类`,
+      clusters: localClusters,
+      updated_at: new Date().toISOString(),
+    };
     toast(`语义聚类接口不可用，已使用本地聚类：${err.message}`);
   }
   return state.materialSemanticClusters[key];
@@ -7397,6 +7435,7 @@ function renderMaterialSemanticClusterCards(ctx) {
   const cached = state.materialSemanticClusters[key];
   const clusters = materialSemanticClustersForContext(ctx);
   const selectedCount = clusters.filter(cluster => cluster.selected).length;
+  const progress = Math.max(0, Math.min(100, Number(cached?.progress || 0)));
   return `
     <section class="deep-dive-section semantic-cluster-section">
       <div class="deep-dive-section-heading">
@@ -7405,12 +7444,20 @@ function renderMaterialSemanticClusterCards(ctx) {
           <p>${ctx.type === '定义类维度' ? '按定义语义将不同论文中的经验定义聚成若干类型，可人工重命名、合并并生成综述素材。' : '按当前维度的语义相近性聚合结果。'}</p>
         </div>
         <div class="semantic-cluster-actions">
-          <button type="button" onclick="refreshCurrentMaterialSemanticClusters(true)">重新聚类</button>
-          <button type="button" ${selectedCount >= 2 ? '' : 'disabled'} onclick="mergeSelectedMaterialSemanticClusters()">合并所选</button>
-          <button type="button" onclick="clearMaterialSemanticClusterSelection()">清空选择</button>
+          <button type="button" ${cached?.loading ? 'disabled' : ''} onclick="refreshCurrentMaterialSemanticClusters(true)">${cached?.loading ? '聚类中' : '重新聚类'}</button>
+          <button type="button" ${selectedCount >= 2 && !cached?.loading ? '' : 'disabled'} onclick="mergeSelectedMaterialSemanticClusters()">合并所选</button>
+          <button type="button" ${cached?.loading ? 'disabled' : ''} onclick="clearMaterialSemanticClusterSelection()">清空选择</button>
         </div>
       </div>
-      ${cached?.loading ? '<p class="muted">正在生成智能语义聚类...</p>' : ''}
+      ${cached ? `
+        <div class="semantic-cluster-progress ${cached.loading ? 'active' : ''}">
+          <div>
+            <span>${escapeHtml(cached.message || (cached.loading ? '正在生成智能语义聚类' : '聚类结果已就绪'))}</span>
+            <b>${escapeHtml(cached.loading ? `${progress}%` : `${clusters.length} 类`)}</b>
+          </div>
+          <i><em style="width:${cached.loading ? progress : 100}%"></em></i>
+        </div>
+      ` : ''}
       ${cached?.error ? `<p class="muted">后端聚类暂不可用，已展示本地兜底结果：${escapeHtml(cached.error)}</p>` : ''}
       <div class="semantic-cluster-grid">
         ${clusters.map(cluster => `
@@ -7458,7 +7505,33 @@ window.refreshCurrentMaterialSemanticClusters = async function(force = false) {
   if (!dim) return;
   const items = state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems();
   const ctx = materialDeepDiveContext(dim, items);
-  await refreshMaterialSemanticClusters(ctx, {force});
+  const key = ctx.clusterCacheKey;
+  if (force) {
+    delete state.materialSemanticClusterRenames[key];
+    delete state.materialSemanticClusterMergeGroups[key];
+  }
+  state.materialSemanticClusterMergeSelection = [];
+  state.materialSemanticClusterMergeSelectionKey = key;
+  state.materialSemanticClusters[key] = {
+    loading: true,
+    progress: 8,
+    message: '正在启动重新聚类',
+    clusters: materialLocalSemanticClusters(ctx),
+  };
+  renderMaterialDeepDivePage(dim, items);
+  const bumpProgress = (progress, message) => {
+    window.setTimeout(() => {
+      const current = state.materialSemanticClusters[key];
+      if (!current?.loading) return;
+      state.materialSemanticClusters[key] = {...current, progress, message};
+      if (state.materialAnalysisDepth === 'deep_dive' && state.materialDeepDiveView === 'semantic_clusters' && state.materialDeepDiveDimension === dim.value) {
+        renderMaterialDeepDivePage(dim, items);
+      }
+    }, progress < 50 ? 180 : 650);
+  };
+  bumpProgress(42, '正在提取定义语义与关键词');
+  bumpProgress(74, '正在聚合相近类别');
+  await refreshMaterialSemanticClusters(ctx, {force, keepLoading: true});
   renderMaterialDeepDivePage(dim, items);
 };
 
@@ -7474,15 +7547,24 @@ window.renameMaterialSemanticCluster = function(clusterId, value) {
 };
 
 window.toggleMaterialSemanticClusterSelection = function(clusterId) {
+  const dim = materialDeepDiveDimension();
+  if (!dim) return;
+  const items = state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems();
+  const ctx = materialDeepDiveContext(dim, items);
+  const key = ctx.clusterCacheKey;
+  if (state.materialSemanticClusterMergeSelectionKey !== key) {
+    state.materialSemanticClusterMergeSelection = [];
+    state.materialSemanticClusterMergeSelectionKey = key;
+  }
   const selected = new Set(state.materialSemanticClusterMergeSelection || []);
   selected.has(clusterId) ? selected.delete(clusterId) : selected.add(clusterId);
   state.materialSemanticClusterMergeSelection = [...selected];
-  const dim = materialDeepDiveDimension();
-  if (dim) renderMaterialDeepDivePage(dim, state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems());
+  renderMaterialDeepDivePage(dim, items);
 };
 
 window.clearMaterialSemanticClusterSelection = function() {
   state.materialSemanticClusterMergeSelection = [];
+  state.materialSemanticClusterMergeSelectionKey = '';
   const dim = materialDeepDiveDimension();
   if (dim) renderMaterialDeepDivePage(dim, state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems());
 };
@@ -7492,8 +7574,20 @@ window.mergeSelectedMaterialSemanticClusters = function() {
   if (!dim) return;
   const items = state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems();
   const ctx = materialDeepDiveContext(dim, items);
-  const selectedCount = materialSemanticClustersForContext(ctx).filter(cluster => cluster.selected).length;
-  if (selectedCount < 2) return toast('请至少选择两个类别');
+  const selectedClusters = materialSemanticClustersForContext(ctx).filter(cluster => cluster.selected);
+  if (selectedClusters.length < 2) return toast('请至少选择两个类别');
+  const key = ctx.clusterCacheKey;
+  state.materialSemanticClusterMergeGroups[key] = state.materialSemanticClusterMergeGroups[key] || [];
+  const group = {
+    id: `merged_${Date.now()}`,
+    name: selectedClusters.map(cluster => cluster.name).join(' / '),
+    description: `人工合并 ${selectedClusters.length} 个语义相近类别，用于统一综述口径。`,
+    cluster_ids: selectedClusters.map(cluster => cluster.id),
+    created_at: new Date().toISOString(),
+  };
+  state.materialSemanticClusterMergeGroups[key].push(group);
+  state.materialSemanticClusterMergeSelection = [];
+  state.materialSemanticClusterMergeSelectionKey = '';
   renderMaterialDeepDivePage(dim, items);
   toast('已在当前视图中合并所选类别');
 };
