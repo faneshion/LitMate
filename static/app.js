@@ -6214,7 +6214,6 @@ function updateMaterialsContext(items = filteredMaterialItems()) {
   if ($('materialMainTitle')) $('materialMainTitle').textContent = config.label;
   if ($('materialMainSubtitle')) $('materialMainSubtitle').textContent = config.description;
   if ($('materialResultTitle')) $('materialResultTitle').textContent = config.description;
-  if ($('materialsResultHeader')) $('materialsResultHeader').hidden = true;
   if ($('materialAnalysisTypeHint')) $('materialAnalysisTypeHint').textContent = `当前：${config.label}`;
 }
 
@@ -6275,8 +6274,16 @@ function renderMaterialResultChrome() {
   const isDeepDive = state.materialAnalysisType === 'compare'
     && state.materialAnalysisDepth === 'deep_dive'
     && materialDeepDiveDimension();
+  const mainPane = document.querySelector('.materials-main-pane');
+  const outputCard = document.querySelector('.materials-output-card');
   const heading = $('materialResultTitle')?.closest('.materials-section-heading');
-  if (heading) heading.hidden = Boolean(isDeepDive);
+  if (mainPane) mainPane.classList.toggle('deep-dive-main-pane', Boolean(isDeepDive));
+  if (outputCard) outputCard.classList.toggle('deep-dive-output-card', Boolean(isDeepDive));
+  if (heading) {
+    heading.hidden = false;
+    heading.classList.toggle('deep-dive-hidden-heading', Boolean(isDeepDive));
+  }
+  if ($('analysisOutput')) $('analysisOutput').classList.toggle('deep-dive-output', Boolean(isDeepDive));
 }
 
 function materialItemContent(item) {
@@ -7243,6 +7250,141 @@ function materialDeepDiveEntryList(entries, dimensionName, limit = 8) {
   `).join('') || '<li class="muted">暂无匹配论文。</li>';
 }
 
+function materialDeepDiveBarRows(rows, total, options = {}) {
+  return rows.map(([label, value, tone = 'default', key = '']) => {
+    const numeric = Number(value || 0);
+    const width = options.percentValues ? numeric : (total ? Math.round(numeric / total * 100) : 0);
+    const display = options.percentValues ? `${numeric}%` : numeric;
+    const openAttr = key ? ` onclick="openMaterialDeepDiveOverviewDetails(${escapeHtml(JSON.stringify(key))}, ${escapeHtml(JSON.stringify(label))})"` : '';
+    return `
+      <button type="button" class="deep-dive-overview-bar ${escapeHtml(tone)}"${openAttr}>
+        <b>${escapeHtml(label)}</b>
+        <span><i style="width:${Math.max(4, Math.min(100, width))}%"></i></span>
+        <em>${escapeHtml(display)}</em>
+      </button>
+    `;
+  }).join('');
+}
+
+function materialDefinitionOverviewStats(ctx) {
+  const valid = ctx.validEntries;
+  const textOf = entry => `${entry.content || ''} ${entry.paper?.metadata?.title || ''}`;
+  const explicitEntries = valid.filter(entry => /define|definition|concept|称为|定义为|是指|概念/i.test(textOf(entry)));
+  const operationalEntries = valid.filter(entry => /operational|implement|use as|通过.*表示|以.*形式|构造为|用于|使用|流程|方法/i.test(textOf(entry)));
+  const boundaryEntries = valid.filter(entry => /boundary|scope|distinguish|区别|边界|不包括|排除/i.test(textOf(entry)));
+  const categorizedEntries = new Set([...explicitEntries, ...operationalEntries, ...boundaryEntries]);
+  const implicitEntries = valid.filter(entry => !categorizedEntries.has(entry));
+  const denominator = Math.max(1, ctx.entries.length);
+  const formEntries = [...new Set([...explicitEntries, ...operationalEntries])];
+  const useEntries = valid.filter(entry => /use|function|purpose|用于|功能|作用|support|guide|帮助|服务于/i.test(textOf(entry)));
+  const directEntries = ctx.evidenceEntries.filter(entry => materialEvidenceStrength(entry.item) === 'strong');
+  const sourcePercent = Math.round(ctx.evidenceEntries.length / Math.max(1, ctx.resultEntries.length) * 100);
+  const formPercent = Math.round(formEntries.length / denominator * 100);
+  const usePercent = Math.round(useEntries.length / denominator * 100);
+  const directPercent = Math.round(directEntries.length / Math.max(1, ctx.resultEntries.length) * 100);
+  return {
+    explicitRows: [
+      ['显式定义', explicitEntries.length, 'default', 'explicit'],
+      ['操作性定义', operationalEntries.length, 'default', 'operational'],
+      ['隐含定义', implicitEntries.length, 'default', 'implicit'],
+      ['未定义', ctx.notReportedEntries.length, 'warn', 'undefined'],
+    ],
+    completenessRows: [
+      ['说明来源', sourcePercent, 'default', 'source'],
+      ['说明形式', formPercent, 'default', 'form'],
+      ['说明用途', usePercent, 'default', 'use'],
+      ['直接验证', directPercent, directPercent < 50 ? 'danger' : 'default', 'direct'],
+    ],
+    detailGroups: {
+      explicit: explicitEntries,
+      operational: operationalEntries,
+      implicit: implicitEntries,
+      undefined: ctx.notReportedEntries,
+      source: ctx.evidenceEntries,
+      form: formEntries,
+      use: useEntries,
+      direct: directEntries,
+    },
+    explicitEntries,
+    operationalEntries,
+    implicitCount: implicitEntries.length,
+    sourcePercent,
+    formPercent,
+    usePercent,
+    directPercent,
+  };
+}
+
+function renderDefinitionOverviewConclusion(ctx, stats) {
+  const explicitRate = Math.round(stats.explicitEntries.length / Math.max(1, ctx.entries.length) * 100);
+  const dominant = stats.operationalEntries.length >= stats.explicitEntries.length ? '操作性描述' : '显式定义';
+  const evidenceText = stats.sourcePercent >= 70 ? '证据来源覆盖较好' : '证据来源仍需补齐';
+  const validationText = stats.directPercent >= 50 ? '直接验证相对充分' : '直接验证不足';
+  return `
+    <article class="deep-dive-overview-conclusion">
+      <h3>初步分析结论</h3>
+      <p>当前“${escapeHtml(ctx.dimLabel)}”在 ${ctx.entries.length} 篇论文中有 ${ctx.validEntries.length} 篇形成有效结果，显式定义约占 ${explicitRate}%。整体更偏向${escapeHtml(dominant)}，需要继续区分作者直接定义、方法流程中的操作性定义，以及由上下文归纳出的隐含定义。</p>
+      <p>定义完整性方面，${escapeHtml(evidenceText)}，说明形式覆盖率为 ${stats.formPercent}%，说明用途覆盖率为 ${stats.usePercent}%，但${escapeHtml(validationText)}。后续综述中建议把“是否给出严格定义”和“是否通过流程/证据间接界定”分开写。</p>
+      <div class="deep-dive-overview-tags">
+        <span>${stats.implicitCount || ctx.notReportedEntries.length ? '隐含/未报告定义需复核' : '定义报告较完整'}</span>
+        <span>${stats.explicitEntries.length < stats.operationalEntries.length ? '操作性定义占优' : '显式定义占优'}</span>
+        <span>${escapeHtml(evidenceText)}</span>
+      </div>
+    </article>
+  `;
+}
+
+function renderMaterialDeepDiveOverview(ctx) {
+  const statCards = [
+    ['维度名称', ctx.dimLabel],
+    ['维度类型', ctx.type],
+    ['涉及论文数', ctx.entries.length],
+    ['有效结果数', ctx.validEntries.length],
+    ['未报告数', ctx.notReportedEntries.length],
+    ['证据覆盖率', materialDeepDivePercent(ctx.evidenceEntries.length, ctx.resultEntries.length)],
+    ['人工确认率', materialDeepDivePercent(ctx.confirmedEntries.length, ctx.resultEntries.length)],
+    ['模型推断率', materialDeepDivePercent(ctx.inferredEntries.length, ctx.resultEntries.length)],
+  ];
+  if (ctx.type !== '定义类维度') {
+    return `
+      <section class="deep-dive-overview">
+        <div class="deep-dive-overview-stats">
+          ${statCards.map(([label, value]) => `<article><b>${escapeHtml(value)}</b><span>${escapeHtml(label)}</span></article>`).join('')}
+        </div>
+        <div class="deep-dive-question-grid">
+          ${[
+            ['哪些论文报告了这个维度？', `${ctx.validEntries.length} / ${ctx.entries.length} 篇论文有有效结果。`],
+            ['哪些论文没有报告？', `${ctx.notReportedEntries.length} 篇论文为 not_reported 或弱报告。`],
+            ['哪些说法最典型？', ctx.leadCluster ? `当前主类是“${ctx.leadCluster.name}”。` : '暂未形成稳定主类。'],
+            ['哪些结果适合作为综述素材？', ctx.clusterSentence],
+          ].map(([question, answer]) => `<article><b>${escapeHtml(question)}</b><p>${escapeHtml(answer)}</p></article>`).join('')}
+        </div>
+      </section>
+    `;
+  }
+  const definitionStats = materialDefinitionOverviewStats(ctx);
+  return `
+    <section class="deep-dive-overview definition">
+      <div class="deep-dive-overview-stats">
+        ${statCards.map(([label, value]) => `<article><b>${escapeHtml(value)}</b><span>${escapeHtml(label)}</span></article>`).join('')}
+      </div>
+      <div class="deep-dive-definition-overview">
+        <div class="deep-dive-definition-bars">
+          <section>
+            <h3>定义显性程度分布</h3>
+            ${materialDeepDiveBarRows(definitionStats.explicitRows, Math.max(1, ctx.entries.length))}
+          </section>
+          <section>
+            <h3>定义完整性</h3>
+            ${materialDeepDiveBarRows(definitionStats.completenessRows, 100, {percentValues: true})}
+          </section>
+        </div>
+        ${renderDefinitionOverviewConclusion(ctx, definitionStats)}
+      </div>
+    </section>
+  `;
+}
+
 function renderMaterialDeepDiveSidebarContent(ctx) {
   const navButton = view => `
     <button type="button" class="deep-dive-nav-item ${ctx.view === view.id ? 'active' : ''}" onclick="setMaterialDeepDiveView(${escapeHtml(JSON.stringify(view.id))})">
@@ -7287,13 +7429,6 @@ function renderMaterialDeepDivePerspective(ctx, title, axis, description) {
   const groups = materialDeepDiveGroupByAxis(ctx.entries, axis, ctx.type);
   return `
     <section class="deep-dive-section">
-      <header class="deep-dive-view-head">
-        <div>
-          <h3>${escapeHtml(title)}</h3>
-          <p>${escapeHtml(description)}</p>
-        </div>
-        <span>${escapeHtml(axis)}</span>
-      </header>
       <div class="deep-dive-category-grid">
         ${groups.map(([label, group]) => `<article>
           <b>${escapeHtml(label)}</b>
@@ -7307,16 +7442,11 @@ function renderMaterialDeepDivePerspective(ctx, title, axis, description) {
 
 function renderMaterialDeepDiveMain(ctx) {
   const viewDef = ctx.views.all.find(item => item.id === ctx.view) || ctx.views.general[0];
-  const reportQuestionCards = [
-    ['哪些论文报告了这个维度？', `${ctx.validEntries.length} / ${ctx.entries.length} 篇论文有有效结果。`],
-    ['哪些论文没有报告？', `${ctx.notReportedEntries.length} 篇论文为 not_reported 或弱报告。`],
-    ['哪些说法最典型？', ctx.leadCluster ? `当前主类是“${ctx.leadCluster.name}”。` : '暂未形成稳定主类。'],
-    ['哪些说法比较特殊？', ctx.anomalies[0] || '暂无显著异常。'],
-    ['哪些结论证据强？', `${ctx.evidenceEntries.length} 条结果带有原文证据。`],
-    ['哪些结果适合作为综述素材？', ctx.clusterSentence],
-  ];
   if (viewDef.axis) {
     return renderMaterialDeepDivePerspective(ctx, viewDef.label, viewDef.axis, `围绕“${ctx.dimLabel}”检查${viewDef.label}，用于统一不同论文对该定义类维度的报告方式。`);
+  }
+  if (ctx.view === 'overview_stats') {
+    return renderMaterialDeepDiveOverview(ctx);
   }
   if (ctx.view === 'result_coverage') {
     return `
@@ -7437,37 +7567,7 @@ function renderMaterialDeepDiveMain(ctx) {
       </section>
     `;
   }
-  return `
-    <section class="deep-dive-section">
-      <header class="deep-dive-view-head">
-        <div>
-          <h3>总览统计</h3>
-          <p>合并展示报告覆盖、not_reported 分布、证据覆盖、高频术语和关键综述问题。</p>
-        </div>
-      </header>
-      <div class="deep-dive-stat-grid">
-        ${[
-          ['维度名称', ctx.dimLabel],
-          ['维度类型', ctx.type],
-          ['涉及论文数', ctx.entries.length],
-          ['有效结果数', ctx.validEntries.length],
-          ['not_reported 数', ctx.notReportedEntries.length],
-          ['证据覆盖率', materialDeepDivePercent(ctx.evidenceEntries.length, ctx.resultEntries.length)],
-          ['人工确认率', materialDeepDivePercent(ctx.confirmedEntries.length, ctx.resultEntries.length)],
-          ['模型推断率', materialDeepDivePercent(ctx.inferredEntries.length, ctx.resultEntries.length)],
-        ].map(([label, value]) => `<div><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>`).join('')}
-      </div>
-      <div class="deep-dive-bar-list">${materialDeepDiveBars([['已报告', ctx.validEntries.length], ['not_reported', ctx.notReportedEntries.length, 'warn'], ['带证据结果', ctx.evidenceEntries.length]], ctx.entries.length)}</div>
-      <div class="deep-dive-evidence-grid">
-        <article><b>高频证据章节</b>${ctx.evidenceSections.map(([section, count]) => `<span>${escapeHtml(section)} · ${count}</span>`).join('') || '<span>暂无章节证据</span>'}</article>
-        <article><b>弱证据结果</b><p>${ctx.weakEntries.length} 条结果需要复核。</p></article>
-      </div>
-      <div class="deep-dive-term-cloud">${ctx.terms.map(([term, count]) => `<span>${escapeHtml(term)}<b>${count}</b></span>`).join('') || '<p class="muted">暂无可统计术语。</p>'}</div>
-      <div class="deep-dive-question-grid">
-        ${reportQuestionCards.map(([question, answer]) => `<article><b>${escapeHtml(question)}</b><p>${escapeHtml(answer)}</p></article>`).join('')}
-      </div>
-    </section>
-  `;
+  return renderMaterialDeepDiveOverview(ctx);
 }
 
 function renderMaterialDeepDiveInsightContent(ctx) {
@@ -7616,12 +7716,62 @@ function openMaterialDetailModal(title, meta, items) {
   $('materialCellTitle').textContent = title;
   $('materialCellMeta').textContent = meta;
   $('materialCellBody').innerHTML = materialDetailItemsHtml(items);
+  $('materialCellAddBtn').hidden = false;
   $('materialCellAddBtn').onclick = () => {
     toast('已加入综述素材候选');
   };
   $('materialCellModal').hidden = false;
   document.body.classList.add('modal-open');
 }
+
+function materialDeepDiveOverviewDetailHtml(entries, dimensionName) {
+  return entries.map((entry, index) => {
+    const paper = entry.paper;
+    const item = entry.item;
+    const evidence = (item?.evidence || []).slice(0, 2);
+    const content = entry.notReported
+      ? '该论文未报告该维度，或当前结果被识别为 not_reported。'
+      : (entry.content || materialItemContent(item) || '暂无内容');
+    return `
+      <article class="material-detail-item deep-dive-detail-entry">
+        <header>
+          <b>${index + 1}. ${escapeHtml(fmt(paper?.metadata?.title || paper?.id || '未知论文', 96))}</b>
+          <span class="badge ${escapeHtml(item?.review_status || 'pending')}">${entry.notReported ? 'not_reported' : escapeHtml(reviewStatusLabel(item?.review_status || 'pending'))}</span>
+        </header>
+        <section>
+          <h4>具体内容</h4>
+          <p>${escapeHtml(content)}</p>
+        </section>
+        <section>
+          <h4>原文证据</h4>
+          ${evidence.map(ev => `
+            <blockquote>
+              ${escapeHtml(ev.quote || '无证据原文')}
+              <span>${escapeHtml(ev.section_title || ev.section || 'Evidence')}${ev.page_start || ev.page ? ` · p.${escapeHtml(ev.page_start || ev.page)}` : ''}</span>
+            </blockquote>
+          `).join('') || '<p class="muted">暂无证据绑定。</p>'}
+        </section>
+        <button type="button" onclick="openMaterialCellDetail(${escapeHtml(JSON.stringify(paper?.id || ''))}, ${escapeHtml(JSON.stringify(dimensionName))})">查看该论文该维度详情</button>
+      </article>
+    `;
+  }).join('') || '<p class="muted">当前分类下暂无具体内容。</p>';
+}
+
+window.openMaterialDeepDiveOverviewDetails = function(key, label) {
+  const dim = materialDeepDiveDimension();
+  if (!dim) return;
+  const items = state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems();
+  const ctx = materialDeepDiveContext(dim, items);
+  if (ctx.type !== '定义类维度') return;
+  const stats = materialDefinitionOverviewStats(ctx);
+  const entries = stats.detailGroups[key] || [];
+  $('materialCellTitle').textContent = `${label}明细`;
+  $('materialCellMeta').textContent = `${ctx.dimLabel} · ${entries.length} 条`;
+  $('materialCellBody').innerHTML = materialDeepDiveOverviewDetailHtml(entries, dim.value);
+  $('materialCellAddBtn').hidden = true;
+  $('materialCellModal').hidden = false;
+  document.body.classList.add('modal-open');
+};
 
 window.openMaterialItemDetail = function(itemId) {
   const item = (state.materials || []).find(entry => entry.id === itemId);
