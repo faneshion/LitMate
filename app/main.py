@@ -23,6 +23,7 @@ from .document_parser import parse_document
 from .extractor import ExperienceExtractor
 from .feedback_service import build_feedback_summary, review_label_for_action
 from .jsonl_store import JSONLStore
+from .llm_client import LLMClient
 from .mineru_parser import mineru_runtime_status
 from .models import (
     ArxivImportRequest,
@@ -96,6 +97,23 @@ class SemanticClusterRequest(BaseModel):
     dimension_label: str = ""
     dimension_type: str = ""
     entries: List[SemanticClusterEntryPayload] = Field(default_factory=list)
+
+
+class SemanticCategoryPayload(BaseModel):
+    id: str = ""
+    name: str = ""
+    definition: str = ""
+    include_criteria: str = ""
+    exclude_criteria: str = ""
+    typical_paper_indices: List[int] = Field(default_factory=list)
+    boundary_paper_indices: List[int] = Field(default_factory=list)
+    keywords: List[str] = Field(default_factory=list)
+    paper_ids: List[str] = Field(default_factory=list)
+    material_ids: List[str] = Field(default_factory=list)
+
+
+class ReassignCategoriesRequest(SemanticClusterRequest):
+    categories: List[SemanticCategoryPayload] = Field(default_factory=list)
 
 
 class ExperienceConfig(BaseModel):
@@ -1041,6 +1059,195 @@ def _semantic_cluster_payload(payload: SemanticClusterRequest) -> dict:
 @app.post("/api/analysis/semantic-clusters")
 def semantic_clusters(payload: SemanticClusterRequest) -> dict:
     return _semantic_cluster_payload(payload)
+
+
+def _entry_summary(entry: SemanticClusterEntryPayload, max_chars: int = 520) -> dict:
+    text = _cluster_text(entry)
+    return {
+        "paper_id": entry.paper_id,
+        "paper_index": entry.paper_index,
+        "paper_title": entry.paper_title[:160],
+        "material_id": entry.material_id,
+        "content": text[:max_chars],
+        "not_reported": entry.not_reported,
+    }
+
+
+def _fallback_category_system(payload: SemanticClusterRequest) -> dict:
+    base = _semantic_cluster_payload(payload)
+    categories = []
+    for cluster in base["clusters"]:
+        name = cluster["name"]
+        keywords = cluster.get("keywords", [])
+        categories.append({
+            **cluster,
+            "definition": cluster.get("description", ""),
+            "include_criteria": f"包含与“{name}”语义一致的定义、机制或经验表述；关键词可参考：{'、'.join(keywords) or name}。",
+            "exclude_criteria": "排除只在 related work 中出现、没有作为本文对象/机制报告，或仅为泛泛背景描述的内容。",
+            "typical_paper_indices": cluster.get("paper_indices", [])[:3],
+            "boundary_paper_indices": cluster.get("paper_indices", [])[3:5],
+            "status": "candidate",
+        })
+    return {"dimension_name": payload.dimension_name, "dimension_label": payload.dimension_label, "clusters": categories, "source": "fallback"}
+
+
+def _normalize_category(raw: dict, idx: int, payload: SemanticClusterRequest) -> dict:
+    name = str(raw.get("name") or raw.get("category_name") or f"类别 {idx}").strip()
+    keywords = raw.get("keywords") if isinstance(raw.get("keywords"), list) else []
+    paper_indices = raw.get("typical_paper_indices") if isinstance(raw.get("typical_paper_indices"), list) else []
+    boundary_indices = raw.get("boundary_paper_indices") if isinstance(raw.get("boundary_paper_indices"), list) else []
+    return {
+        "id": str(raw.get("id") or f"category_{idx}"),
+        "name": name,
+        "description": str(raw.get("description") or raw.get("definition") or f"围绕“{name}”形成的语义类别。"),
+        "definition": str(raw.get("definition") or raw.get("description") or ""),
+        "include_criteria": str(raw.get("include_criteria") or raw.get("include") or ""),
+        "exclude_criteria": str(raw.get("exclude_criteria") or raw.get("exclude") or ""),
+        "keywords": [str(item)[:32] for item in keywords[:5]],
+        "typical_paper_indices": [int(item) for item in paper_indices if str(item).isdigit()][:6],
+        "boundary_paper_indices": [int(item) for item in boundary_indices if str(item).isdigit()][:6],
+        "paper_ids": [],
+        "paper_indices": [],
+        "material_ids": [],
+        "entry_count": 0,
+        "confidence": 0.72,
+        "status": "candidate",
+    }
+
+
+async def _llm_category_system(payload: SemanticClusterRequest) -> Optional[dict]:
+    entries = [_entry_summary(entry) for entry in payload.entries if not entry.not_reported and _cluster_text(entry)]
+    if not entries:
+        return None
+    prompt_entries = entries[:36]
+    messages = [
+        {
+            "role": "system",
+            "content": "你是科研文献综述助手。请只输出合法 JSON，不要 Markdown。任务是基于多篇论文在某个维度上的抽取结果，生成可供人工审阅的分类体系。",
+        },
+        {
+            "role": "user",
+            "content": json.dumps({
+                "dimension_name": payload.dimension_name,
+                "dimension_label": payload.dimension_label,
+                "dimension_type": payload.dimension_type,
+                "task": "生成 3-7 个候选类别。每个类别必须包含 name, definition, include_criteria, exclude_criteria, typical_paper_indices, boundary_paper_indices, keywords。",
+                "requirements": [
+                    "类别之间要尽量互斥，能覆盖主要论文。",
+                    "definition 要说明该类的语义内涵。",
+                    "include_criteria / exclude_criteria 要能指导后续论文重新分配。",
+                    "typical_paper_indices 填最典型的论文编号；boundary_paper_indices 填容易混淆或边界样例。",
+                ],
+                "entries": prompt_entries,
+            }, ensure_ascii=False),
+        },
+    ]
+    try:
+        data = await LLMClient().extract_json(messages, max_tokens=1800)
+    except Exception:
+        return None
+    raw_categories = data.get("categories") or data.get("clusters") or []
+    if not isinstance(raw_categories, list) or not raw_categories:
+        return None
+    clusters = [_normalize_category(item if isinstance(item, dict) else {}, idx + 1, payload) for idx, item in enumerate(raw_categories[:8])]
+    return _assign_entries_to_categories(payload.entries, clusters, source="llm")
+
+
+def _category_text(category: dict) -> str:
+    return " ".join([
+        str(category.get("name") or ""),
+        str(category.get("definition") or ""),
+        str(category.get("include_criteria") or ""),
+        " ".join(category.get("keywords") or []),
+    ])
+
+
+def _assignment_score(entry: SemanticClusterEntryPayload, category: dict) -> float:
+    entry_tokens = set(_tokenize_for_cluster(_cluster_text(entry)))
+    category_tokens = set(_tokenize_for_cluster(_category_text(category)))
+    if not entry_tokens or not category_tokens:
+        return 0.0
+    overlap = len(entry_tokens & category_tokens) / max(1, len(category_tokens))
+    include_hits = sum(1 for token in _tokenize_for_cluster(str(category.get("include_criteria") or "")) if token in entry_tokens)
+    exclude_hits = sum(1 for token in _tokenize_for_cluster(str(category.get("exclude_criteria") or "")) if token in entry_tokens)
+    return overlap + include_hits * 0.08 - exclude_hits * 0.12
+
+
+def _assign_entries_to_categories(entries: List[SemanticClusterEntryPayload], categories: List[dict], source: str = "rule") -> dict:
+    assigned = {category["id"]: [] for category in categories}
+    unassigned: List[SemanticClusterEntryPayload] = []
+    for entry in entries:
+        if entry.not_reported or not _cluster_text(entry):
+            unassigned.append(entry)
+            continue
+        scored = sorted(((_assignment_score(entry, category), category) for category in categories), key=lambda item: item[0], reverse=True)
+        if scored and scored[0][0] > 0.02:
+            assigned[scored[0][1]["id"]].append(entry)
+        else:
+            unassigned.append(entry)
+
+    result = []
+    for category in categories:
+        grouped = assigned.get(category["id"], [])
+        indices = sorted([entry.paper_index for entry in grouped if entry.paper_index is not None])
+        keywords = category.get("keywords") or _cluster_keywords(grouped)
+        result.append({
+            **category,
+            "description": category.get("description") or category.get("definition") or "",
+            "keywords": keywords[:5],
+            "paper_ids": [entry.paper_id for entry in grouped],
+            "paper_indices": indices,
+            "material_ids": [entry.material_id for entry in grouped if entry.material_id],
+            "entry_count": len(grouped),
+        })
+    if unassigned:
+        result.append({
+            "id": "unassigned",
+            "name": "未分配",
+            "description": "尚未被当前分类体系覆盖的论文结果。",
+            "definition": "当前类别定义、纳入标准和排除标准不足以稳定覆盖这些论文。",
+            "include_criteria": "需要人工复核后补充类别或调整标准。",
+            "exclude_criteria": "",
+            "keywords": _cluster_keywords(unassigned),
+            "typical_paper_indices": [entry.paper_index for entry in unassigned[:3] if entry.paper_index is not None],
+            "boundary_paper_indices": [],
+            "paper_ids": [entry.paper_id for entry in unassigned],
+            "paper_indices": sorted([entry.paper_index for entry in unassigned if entry.paper_index is not None]),
+            "material_ids": [entry.material_id for entry in unassigned if entry.material_id],
+            "entry_count": len(unassigned),
+            "confidence": 0.45,
+            "status": "candidate",
+        })
+    return {"clusters": result, "source": source}
+
+
+@app.post("/api/analysis/category-system")
+async def category_system(payload: SemanticClusterRequest) -> dict:
+    llm_result = await _llm_category_system(payload)
+    if llm_result:
+        return {"dimension_name": payload.dimension_name, "dimension_label": payload.dimension_label, **llm_result}
+    return _fallback_category_system(payload)
+
+
+@app.post("/api/analysis/reassign-categories")
+def reassign_categories(payload: ReassignCategoriesRequest) -> dict:
+    categories = [
+        {
+            "id": category.id or f"category_{idx + 1}",
+            "name": category.name,
+            "description": category.definition,
+            "definition": category.definition,
+            "include_criteria": category.include_criteria,
+            "exclude_criteria": category.exclude_criteria,
+            "typical_paper_indices": category.typical_paper_indices,
+            "boundary_paper_indices": category.boundary_paper_indices,
+            "keywords": category.keywords,
+        }
+        for idx, category in enumerate(payload.categories)
+        if category.id != "unassigned"
+    ]
+    assigned = _assign_entries_to_categories(payload.entries, categories, source="reassign")
+    return {"dimension_name": payload.dimension_name, "dimension_label": payload.dimension_label, **assigned}
 
 
 @app.get("/api/export/run/{run_id}")

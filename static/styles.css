@@ -2955,6 +2955,13 @@ body.materials-sidebar-resizing {
   font-size: 12px;
   line-height: 1.6;
 }
+.semantic-cluster-card .semantic-cluster-definition {
+  padding: 8px 10px;
+  border-left: 3px solid #bfdbfe;
+  border-radius: 6px;
+  background: #f8fbff;
+  color: #475569;
+}
 .semantic-cluster-keywords,
 .semantic-cluster-paper-ids {
   display: flex;
@@ -2977,7 +2984,8 @@ body.materials-sidebar-resizing {
   font-size: 11px;
 }
 .semantic-cluster-detail,
-.semantic-material-editor {
+.semantic-material-editor,
+.semantic-category-editor {
   display: grid;
   gap: 10px;
   padding: 12px;
@@ -2985,19 +2993,31 @@ body.materials-sidebar-resizing {
   border-radius: 10px;
   background: #fbfdff;
 }
-.semantic-material-editor label {
+.semantic-material-editor label,
+.semantic-category-editor label {
   display: grid;
   gap: 8px;
   color: #475569;
   font-size: 12px;
 }
+.semantic-category-editor span,
+.semantic-material-editor span {
+  font-weight: 800;
+}
+.semantic-category-editor input,
+.semantic-category-editor textarea,
 .semantic-material-editor textarea {
   width: 100%;
-  min-height: 260px;
-  resize: vertical;
   border-radius: 8px;
   font-size: 13px;
   line-height: 1.65;
+}
+.semantic-category-editor textarea,
+.semantic-material-editor textarea {
+  resize: vertical;
+}
+.semantic-material-editor textarea {
+  min-height: 260px;
 }
 .deep-dive-clusters header {
   display: flex;
