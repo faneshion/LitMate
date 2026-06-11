@@ -73,6 +73,7 @@ const state = {
   materialSemanticClusterRenames: {},
   materialSemanticClusterMergeSelection: [],
   materialOverviewDetailSelection: null,
+  materialOverviewExpandedEvidence: {},
   reviewItemIndex: 0,
   reviewFilters: {dimension: 'all', status: 'all', risk: 'all', query: ''},
   reviewActionMode: null,
@@ -8014,6 +8015,65 @@ function openMaterialDetailModal(title, meta, items) {
   document.body.classList.add('modal-open');
 }
 
+function materialDeepDiveEvidenceContextKey(paperId, dimensionName, evidenceIndex, itemId = '') {
+  return `${paperId || ''}:${dimensionName || ''}:${itemId || ''}:${evidenceIndex}`;
+}
+
+function materialDeepDiveEvidenceCardHtml(ev, paper, dimensionName, itemId, index) {
+  const chunks = paper?.chunks || [];
+  const chunkIndex = chunks.findIndex(chunk => chunk.id === ev.chunk_id);
+  const prev = chunkIndex > 0 ? chunks[chunkIndex - 1] : null;
+  const current = chunkIndex >= 0 ? chunks[chunkIndex] : null;
+  const next = chunkIndex >= 0 && chunkIndex < chunks.length - 1 ? chunks[chunkIndex + 1] : null;
+  const contextKey = materialDeepDiveEvidenceContextKey(paper?.id, dimensionName, index, itemId);
+  const expanded = Boolean(state.materialOverviewExpandedEvidence[contextKey]);
+  return `
+    <article class="deep-dive-inline-evidence">
+      <header>
+        <b>证据 ${index + 1}</b>
+        <span>${escapeHtml(ev.section_title || ev.section || 'Evidence')}${ev.page_start || ev.page ? ` · p.${escapeHtml(ev.page_start || ev.page)}` : ''}</span>
+      </header>
+      <blockquote>${escapeHtml(ev.quote || '无证据原文')}</blockquote>
+      <div class="review-evidence-actions">
+        <button type="button" onclick="toggleMaterialDeepDiveEvidenceContext(${escapeHtml(JSON.stringify(paper?.id || ''))}, ${escapeHtml(JSON.stringify(dimensionName))}, ${index}, ${escapeHtml(JSON.stringify(itemId || ''))})">${expanded ? '收起上下文' : '看上下文'}</button>
+      </div>
+      <div class="review-context-stack ${expanded ? '' : 'collapsed'}">
+        <div class="review-context-combined"><p>${renderEvidenceContextHtml(prev, current, next, ev)}</p></div>
+      </div>
+    </article>
+  `;
+}
+
+function materialDeepDiveInlineDetailItemsHtml(items, paper, dimensionName) {
+  return items.map(item => `
+    <article class="material-detail-item deep-dive-inline-item">
+      <header>
+        <b>${escapeHtml(item.dimension_label || materialDimensionLabel(item.dimension_name))}</b>
+        <span class="badge ${escapeHtml(item.review_status || 'pending')}">${escapeHtml(reviewStatusLabel(item.review_status || 'pending'))}</span>
+      </header>
+      <section>
+        <h4>完整抽取结果</h4>
+        <p>${escapeHtml(materialItemContent(item) || item.title || '无内容')}</p>
+      </section>
+      <section>
+        <h4>原文证据</h4>
+        <div class="deep-dive-inline-evidence-list">
+          ${(item.evidence || []).map((ev, index) => materialDeepDiveEvidenceCardHtml(ev, paper, dimensionName, item.id, index)).join('') || '<p class="muted">暂无证据绑定。</p>'}
+        </div>
+      </section>
+      <section>
+        <h4>人工审查记录</h4>
+        <div class="material-detail-meta">
+          <span>状态：${escapeHtml(reviewStatusLabel(item.review_status || 'pending'))}</span>
+          <span>置信度：${escapeHtml(confidenceText(item.confidence))}</span>
+          ${(item.tags || []).slice(0, 6).map(tag => `<span>${escapeHtml(tag)}</span>`).join('')}
+        </div>
+        ${item.user_note ? `<p>${escapeHtml(item.user_note)}</p>` : '<p class="muted">暂无人工备注。</p>'}
+      </section>
+    </article>
+  `).join('') || '<p class="muted">当前单元格暂无抽取结果。</p>';
+}
+
 function materialDeepDiveOverviewInlineDetailHtml(selection) {
   if (!selection?.paperId || !selection?.dimensionName) {
     return `
@@ -8034,7 +8094,7 @@ function materialDeepDiveOverviewInlineDetailHtml(selection) {
         </div>
         <button type="button" onclick="toggleMaterialDeepDiveInlineDetail(${escapeHtml(JSON.stringify(selection.paperId))}, ${escapeHtml(JSON.stringify(selection.dimensionName))})">关闭</button>
       </header>
-      <div>${materialDetailItemsHtml(items)}</div>
+      <div>${materialDeepDiveInlineDetailItemsHtml(items, paper, selection.dimensionName)}</div>
     </aside>
   `;
 }
@@ -8044,7 +8104,6 @@ function materialDeepDiveOverviewDetailHtml(entries, dimensionName) {
   const list = entries.map((entry, index) => {
     const paper = entry.paper;
     const item = entry.item;
-    const evidence = (item?.evidence || []).slice(0, 2);
     const content = entry.notReported
       ? '该论文未报告该维度，或当前结果被识别为 not_reported。'
       : (entry.content || materialItemContent(item) || '暂无内容');
@@ -8058,15 +8117,6 @@ function materialDeepDiveOverviewDetailHtml(entries, dimensionName) {
         <section>
           <h4>具体内容</h4>
           <p>${escapeHtml(content)}</p>
-        </section>
-        <section>
-          <h4>原文证据</h4>
-          ${evidence.map(ev => `
-            <blockquote>
-              ${escapeHtml(ev.quote || '无证据原文')}
-              <span>${escapeHtml(ev.section_title || ev.section || 'Evidence')}${ev.page_start || ev.page ? ` · p.${escapeHtml(ev.page_start || ev.page)}` : ''}</span>
-            </blockquote>
-          `).join('') || '<p class="muted">暂无证据绑定。</p>'}
         </section>
         <button type="button" onclick="toggleMaterialDeepDiveInlineDetail(${escapeHtml(JSON.stringify(paper?.id || ''))}, ${escapeHtml(JSON.stringify(dimensionName))})">${selected ? '关闭详情' : '查看详情'}</button>
       </article>
@@ -8089,6 +8139,7 @@ window.openMaterialDeepDiveOverviewDetails = function(key, label) {
   const stats = materialDefinitionOverviewStats(ctx);
   const entries = stats.detailGroups[key] || [];
   state.materialOverviewDetailSelection = null;
+  state.materialOverviewExpandedEvidence = {};
   state.materialOverviewDetailKey = key;
   state.materialOverviewDetailLabel = label;
   $('materialCellTitle').textContent = `${label}明细`;
@@ -8111,6 +8162,18 @@ window.toggleMaterialDeepDiveInlineDetail = function(paperId, dimensionName) {
   const stats = materialDefinitionOverviewStats(ctx);
   const key = state.materialOverviewDetailKey;
   const entries = stats.detailGroups[key] || [];
+  $('materialCellBody').innerHTML = materialDeepDiveOverviewDetailHtml(entries, dim.value);
+};
+
+window.toggleMaterialDeepDiveEvidenceContext = function(paperId, dimensionName, evidenceIndex, itemId = '') {
+  const key = materialDeepDiveEvidenceContextKey(paperId, dimensionName, evidenceIndex, itemId);
+  state.materialOverviewExpandedEvidence[key] = !state.materialOverviewExpandedEvidence[key];
+  const dim = materialDeepDiveDimension();
+  if (!dim) return;
+  const items = state.materialCurrentItems?.length ? state.materialCurrentItems : filteredMaterialItems();
+  const ctx = materialDeepDiveContext(dim, items);
+  const stats = materialDefinitionOverviewStats(ctx);
+  const entries = stats.detailGroups[state.materialOverviewDetailKey] || [];
   $('materialCellBody').innerHTML = materialDeepDiveOverviewDetailHtml(entries, dim.value);
 };
 
@@ -8138,6 +8201,7 @@ window.openMaterialCellDetail = function(paperId, dimensionName) {
 window.closeMaterialCellModal = function() {
   $('materialCellModal').hidden = true;
   state.materialOverviewDetailSelection = null;
+  state.materialOverviewExpandedEvidence = {};
   syncModalLock();
 };
 
