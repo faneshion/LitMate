@@ -2588,6 +2588,10 @@ body.materials-sidebar-resizing {
 .deep-dive-overview-bar:hover b {
   color: #1d4ed8;
 }
+.deep-dive-definition-bars .deep-dive-overview-bar:hover {
+  background: #EEF5EE;
+  color: var(--ink);
+}
 .deep-dive-overview-bar b {
   overflow: hidden;
   color: #0f172a;
