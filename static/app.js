@@ -7449,7 +7449,7 @@ function renderMaterialSemanticClusterCards(ctx) {
           <button type="button" ${cached?.loading ? 'disabled' : ''} onclick="clearMaterialSemanticClusterSelection()">清空选择</button>
         </div>
       </div>
-      ${cached ? `
+      ${cached?.loading ? `
         <div class="semantic-cluster-progress ${cached.loading ? 'active' : ''}">
           <div>
             <span>${escapeHtml(cached.message || (cached.loading ? '正在生成智能语义聚类' : '聚类结果已就绪'))}</span>
@@ -7461,13 +7461,10 @@ function renderMaterialSemanticClusterCards(ctx) {
       ${cached?.error ? `<p class="muted">后端聚类暂不可用，已展示本地兜底结果：${escapeHtml(cached.error)}</p>` : ''}
       <div class="semantic-cluster-grid">
         ${clusters.map(cluster => `
-          <article class="semantic-cluster-card ${cluster.selected ? 'selected' : ''}">
+          <article class="semantic-cluster-card ${cluster.selected ? 'selected' : ''}" onclick="toggleMaterialSemanticClusterSelection(${escapeHtml(JSON.stringify(cluster.id))})">
             <header>
-              <label>
-                <input type="checkbox" ${cluster.selected ? 'checked' : ''} onchange="toggleMaterialSemanticClusterSelection(${escapeHtml(JSON.stringify(cluster.id))})" />
-                <span>${escapeHtml(cluster.name)}</span>
-              </label>
-              <div>
+              <b class="semantic-cluster-title">${escapeHtml(cluster.name)}</b>
+              <div onclick="event.stopPropagation()">
                 <button type="button" onclick="openMaterialSemanticClusterDetail(${escapeHtml(JSON.stringify(cluster.id))})">查看详情</button>
                 <button type="button" onclick="openMaterialSemanticClusterMaterial(${escapeHtml(JSON.stringify(cluster.id))})">生成素材</button>
               </div>
@@ -7480,9 +7477,6 @@ function renderMaterialSemanticClusterCards(ctx) {
             <div class="semantic-cluster-paper-ids">
               ${(cluster.paper_indices || []).slice(0, 12).map(index => `<b>P${escapeHtml(index)}</b>`).join('') || '<b>-</b>'}
             </div>
-            <footer>
-              <input value="${escapeHtml(cluster.name)}" onchange="renameMaterialSemanticCluster(${escapeHtml(JSON.stringify(cluster.id))}, this.value)" aria-label="重命名类别" />
-            </footer>
           </article>
         `).join('') || '<p class="muted">当前维度暂无可聚类结果。</p>'}
       </div>

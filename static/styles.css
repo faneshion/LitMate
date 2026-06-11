@@ -2908,6 +2908,7 @@ body.materials-sidebar-resizing {
   border: 1px solid #dbe3ee;
   border-radius: 8px;
   background: #fff;
+  cursor: pointer;
 }
 .semantic-cluster-card.selected {
   border-color: #2563eb;
@@ -2915,23 +2916,21 @@ body.materials-sidebar-resizing {
 }
 .semantic-cluster-card header {
   display: flex;
-  align-items: start;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
 }
-.semantic-cluster-card header label {
-  display: flex;
-  align-items: start;
-  gap: 7px;
+.semantic-cluster-title {
+  display: block;
+  flex: 1 1 auto;
+  overflow: hidden;
   min-width: 0;
   color: #0f172a;
   font-size: 14px;
   font-weight: 850;
   line-height: 1.35;
-}
-.semantic-cluster-card header label span {
-  overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .semantic-cluster-card header div {
   display: flex;
@@ -2976,12 +2975,6 @@ body.materials-sidebar-resizing {
   background: #f1f5f9;
   color: #475569;
   font-size: 11px;
-}
-.semantic-cluster-card footer input {
-  width: 100%;
-  min-height: 30px;
-  border-radius: 7px;
-  font-size: 12px;
 }
 .semantic-cluster-detail,
 .semantic-material-editor {
