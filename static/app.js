@@ -3355,6 +3355,66 @@ function extractionJobProgress(job) {
   return 0;
 }
 
+function extractionJobTemplateId(key) {
+  return String(key || '').split('::')[1] || '';
+}
+
+function extractionRunQualitySummary(run) {
+  const reviewableItems = reviewableRunItems(run);
+  const acceptedCount = reviewableItems.filter(item => reviewStatusGroup(item.review_status || 'pending') === 'accepted').length;
+  const issueCount = reviewableItems.filter(item => reviewStatusGroup(item.review_status || 'pending') === 'issues').length;
+  const pendingCount = Math.max(0, reviewableItems.length - acceptedCount - issueCount);
+  const runtimeErrorCount = Array.isArray(run?.errors) ? run.errors.length : 0;
+  return {
+    totalCount: reviewableItems.length,
+    acceptedCount,
+    issueCount,
+    pendingCount,
+    runtimeErrorCount,
+  };
+}
+
+function extractionRunTone(run) {
+  const summary = extractionRunQualitySummary(run);
+  const allWrong = summary.acceptedCount === 0
+    && (
+      (summary.issueCount > 0 && summary.pendingCount === 0)
+      || (summary.runtimeErrorCount > 0 && summary.totalCount === 0)
+    );
+  if (allWrong) {
+    return {
+      className: 'completed-error',
+      label: '\u62bd\u53d6\u5b8c\u6210\uff08\u5168\u90e8\u6709\u8bef\uff09',
+      summary,
+    };
+  }
+  if (summary.issueCount > 0 || summary.runtimeErrorCount > 0) {
+    return {
+      className: 'completed-mixed',
+      label: '\u62bd\u53d6\u5b8c\u6210\uff08\u90e8\u5206\u6709\u8bef\uff09',
+      summary,
+    };
+  }
+  return {
+    className: 'completed',
+    label: '\u62bd\u53d6\u5b8c\u6210',
+    summary,
+  };
+}
+
+function extractionRunQualityText(run, fallbackMessage = '') {
+  const summary = extractionRunQualitySummary(run);
+  const parts = [];
+  if (summary.totalCount) {
+    parts.push(`\u6b63\u786e ${summary.acceptedCount}`);
+    parts.push(`\u9519\u8bef ${summary.issueCount}`);
+    if (summary.pendingCount) parts.push(`\u5f85\u5ba1 ${summary.pendingCount}`);
+  }
+  if (summary.runtimeErrorCount) parts.push(`\u8fd0\u884c\u9519\u8bef ${summary.runtimeErrorCount}`);
+  if (!parts.length && fallbackMessage) return fallbackMessage;
+  return parts.join(' / ') || fallbackMessage;
+}
+
 function paperActiveExtractionJob(paperId) {
   const prefix = `${paperId}::`;
   const priority = {running: 4, queued: 3, failed: 2, completed: 1};
@@ -3372,26 +3432,36 @@ function paperTaskProgress(paper) {
   const op = state.paperOps[paper.id];
   if (op) {
     const percent = Math.max(0, Math.min(100, Math.round(op.percent || 0)));
-    const failed = /失败/.test(op.status || '');
-    const completed = percent >= 100 && /完成/.test(op.status || '');
+    const failed = /\u5931\u8d25/.test(op.status || '');
+    const completed = percent >= 100 && /\u5b8c\u6210/.test(op.status || '');
     return {
-      label: op.status || '解析中',
-      detail: '正在更新文件解析结果',
+      label: op.status || '\u89e3\u6790\u4e2d',
+      detail: '\u6b63\u5728\u66f4\u65b0\u6587\u4ef6\u89e3\u6790\u7ed3\u679c',
       percent,
       className: failed ? 'failed' : (completed ? 'completed' : 'running'),
     };
   }
   const job = paperActiveExtractionJob(paper.id);
   if (!job) return null;
+  const run = job.run || latestRunForPaper(paper.id, extractionJobTemplateId(job.key));
+  if (job.status === 'completed') {
+    const tone = extractionRunTone(run);
+    return {
+      label: tone.label,
+      detail: extractionRunQualityText(run, job.message || '\u62bd\u53d6\u7ed3\u679c\u5df2\u751f\u6210'),
+      percent: extractionJobProgress(job),
+      className: tone.className,
+    };
+  }
   const label = {
-    queued: '抽取排队中',
-    running: '抽取中',
-    completed: '抽取完成',
-    failed: '抽取失败',
-  }[job.status] || '抽取中';
+    queued: '\u62bd\u53d6\u6392\u961f\u4e2d',
+    running: '\u62bd\u53d6\u4e2d',
+    completed: '\u62bd\u53d6\u5b8c\u6210',
+    failed: '\u62bd\u53d6\u5931\u8d25',
+  }[job.status] || '\u62bd\u53d6\u4e2d';
   return {
     label,
-    detail: job.message || '正在更新内容抽取结果',
+    detail: job.message || '\u6b63\u5728\u66f4\u65b0\u5185\u5bb9\u62bd\u53d6\u7ed3\u679c',
     percent: extractionJobProgress(job),
     className: job.status || 'running',
   };
@@ -4393,37 +4463,44 @@ function renderExtractionPaperRuns() {
   const ids = selectedExtractPaperIds();
   const templateId = $('templateSelect')?.value || '';
   const isSelecting = state.extractSelectionMode !== 'confirmed';
-  $('selectedExtractionCount').textContent = ids.length ? `${ids.length} 篇待处理` : (isSelecting ? '待确认论文' : '请选择论文');
+  $('selectedExtractionCount').textContent = ids.length
+    ? `${ids.length} \u7bc7\u5f85\u5904\u7406`
+    : (isSelecting ? '\u5f85\u786e\u8ba4\u8bba\u6587' : '\u8bf7\u9009\u62e9\u8bba\u6587');
   const papers = ids.map(id => state.papers.find(p => p.id === id)).filter(Boolean);
   $('extractionPaperRuns').innerHTML = papers.map(p => {
     const job = state.extractionJobs[jobKey(p.id, templateId)];
     const run = job?.run || latestRunForPaper(p.id, templateId);
     const status = job?.status || (run ? 'completed' : 'idle');
+    const tone = status === 'completed' ? extractionRunTone(run) : null;
     const statusText = {
-      queued: '等待抽取',
-      running: '抽取中',
-      completed: '已完成',
-      failed: '失败',
-      idle: '未抽取',
+      queued: '\u7b49\u5f85\u62bd\u53d6',
+      running: '\u62bd\u53d6\u4e2d',
+      completed: tone?.label || '\u5df2\u5b8c\u6210',
+      failed: '\u5931\u8d25',
+      idle: '\u672a\u62bd\u53d6',
     }[status] || status;
     const progress = extractionJobProgress(job || {status});
-    return `<article class="extraction-paper-card ${escapeHtml(status)}">
+    const cardClass = tone?.className || status;
+    const detailText = status === 'completed'
+      ? extractionRunQualityText(run, job?.message || '')
+      : (job?.message || '');
+    return `<article class="extraction-paper-card ${escapeHtml(cardClass)}">
       <div class="extraction-paper-main">
         <h3>${escapeHtml(p.metadata?.title || p.id)}</h3>
-        <div class="meta">已校验 · ${escapeHtml(sourceLabel(p.source))} · ${run ? `最近运行 ${fmtTime(run.created_at)}` : '暂无运行记录'}</div>
+        <div class="meta">\u5df2\u6821\u9a8c \u00b7 ${escapeHtml(sourceLabel(p.source))} \u00b7 ${run ? `\u6700\u8fd1\u8fd0\u884c ${fmtTime(run.created_at)}` : '\u6682\u65e0\u8fd0\u884c\u8bb0\u5f55'}</div>
         <div class="extraction-progress-track">
           <div class="extraction-progress-bar" style="width:${progress}%"></div>
         </div>
-        <div class="meta">${escapeHtml(statusText)}${job?.message ? ` · ${escapeHtml(job.message)}` : ''}</div>
+        <div class="meta">${escapeHtml(statusText)}${detailText ? ` \u00b7 ${escapeHtml(detailText)}` : ''}</div>
         ${run?.errors?.length ? `<pre>${escapeHtml(run.errors.slice(0, 3).join('\n'))}</pre>` : ''}
       </div>
       <div class="extraction-paper-actions">
-        <button type="button" ${run ? '' : 'disabled'} onclick="openExtractionResult('${escapeHtml(run?.id || '')}')">查看结果</button>
-        <button type="button" ${run ? '' : 'disabled'} onclick="selectRunForReview('${escapeHtml(run?.id || '')}')">人机审查</button>
-        <button type="button" ${run ? '' : 'disabled'} onclick="window.open('/api/export/run/${escapeHtml(run?.id || '')}', '_blank')">导出</button>
+        <button type="button" ${run ? '' : 'disabled'} onclick="openExtractionResult('${escapeHtml(run?.id || '')}')">\u67e5\u770b\u7ed3\u679c</button>
+        <button type="button" ${run ? '' : 'disabled'} onclick="selectRunForReview('${escapeHtml(run?.id || '')}')">\u4eba\u673a\u5ba1\u67e5</button>
+        <button type="button" ${run ? '' : 'disabled'} onclick="window.open('/api/export/run/${escapeHtml(run?.id || '')}', '_blank')">\u5bfc\u51fa</button>
       </div>
     </article>`;
-  }).join('') || `<p class="muted">${isSelecting ? '请在左侧勾选论文并点击“确定”。' : '请从左侧选择一篇或多篇已校验论文。'}</p>`;
+  }).join('') || `<p class="muted">${isSelecting ? '\u8bf7\u5728\u5de6\u4fa7\u52fe\u9009\u8bba\u6587\u5e76\u70b9\u51fb\u201c\u786e\u8ba4\u201d\u3002' : '\u8bf7\u4ece\u5de6\u4fa7\u9009\u62e9\u4e00\u7bc7\u6216\u591a\u7bc7\u5df2\u6821\u9a8c\u8bba\u6587\u3002'}</p>`;
 }
 
 function renderRunList() {
