@@ -1162,15 +1162,34 @@ def _category_text(category: dict) -> str:
     ])
 
 
+def _category_paper_indices(category: dict) -> set[int]:
+    values: List[int] = []
+    for key in ("paper_indices", "typical_paper_indices", "boundary_paper_indices"):
+        for item in category.get(key) or []:
+            try:
+                values.append(int(item))
+            except (TypeError, ValueError):
+                continue
+    representatives = category.get("representative_contents") or category.get("representative_content") or []
+    if isinstance(representatives, str):
+        representatives = representatives.splitlines()
+    for text in representatives:
+        values.extend(int(match) for match in re.findall(r"\bP\s*(\d+)\b", str(text), flags=re.IGNORECASE))
+    return set(values)
+
+
 def _assignment_score(entry: SemanticClusterEntryPayload, category: dict) -> float:
     entry_tokens = set(_tokenize_for_cluster(_cluster_text(entry)))
     category_tokens = set(_tokenize_for_cluster(_category_text(category)))
-    if not entry_tokens or not category_tokens:
-        return 0.0
-    overlap = len(entry_tokens & category_tokens) / max(1, len(category_tokens))
-    include_hits = sum(1 for token in _tokenize_for_cluster(str(category.get("include_criteria") or "")) if token in entry_tokens)
-    exclude_hits = sum(1 for token in _tokenize_for_cluster(str(category.get("exclude_criteria") or "")) if token in entry_tokens)
-    return overlap + include_hits * 0.08 - exclude_hits * 0.12
+    score = 0.0
+    if entry_tokens and category_tokens:
+        overlap = len(entry_tokens & category_tokens) / max(1, len(category_tokens))
+        include_hits = sum(1 for token in _tokenize_for_cluster(str(category.get("include_criteria") or "")) if token in entry_tokens)
+        exclude_hits = sum(1 for token in _tokenize_for_cluster(str(category.get("exclude_criteria") or "")) if token in entry_tokens)
+        score += overlap + include_hits * 0.08 - exclude_hits * 0.12
+    if entry.paper_index is not None and entry.paper_index in _category_paper_indices(category):
+        score += 1.0
+    return score
 
 
 def _assign_entries_to_categories(entries: List[SemanticClusterEntryPayload], categories: List[dict], source: str = "rule") -> dict:

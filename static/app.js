@@ -7504,17 +7504,46 @@ function materialSemanticClusterEntryMap(ctx) {
   return map;
 }
 
+function materialSemanticRepresentativeContents(cluster) {
+  const raw = Array.isArray(cluster?.representative_contents)
+    ? cluster.representative_contents
+    : String(cluster?.representative_content || '').split(/\n+/);
+  return raw.map(item => String(item || '').trim()).filter(Boolean).slice(0, 5);
+}
+
+function materialSemanticClusterPaperIndices(cluster) {
+  const values = [
+    ...(cluster?.paper_indices || []),
+    ...(cluster?.typical_paper_indices || []),
+    ...(cluster?.boundary_paper_indices || []),
+    ...materialSemanticRepresentativeContents(cluster).flatMap(item =>
+      [...String(item).matchAll(/\bP\s*(\d+)\b/gi)].map(match => Number(match[1]))
+    ),
+  ];
+  return [...new Set(values.map(Number).filter(Number.isFinite))].sort((a, b) => a - b);
+}
+
 function materialEntriesForSemanticCluster(ctx, cluster) {
   const materialIds = new Set(cluster.material_ids || []);
   const paperIds = new Set(cluster.paper_ids || []);
-  const matched = ctx.entries.filter(entry => (entry.item?.id && materialIds.has(entry.item.id)) || paperIds.has(entry.paper?.id));
-  return matched.length ? matched : ctx.entries.filter(entry => paperIds.has(entry.paper?.id));
+  const paperIndices = new Set(materialSemanticClusterPaperIndices(cluster));
+  const matched = ctx.entries.filter(entry => {
+    const paperIndex = materialDeepDiveEntryPaperIndex(entry, ctx.entries);
+    const paperId = entry.paper?.id || entry.item?.paper_id;
+    return (entry.item?.id && materialIds.has(entry.item.id))
+      || paperIds.has(paperId)
+      || (paperIndex && paperIndices.has(paperIndex));
+  });
+  return matched.length ? matched : ctx.entries.filter(entry => paperIds.has(entry.paper?.id || entry.item?.paper_id));
 }
 
 function materialSemanticClusterReviewText(ctx, cluster) {
-  const papers = (cluster.paper_indices || []).length
-    ? `论文 ${cluster.paper_indices.join('、')}`
-    : `${cluster.entry_count || 0} 篇论文`;
+  const paperIndices = materialSemanticClusterPaperIndices(cluster);
+  const entries = materialEntriesForSemanticCluster(ctx, cluster);
+  const paperCount = new Set(entries.map(entry => entry.paper?.id || entry.item?.paper_id).filter(Boolean)).size || entries.length;
+  const papers = paperIndices.length
+    ? `论文 ${paperIndices.join('、')}`
+    : `${paperCount || cluster.entry_count || 0} 篇论文`;
   const keywords = (cluster.keywords || []).length ? `关键词包括 ${cluster.keywords.join('、')}` : '关键词尚不稳定';
   return `【${cluster.name}】${cluster.description} ${keywords}。可在综述中将其作为一类${ctx.type === '定义类维度' ? '经验定义' : '维度表述'}来讨论，涉及${papers}。`;
 }
@@ -7550,7 +7579,11 @@ function renderMaterialSemanticClusterCards(ctx) {
       ` : ''}
       ${cached?.error ? `<p class="muted">后端聚类暂不可用，已展示本地兜底结果：${escapeHtml(cached.error)}</p>` : ''}
       <div class="semantic-cluster-grid">
-        ${clusters.map(cluster => `
+        ${clusters.map(cluster => {
+          const clusterEntries = materialEntriesForSemanticCluster(ctx, cluster);
+          const paperCount = new Set(clusterEntries.map(entry => entry.paper?.id || entry.item?.paper_id).filter(Boolean)).size || clusterEntries.length;
+          const paperIndices = [...new Set(clusterEntries.map(entry => materialDeepDiveEntryPaperIndex(entry, ctx.entries)).filter(Boolean))];
+          return `
           <article class="semantic-cluster-card ${cluster.selected ? 'selected' : ''}" onclick="toggleMaterialSemanticClusterSelection(${escapeHtml(JSON.stringify(cluster.id))})">
             <header>
               <b class="semantic-cluster-title">${escapeHtml(cluster.name)}</b>
@@ -7562,17 +7595,17 @@ function renderMaterialSemanticClusterCards(ctx) {
                 <button type="button" onclick="openMaterialSemanticClusterMaterial(${escapeHtml(JSON.stringify(cluster.id))})">生成素材</button>
               </div>
             </header>
-            <small>${escapeHtml(cluster.entry_count || cluster.paper_ids?.length || 0)} 篇论文${cluster.status === 'kept' ? ' · 已保留' : ''}${cluster.merged_from?.length ? ` · 合并 ${cluster.merged_from.length} 类` : ''}</small>
+            <small>${escapeHtml(paperCount)} 篇论文${cluster.status === 'kept' ? ' · 已保留' : ''}${cluster.merged_from?.length ? ` · 合并 ${cluster.merged_from.length} 类` : ''}</small>
             <p>${escapeHtml(cluster.description)}</p>
             ${cluster.definition ? `<p class="semantic-cluster-definition">${escapeHtml(cluster.definition)}</p>` : ''}
             <div class="semantic-cluster-keywords">
               ${(cluster.keywords || []).slice(0, 3).map(keyword => `<span>${escapeHtml(keyword)}</span>`).join('') || '<span>待提炼</span>'}
             </div>
             <div class="semantic-cluster-paper-ids">
-              ${(cluster.paper_indices || []).slice(0, 12).map(index => `<b>P${escapeHtml(index)}</b>`).join('') || '<b>-</b>'}
+              ${paperIndices.slice(0, 12).map(index => `<b>P${escapeHtml(index)}</b>`).join('') || '<b>-</b>'}
             </div>
           </article>
-        `).join('') || '<p class="muted">当前维度暂无可聚类结果。</p>'}
+        `}).join('') || '<p class="muted">当前维度暂无可聚类结果。</p>'}
       </div>
     </section>
   `;
@@ -7847,7 +7880,7 @@ window.openMaterialSemanticClusterDetail = function(clusterId) {
       <p>${escapeHtml(cluster.description)}</p>
       <div class="semantic-cluster-keywords">${(cluster.keywords || []).map(keyword => `<span>${escapeHtml(keyword)}</span>`).join('')}</div>
     </section>
-    ${materialDeepDiveOverviewDetailHtml(entries, ctx.dim.value)}
+    ${materialDeepDiveOverviewDetailHtml(entries, ctx.dim.value, ctx.entries)}
   `;
   $('materialCellAddBtn').hidden = true;
   $('materialCellAddBtn').textContent = '加入综述素材';
@@ -8438,11 +8471,12 @@ function materialDeepDiveOverviewInlineDetailHtml(selection) {
   `;
 }
 
-function materialDeepDiveOverviewDetailHtml(entries, dimensionName) {
+function materialDeepDiveOverviewDetailHtml(entries, dimensionName, allEntries = entries) {
   const selection = state.materialOverviewDetailSelection;
   const list = entries.map((entry, index) => {
     const paper = entry.paper;
     const item = entry.item;
+    const paperIndex = materialDeepDiveEntryPaperIndex(entry, allEntries) || index + 1;
     const content = entry.notReported
       ? '该论文未报告该维度，或当前结果被识别为 not_reported。'
       : (entry.content || materialItemContent(item) || '暂无内容');
@@ -8450,7 +8484,7 @@ function materialDeepDiveOverviewDetailHtml(entries, dimensionName) {
     return `
       <article class="material-detail-item deep-dive-detail-entry ${selected ? 'selected' : ''}">
         <header>
-          <b>${index + 1}. ${escapeHtml(fmt(paper?.metadata?.title || paper?.id || '未知论文', 96))}</b>
+          <b>${index + 1}. <span class="semantic-cluster-paper-ref">P${escapeHtml(paperIndex)}</span> ${escapeHtml(fmt(paper?.metadata?.title || paper?.id || '未知论文', 96))}</b>
           <span class="badge ${escapeHtml(item?.review_status || 'pending')}">${entry.notReported ? 'not_reported' : escapeHtml(reviewStatusLabel(item?.review_status || 'pending'))}</span>
         </header>
         <section>
