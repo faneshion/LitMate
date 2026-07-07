@@ -4,13 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Literature Research Assistant V2</title>
-  <link rel="stylesheet" href="/styles.css?v=extraction-outcome-tone-20260616" />
+  <link rel="stylesheet" href="/styles.css?v=collab-review-audit-row-20260707" />
 </head>
 <body>
   <header class="topbar">
     <div>
       <h1>文献精读与研究辅助系统 V2</h1>
-      <p>论文管理 · 人机审查 · 素材管理与分析</p>
+      <p>论文管理 · 协同审查与素材精炼 · 素材管理与分析</p>
     </div>
     <div class="topbar-actions">
       <button id="refreshBtn">刷新数据</button>
@@ -21,7 +21,7 @@
 
   <nav class="tabs">
     <button class="tab active" data-tab="papers">1 论文管理</button>
-    <button class="tab" data-tab="review">2 人机审查</button>
+    <button class="tab" data-tab="review">2 协同审查与素材精炼</button>
     <button class="tab" data-tab="materials">3 素材管理与分析</button>
   </nav>
 
@@ -45,13 +45,8 @@
             </div>
 
             <div class="import-panel" data-import-mode="arxiv">
-              <label>arXiv ID 或 URL</label>
-              <div id="arxivInputs" class="multi-input-list">
-                <div class="multi-input-row">
-                  <input class="arxivInput" placeholder="例如 2401.12345 或 https://arxiv.org/abs/..." />
-                  <button type="button" id="addArxivInput" aria-label="增加 arXiv 输入">+</button>
-                </div>
-              </div>
+              <label>arXiv ID 或 URL（每行一个）</label>
+              <textarea id="arxivInput" rows="7" placeholder="2401.12345&#10;https://arxiv.org/abs/2402.01234&#10;https://arxiv.org/pdf/2403.05678.pdf"></textarea>
               <button id="arxivBtn">从 arXiv 导入</button>
             </div>
 
@@ -77,6 +72,7 @@
                 <div id="importProgressBar" class="progress-bar"></div>
               </div>
             </div>
+            <div id="importResultList" class="import-result-list" hidden></div>
 
             <hr class="import-divider" />
             <section class="recent-imports" aria-label="最近导入">
@@ -99,6 +95,7 @@
             </div>
             <div class="paper-library-actions">
               <span id="paperCount" class="meta"></span>
+              <button id="paperListModeBtn" type="button" onclick="window.togglePaperListMode && window.togglePaperListMode()">简洁模式</button>
               <button id="createPaperSetBtn" type="button">新建论文集</button>
             </div>
           </div>
@@ -582,29 +579,29 @@
       <div class="review-workbench">
         <header class="review-topbar">
           <div class="review-task-title">
-            <h2 id="reviewTemplateName">人机协同审查</h2>
-            <p id="reviewTemplateMeta" class="meta">选择抽取结果后开始审查</p>
+            <h2 id="reviewTemplateName">协同审查与素材精炼</h2>
+            <p id="reviewTemplateMeta" class="meta">将抽取结果整合为论文级研究对象卡片</p>
           </div>
           <div class="review-top-actions">
-            <div class="review-progress" aria-label="审查进度">
+            <div class="review-progress" aria-label="素材精炼进度">
               <span id="reviewProgressText">0 / 0</span>
               <div class="review-progress-track"><div id="reviewProgressBar" class="review-progress-bar"></div></div>
             </div>
-            <button id="reviewPrevBtn" type="button">上一条</button>
-            <button id="reviewNextBtn" type="button">下一条</button>
-            <button id="exportReviewRecordsBtn" type="button">导出审查记录</button>
+            <button id="reviewPrevBtn" type="button">上一篇</button>
+            <button id="reviewNextBtn" type="button">下一篇</button>
+            <button id="exportReviewRecordsBtn" type="button">导出精炼记录</button>
           </div>
         </header>
 
         <div id="reviewLayout" class="review-layout">
           <aside class="review-sidebar">
             <div>
-              <h3>审查队列</h3>
-              <span id="reviewQueueCount" class="meta">0 条</span>
+              <h3>论文研读进度</h3>
+              <span id="reviewQueueCount" class="meta">0 篇</span>
             </div>
             <section class="review-scope-panel">
               <button id="reviewScopeToggleBtn" class="review-scope-toggle" type="button">
-                <span>审查范围与筛选</span>
+                <span>论文范围与筛选</span>
                 <b id="reviewScopeToggleIcon">收起</b>
               </button>
               <div id="reviewScopeBody" class="review-scope-body">
@@ -663,7 +660,7 @@
                 </div>
               </div>
             </section>
-            <div class="review-sidebar-heading">过滤结果</div>
+            <div class="review-sidebar-heading">论文列表</div>
             <div id="reviewQueueList" class="review-queue-list"></div>
           </aside>
           <div id="reviewSidebarResizeHandle" class="review-sidebar-resize" title="拖拽调整左侧面板宽度">
@@ -1083,6 +1080,6 @@
   </div>
 
   <div id="toast" class="toast"></div>
-  <script src="/app.js?v=extraction-outcome-tone-20260616"></script>
+  <script src="/app.js?v=collab-review-audit-row-20260707"></script>
 </body>
 </html>

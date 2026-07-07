@@ -1,3 +1,22 @@
+const PAPER_LIST_MODE_STORAGE_KEY = 'litmate:paper-list-mode';
+
+function loadPaperListModePreference() {
+  try {
+    const mode = localStorage.getItem(PAPER_LIST_MODE_STORAGE_KEY);
+    return mode === 'compact' ? 'compact' : 'full';
+  } catch (err) {
+    return 'full';
+  }
+}
+
+function savePaperListModePreference(mode) {
+  try {
+    localStorage.setItem(PAPER_LIST_MODE_STORAGE_KEY, mode === 'compact' ? 'compact' : 'full');
+  } catch (err) {
+    // Ignore storage failures; the current session state still updates.
+  }
+}
+
 const state = {
   papers: [],
   paperSets: [],
@@ -14,6 +33,7 @@ const state = {
   paperPage: 1,
   paperLibraryTab: 'all',
   paperLibraryControlsOpen: true,
+  paperListMode: loadPaperListModePreference(),
   paperFilters: {query: '', year: 'all', paperSet: 'all', parseStatus: 'all', extractionStatus: 'all'},
   recentImportPaperIds: [],
   libraryBatchExtractionBusy: false,
@@ -52,6 +72,8 @@ const state = {
   reviewSidebarWidth: 300,
   reviewSidebarCollapsed: false,
   reviewSidebarResizing: false,
+  reviewObjectView: 'overview',
+  reviewDimensionName: null,
   materialsSidebarWidth: 320,
   materialsSidebarCollapsed: false,
   materialsSidebarResizing: false,
@@ -566,7 +588,6 @@ function renderConfig() {
   setValue('cfgMineruOnlineLang', paper.mineru_online_language);
   setValue('cfgMineruOnlineTimeout', paper.mineru_online_timeout_seconds);
   setValue('cfgMineruOnlinePoll', paper.mineru_online_poll_interval_seconds);
-
   state.selectedLlmProfileId = cfg.active_llm_profile_id || cfg.llm_profiles?.find(item => item.active)?.id || state.selectedLlmProfileId;
   renderLlmProfiles();
 }
@@ -3004,20 +3025,11 @@ function updateImportMode() {
   });
 }
 
-function addArxivInput(value = '') {
-  const row = document.createElement('div');
-  row.className = 'multi-input-row';
-  row.innerHTML = `
-    <input class="arxivInput" placeholder="例如 2401.12345 或 https://arxiv.org/abs/..." value="${escapeHtml(value)}" />
-    <button type="button" aria-label="移除此 arXiv 输入">-</button>
-  `;
-  row.querySelector('button').onclick = () => row.remove();
-  $('arxivInputs').appendChild(row);
-}
-
 function getArxivValues() {
-  return [...document.querySelectorAll('.arxivInput')]
-    .map(input => input.value.trim())
+  const input = $('arxivInput');
+  return String(input?.value || '')
+    .split(/[\n\r,，;；\t ]+/)
+    .map(value => value.trim())
     .filter(Boolean);
 }
 
@@ -3029,6 +3041,7 @@ function setImportBusy(isBusy) {
 
 function startImportProgress(initialLabel, onProgress) {
   const progress = $('importProgress');
+  const resultList = $('importResultList');
   const label = $('importProgressLabel');
   const percent = $('importProgressPercent');
   const bar = $('importProgressBar');
@@ -3043,6 +3056,10 @@ function startImportProgress(initialLabel, onProgress) {
   let stageIndex = 0;
   setImportBusy(true);
   progress.hidden = false;
+  if (resultList) {
+    resultList.hidden = true;
+    resultList.innerHTML = '';
+  }
   progress.classList.remove('error', 'done');
   label.textContent = initialLabel;
   percent.textContent = `${value}%`;
@@ -3085,6 +3102,33 @@ function setImportProgressValue(percent, label) {
   $('importProgressLabel').textContent = label;
   $('importProgressPercent').textContent = `${value}%`;
   $('importProgressBar').style.width = `${value}%`;
+}
+
+function importRecordLabel(record) {
+  if (record.status === 'imported') return '已导入';
+  if (record.status === 'duplicate') return '已跳过重复';
+  if (record.status === 'failed') return '失败';
+  return record.status || '记录';
+}
+
+function renderImportResultList(records) {
+  const list = $('importResultList');
+  if (!list) return;
+  const items = (records || []).map(record => {
+    const cls = record.status || 'unknown';
+    const paper = record.paper || {};
+    const title = paper.metadata?.title || record.arxiv_id || record.input || '未命名论文';
+    const detail = record.error || record.reason || record.input || '';
+    return `
+      <div class="import-result-item ${escapeHtml(cls)}">
+        <b>${escapeHtml(importRecordLabel(record))}</b>
+        <span title="${escapeHtml(title)}">${escapeHtml(fmt(title, 72))}</span>
+        ${detail ? `<small title="${escapeHtml(detail)}">${escapeHtml(fmt(detail, 120))}</small>` : ''}
+      </div>
+    `;
+  }).join('');
+  list.innerHTML = items || '<p class="muted">暂无导入记录。</p>';
+  list.hidden = false;
 }
 
 function addPaperJob(title, source) {
@@ -3168,45 +3212,69 @@ async function runArxivBatchImport(values) {
   const total = values.length;
   const jobId = addPaperJob(`批量 arXiv 导入（${total} 篇）`, 'arxiv');
   const importedPapers = [];
+  const duplicateRecords = [];
+  const failedRecords = [];
+  const records = [];
   setImportBusy(true);
   $('importProgress').hidden = false;
   $('importProgress').classList.remove('error', 'done');
-  try {
-    for (let index = 0; index < values.length; index += 1) {
-      const value = values[index];
-      const start = Math.floor((index / total) * 100);
-      const cap = Math.floor(((index + 0.85) / total) * 100);
-      let current = start;
-      const label = `第 ${index + 1}/${total} 篇：正在导入 ${value}`;
+  if ($('importResultList')) {
+    $('importResultList').hidden = true;
+    $('importResultList').innerHTML = '';
+  }
+  for (let index = 0; index < values.length; index += 1) {
+    const value = values[index];
+    const start = Math.floor((index / total) * 100);
+    const cap = Math.floor(((index + 0.85) / total) * 100);
+    let current = start;
+    const label = `第 ${index + 1}/${total} 篇：正在导入 ${value}`;
+    setImportProgressValue(current, label);
+    updatePaperJob(jobId, {percent: current, status: `第 ${index + 1}/${total} 篇解析中`});
+    const timer = setInterval(() => {
+      current = Math.min(cap, current + Math.max(1, Math.round((cap - current) * 0.18)));
       setImportProgressValue(current, label);
       updatePaperJob(jobId, {percent: current, status: `第 ${index + 1}/${total} 篇解析中`});
-      const timer = setInterval(() => {
-        current = Math.min(cap, current + Math.max(1, Math.round((cap - current) * 0.18)));
-        setImportProgressValue(current, label);
-        updatePaperJob(jobId, {percent: current, status: `第 ${index + 1}/${total} 篇解析中`});
-      }, 850);
-      try {
-        const paper = await api('/api/papers/import/arxiv', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({arxiv_id_or_url: value})});
-        importedPapers.push(paper);
-      } finally {
-        clearInterval(timer);
-      }
-      const completed = Math.floor(((index + 1) / total) * 100);
-      const completedLabel = `已完成 ${index + 1}/${total} 篇`;
-      setImportProgressValue(completed, completedLabel);
-      updatePaperJob(jobId, {percent: completed, status: completedLabel});
+    }, 850);
+    try {
+      const result = await api('/api/papers/import/arxiv/batch', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({arxiv_id_or_urls: [value]}),
+      });
+      const record = result.results?.[0] || {status: 'failed', input: value, error: '导入接口没有返回结果'};
+      records.push(record);
+      if (record.status === 'imported' && record.paper?.id) importedPapers.push(record.paper);
+      else if (record.status === 'duplicate') duplicateRecords.push(record);
+      else if (record.status === 'failed') failedRecords.push(record);
+    } catch (err) {
+      const record = {status: 'failed', input: value, error: err.message};
+      records.push(record);
+      failedRecords.push(record);
+    } finally {
+      clearInterval(timer);
     }
+    const completed = Math.floor(((index + 1) / total) * 100);
+    const completedLabel = `已完成 ${index + 1}/${total} 篇`;
+    setImportProgressValue(completed, completedLabel);
+    updatePaperJob(jobId, {percent: completed, status: completedLabel});
+  }
+  try {
     rememberRecentImports(importedPapers.map(paper => paper.id));
-    $('importProgress').classList.add('done');
-    toast(`批量导入完成：${total} 篇`);
+    const summary = `批量导入完成：成功 ${importedPapers.length}，重复 ${duplicateRecords.length}，失败 ${failedRecords.length}`;
+    $('importProgress').classList.toggle('error', failedRecords.length > 0);
+    $('importProgress').classList.toggle('done', failedRecords.length === 0);
+    $('importProgressLabel').textContent = summary;
+    $('importProgressPercent').textContent = '100%';
+    $('importProgressBar').style.width = '100%';
+    renderImportResultList(records);
+    toast(summary);
     state.paperPage = 1;
     await refreshAll();
-    setTimeout(() => { $('importProgress').hidden = true; }, 900);
   } catch (err) {
-    if (importedPapers.length) rememberRecentImports(importedPapers.map(paper => paper.id));
     $('importProgress').classList.add('error');
     $('importProgressLabel').textContent = err.message;
     $('importProgressPercent').textContent = '失败';
+    renderImportResultList(records);
     toast(err.message);
   } finally {
     setImportBusy(false);
@@ -3326,12 +3394,27 @@ function paperRuns(paperId, templateId = '') {
     .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
 }
 
+function latestRunsByPaperTemplate(runs) {
+  const latest = new Map();
+  [...(runs || [])]
+    .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+    .forEach(run => {
+      const key = `${run.paper_id || ''}::${run.template_id || ''}`;
+      if (!latest.has(key)) latest.set(key, run);
+    });
+  return [...latest.values()];
+}
+
+function currentPaperRuns(paperId) {
+  return latestRunsByPaperTemplate(paperRuns(paperId));
+}
+
 function paperHasExtraction(paperId) {
-  return paperRuns(paperId).length > 0;
+  return currentPaperRuns(paperId).length > 0;
 }
 
 function extractionStatsForPaper(paperId) {
-  const runs = paperRuns(paperId);
+  const runs = currentPaperRuns(paperId);
   const templateIds = new Set(runs.map(run => run.template_id).filter(Boolean));
   const itemCount = runs.reduce((total, run) => total + (run.items?.length || 0), 0);
   const reviewableItems = runs.flatMap(run => run.items || []);
@@ -3610,6 +3693,71 @@ function renderPaperRow(p, selectable = false) {
   `;
 }
 
+function renderCompactPaperTable(items, selectable = false) {
+  const rows = items.map(item => {
+    if (item.type === 'job') {
+      const percent = Math.max(0, Math.min(100, Math.round(item.job.percent || 0)));
+      return `
+        <tr class="paper-compact-row pending">
+          ${selectable ? '<td></td>' : ''}
+          <td class="paper-compact-title" title="${escapeHtml(item.job.title)}">${escapeHtml(item.job.title)}</td>
+          <td><span class="badge pending">解析中 ${percent}%</span></td>
+          <td><span class="badge extraction_todo">待审查</span></td>
+          <td>${escapeHtml(item.job.startedAt || '-')}</td>
+          <td class="paper-compact-actions"><button disabled>查看详情</button><button disabled>查看抽取结果</button></td>
+        </tr>
+      `;
+    }
+    const p = item.paper;
+    const status = paperStatus(p);
+    const extractionStats = extractionStatsForPaper(p.id);
+    const extractionStatus = extractionStatusForPaper(p.id);
+    const checked = state.selectedPaperIds.includes(p.id);
+    return `
+      <tr class="paper-compact-row ${p.id === state.selectedPaperId ? 'active' : ''}" data-paper-id="${escapeHtml(p.id)}">
+        ${selectable ? `
+          <td class="paper-compact-check">
+            <input type="checkbox" class="paperBatchCheck" value="${escapeHtml(p.id)}" ${checked ? 'checked' : ''} onchange="togglePaperSelection('${escapeHtml(p.id)}', this.checked)" title="选择论文" />
+          </td>
+        ` : ''}
+        <td class="paper-compact-title" title="${escapeHtml(p.metadata.title)}">${escapeHtml(p.metadata.title)}</td>
+        <td><span class="badge ${status.className}">${status.label}</span></td>
+        <td><span class="badge ${extractionStatus.className}">${extractionStatus.label}</span></td>
+        <td>${escapeHtml(paperPublishedDate(p))}</td>
+        <td class="paper-compact-actions">
+          <button type="button" onclick="openPaperDetail('${escapeHtml(p.id)}')">查看详情</button>
+          <button type="button" ${extractionStats.latestRun ? '' : 'disabled'} onclick="openLatestExtractionResult('${escapeHtml(p.id)}')">查看抽取结果</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+  return `
+    <div class="paper-compact-table-wrap">
+      <table class="paper-compact-table">
+        <colgroup>
+          ${selectable ? '<col class="paper-compact-col-check" />' : ''}
+          <col class="paper-compact-col-title" />
+          <col class="paper-compact-col-status" />
+          <col class="paper-compact-col-status" />
+          <col class="paper-compact-col-date" />
+          <col class="paper-compact-col-actions" />
+        </colgroup>
+        <thead>
+          <tr>
+            ${selectable ? '<th class="paper-compact-check"></th>' : ''}
+            <th>题目</th>
+            <th>待校验</th>
+            <th>待审查</th>
+            <th>发表时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
 function renderPaperSetCreatePanel() {
   const panel = $('paperSetCreatePanel');
   if (!panel) return;
@@ -3625,6 +3773,14 @@ function renderPaperLibraryHeader(filteredCount = state.papers.length) {
     ? `当前 ${filteredCount} 篇`
     : `${setCount} 个集合`;
   $('createPaperSetBtn').hidden = state.paperLibraryTab !== 'sets';
+  const modeBtn = $('paperListModeBtn');
+  if (modeBtn) {
+    const compact = state.paperListMode === 'compact';
+    modeBtn.hidden = state.paperLibraryTab !== 'all';
+    modeBtn.textContent = compact ? '完整模式' : '简洁模式';
+    modeBtn.title = compact ? '切换到完整模式' : '切换到简洁模式';
+    modeBtn.classList.toggle('active', compact);
+  }
 }
 
 function renderPaperLibraryControls() {
@@ -3643,6 +3799,13 @@ function renderPaperLibraryControls() {
 window.togglePaperLibraryControls = function() {
   state.paperLibraryControlsOpen = !state.paperLibraryControlsOpen;
   renderPaperLibraryControls();
+};
+
+window.togglePaperListMode = function() {
+  state.paperListMode = state.paperListMode === 'compact' ? 'full' : 'compact';
+  savePaperListModePreference(state.paperListMode);
+  state.paperPage = 1;
+  renderPapers();
 };
 
 function renderPaperLibraryTabs() {
@@ -3809,7 +3972,8 @@ function renderPaperLibraryAll() {
     ...papers.map(paper => ({type: 'paper', paper}))
   ];
   const total = items.length;
-  const pageCount = Math.max(1, Math.ceil(total / PAPER_PAGE_SIZE));
+  const pageSize = state.paperListMode === 'compact' ? 18 : PAPER_PAGE_SIZE;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
   if (state.paperPage > pageCount) state.paperPage = pageCount;
   if (state.paperPage < 1) state.paperPage = 1;
   renderPaperSetCreatePanel();
@@ -3819,13 +3983,16 @@ function renderPaperLibraryAll() {
     managePanel.innerHTML = '';
   }
 
-  list.className = 'paper-table';
-  const start = (state.paperPage - 1) * PAPER_PAGE_SIZE;
-  const pageItems = items.slice(start, start + PAPER_PAGE_SIZE);
-  list.innerHTML = pageItems.map(item => item.type === 'job' ? renderPaperJobRow(item.job) : renderPaperRow(item.paper, true)).join('')
-    || '<p class="muted">暂无符合条件的论文。</p>';
+  list.className = state.paperListMode === 'compact' ? 'paper-table paper-table-compact-mode' : 'paper-table';
+  const start = (state.paperPage - 1) * pageSize;
+  const pageItems = items.slice(start, start + pageSize);
+  list.innerHTML = pageItems.length
+    ? (state.paperListMode === 'compact'
+      ? renderCompactPaperTable(pageItems, true)
+      : pageItems.map(item => item.type === 'job' ? renderPaperJobRow(item.job) : renderPaperRow(item.paper, true)).join(''))
+    : '<p class="muted">暂无符合条件的论文。</p>';
 
-  $('paperPagination').innerHTML = total > PAPER_PAGE_SIZE ? `
+  $('paperPagination').innerHTML = total > pageSize ? `
     <button ${state.paperPage === 1 ? 'disabled' : ''} onclick="goPaperPage(${state.paperPage - 1})">上一页</button>
     <span class="meta">第 ${state.paperPage} / ${pageCount} 页</span>
     <button ${state.paperPage === pageCount ? 'disabled' : ''} onclick="goPaperPage(${state.paperPage + 1})">下一页</button>
@@ -3998,7 +4165,7 @@ async function runLibraryBatchExtraction() {
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({paper_id: paperId, template_id: templateId, dimension_names: dims}),
         });
-        state.runs = [run, ...state.runs.filter(item => item.id !== run.id)];
+        replaceLocalExtractionRun(run);
         updateExtractionJob(key, {status: 'completed', percent: 100, message: `${run.items.length} 条结果，${run.errors.length} 个错误`, run});
         completed += 1;
       } catch (err) {
@@ -4439,6 +4606,14 @@ function latestRunForPaper(paperId, templateId = '') {
   return paperRuns(paperId, templateId)[0] || null;
 }
 
+function replaceLocalExtractionRun(run) {
+  if (!run) return;
+  state.runs = [
+    run,
+    ...state.runs.filter(item => !(item.paper_id === run.paper_id && item.template_id === run.template_id)),
+  ];
+}
+
 function jobKey(paperId, templateId) {
   return `${paperId}::${templateId}`;
 }
@@ -4605,7 +4780,7 @@ async function runSelectedExtractions() {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({paper_id: paperId, template_id: templateId, dimension_names: dims}),
       });
-      state.runs = [run, ...state.runs.filter(item => item.id !== run.id)];
+      replaceLocalExtractionRun(run);
       updateExtractionJob(key, {status: 'completed', percent: 100, message: `${run.items.length} 条结果，${run.errors.length} 个错误`, run}, false);
       completed += 1;
     } catch (err) {
@@ -4697,6 +4872,13 @@ const REVIEW_SUGGESTED_TARGETS = [
   {value: 'object_definition.observation_signals', label: '对象观察信号'},
 ];
 
+const REVIEW_OBJECT_VIEWS = [
+  {id: 'overview', label: '综合视图'},
+  {id: 'dimensions', label: '维度研读'},
+  {id: 'materials', label: '素材化输出'},
+  {id: 'audit', label: '底层碎片审计'},
+];
+
 function reviewableRunItems(run) {
   return (run?.items || []).filter(item => item && (
     item.dimension_name ||
@@ -4709,7 +4891,7 @@ function reviewableRunItems(run) {
 }
 
 function reviewableRuns() {
-  return [...(state.runs || [])]
+  return latestRunsByPaperTemplate(state.runs)
     .filter(run => reviewableRunItems(run).length > 0)
     .sort((a, b) => {
       const timeA = Date.parse(a.created_at || a.updated_at || '') || 0;
@@ -5073,37 +5255,55 @@ function reviewQueueItems() {
   return entries;
 }
 
+function reviewEntriesForRun(run, filters = null) {
+  if (!run) return [];
+  const paper = reviewPaper(run);
+  const template = reviewTemplate(run);
+  const entries = reviewableRunItems(run).map((item, itemIndex) => ({
+    run,
+    paper,
+    template,
+    item,
+    index: itemIndex,
+    itemIndex,
+    risk: reviewRisk({item}),
+  }));
+  return filters ? entries.filter(entry => reviewEntryMatchesFilters(entry, filters)) : entries;
+}
+
+function reviewEntryMatchesFilters(entry, filters = state.reviewFilters) {
+  const item = entry.item;
+  const query = (filters.query || '').trim().toLowerCase();
+  const status = item.review_status || 'pending';
+  if (filters.dimension !== 'all' && item.dimension_name !== filters.dimension) return false;
+  if (filters.risk !== 'all' && entry.risk !== filters.risk) return false;
+  if (filters.status !== 'all') {
+    if (filters.status === 'accepted' && reviewStatusGroup(status) !== 'accepted') return false;
+    else if (filters.status === 'issues' && reviewStatusGroup(status) !== 'issues') return false;
+    else if (!['accepted', 'issues'].includes(filters.status)) {
+      const aliases = {
+        confirm: ['confirm', 'confirmed'],
+        revise: ['revise', 'needs_revision'],
+        reject: ['reject', 'rejected'],
+      }[filters.status] || [filters.status];
+      if (!aliases.includes(status)) return false;
+    }
+  }
+  if (!query) return true;
+  return [
+    entry.paper?.metadata?.title,
+    item.dimension_label,
+    item.dimension_name,
+    item.title,
+    item.content,
+    item.edited_content,
+    ...(item.tags || []),
+  ].join(' ').toLowerCase().includes(query);
+}
+
 function filteredReviewEntries() {
   const filters = state.reviewFilters;
-  const query = (filters.query || '').trim().toLowerCase();
-  return reviewQueueItems().filter(entry => {
-    const item = entry.item;
-    const status = item.review_status || 'pending';
-    if (filters.dimension !== 'all' && item.dimension_name !== filters.dimension) return false;
-    if (filters.risk !== 'all' && entry.risk !== filters.risk) return false;
-    if (filters.status !== 'all') {
-      if (filters.status === 'accepted' && reviewStatusGroup(status) !== 'accepted') return false;
-      else if (filters.status === 'issues' && reviewStatusGroup(status) !== 'issues') return false;
-      else if (!['accepted', 'issues'].includes(filters.status)) {
-        const aliases = {
-          confirm: ['confirm', 'confirmed'],
-          revise: ['revise', 'needs_revision'],
-          reject: ['reject', 'rejected'],
-        }[filters.status] || [filters.status];
-        if (!aliases.includes(status)) return false;
-      }
-    }
-    if (!query) return true;
-    return [
-      entry.paper?.metadata?.title,
-      item.dimension_label,
-      item.dimension_name,
-      item.title,
-      item.content,
-      item.edited_content,
-      ...(item.tags || []),
-    ].join(' ').toLowerCase().includes(query);
-  }).sort((a, b) => {
+  return reviewQueueItems().filter(entry => reviewEntryMatchesFilters(entry, filters)).sort((a, b) => {
     const statusOrder = {pending: 0, issues: 1, accepted: 2};
     const riskOrder = {high: 0, medium: 1, low: 2};
     return (statusOrder[reviewStatusGroup(a.item.review_status)] - statusOrder[reviewStatusGroup(b.item.review_status)])
@@ -5117,6 +5317,97 @@ function currentReviewEntry() {
   if (!entries.length) return null;
   state.reviewItemIndex = Math.min(Math.max(state.reviewItemIndex, 0), entries.length - 1);
   return entries[state.reviewItemIndex];
+}
+
+function paperTitleForRun(run) {
+  const paper = reviewPaper(run);
+  return paper?.metadata?.title || paper?.title || run?.paper_id || '未命名论文';
+}
+
+function reviewPaperStatus(entries) {
+  const total = entries.length;
+  const pending = entries.filter(entry => (entry.item.review_status || 'pending') === 'pending').length;
+  const issue = entries.filter(entry => reviewStatusGroup(entry.item.review_status || 'pending') === 'issues').length;
+  const high = entries.filter(entry => entry.risk === 'high').length;
+  if (!total) return '待确认';
+  if (issue || high >= 3) return '需修订';
+  if (pending) return '待确认';
+  return '已确认';
+}
+
+function reviewPaperMaterialStatus(entries) {
+  if (!entries.length) return '待生成';
+  const done = entries.filter(entry => (entry.item.review_status || 'pending') !== 'pending').length;
+  if (done >= entries.length) return '已入库';
+  return '已生成';
+}
+
+function reviewPaperCards() {
+  const scopedRuns = reviewScopedRuns();
+  const filteredEntries = filteredReviewEntries();
+  const runIdsWithMatches = new Set(filteredEntries.map(entry => entry.run.id));
+  return scopedRuns
+    .filter(run => runIdsWithMatches.has(run.id))
+    .map(run => {
+      const entries = reviewEntriesForRun(run);
+      const filtered = filteredEntries.filter(entry => entry.run.id === run.id);
+      const highRiskCount = entries.filter(entry => entry.risk === 'high').length;
+      return {
+        run,
+        paper: reviewPaper(run),
+        template: reviewTemplate(run),
+        entries,
+        filteredEntries: filtered,
+        title: paperTitleForRun(run),
+        status: reviewPaperStatus(entries),
+        highRiskCount,
+        materialStatus: reviewPaperMaterialStatus(entries),
+      };
+    });
+}
+
+function currentReviewPaperCard() {
+  const cards = reviewPaperCards();
+  if (!cards.length) return null;
+  const current = cards.find(card => card.run.id === state.reviewRunId) || cards[0];
+  state.reviewRunId = current.run.id;
+  return current;
+}
+
+function currentReviewEntryForRun(run = reviewRun()) {
+  if (!run) return null;
+  const entries = filteredReviewEntries().filter(entry => entry.run.id === run.id);
+  const current = currentReviewEntry();
+  if (current && current.run.id === run.id) return current;
+  const preferred = entries.find(entry => entry.risk === 'high')
+    || entries.find(entry => (entry.item.review_status || 'pending') === 'pending')
+    || entries[0];
+  if (!preferred) return null;
+  const globalIndex = filteredReviewEntries().findIndex(entry => entry.run.id === preferred.run.id && entry.item.id === preferred.item.id);
+  if (globalIndex >= 0) state.reviewItemIndex = globalIndex;
+  return preferred;
+}
+
+function reviewDimensionGroups(run = reviewRun(), filters = null) {
+  const groups = new Map();
+  reviewEntriesForRun(run, filters).forEach(entry => {
+    const key = entry.item.dimension_name || entry.item.dimension_label || 'unknown';
+    if (!groups.has(key)) {
+      groups.set(key, {
+        key,
+        label: entry.item.dimension_label || entry.item.dimension_name || '未命名维度',
+        entries: [],
+      });
+    }
+    groups.get(key).entries.push(entry);
+  });
+  return [...groups.values()];
+}
+
+function reviewEntrySummary(entry, maxChars = 220) {
+  const raw = entry?.item?.edited_content || entry?.item?.content || entry?.item?.normalized_value || entry?.item?.title || '暂无内容';
+  const text = typeof raw === 'string' ? raw : JSON.stringify(raw);
+  return fmt(text || '暂无内容', maxChars);
 }
 
 function reviewDimensionQuestion(entry) {
@@ -5190,14 +5481,12 @@ function applyReviewScopeFromDraft() {
 }
 
 function renderReviewWorkbench() {
-  const run = reviewRun();
-  const template = reviewTemplate(run);
-  const prompt = activePromptForTemplate(template);
-  if (!run) {
-    $('reviewTemplateName').textContent = '人机协同审查';
-    $('reviewTemplateMeta').textContent = '暂无抽取结果';
-    $('reviewQueueCount').textContent = '0 条';
-    $('reviewQueueList').innerHTML = '<p class="muted">暂无审查队列。</p>';
+  const card = currentReviewPaperCard();
+  if (!card) {
+    $('reviewTemplateName').textContent = '协同审查与素材精炼';
+    $('reviewTemplateMeta').textContent = '暂无可整合的论文抽取结果';
+    $('reviewQueueCount').textContent = '0 篇';
+    $('reviewQueueList').innerHTML = '<p class="muted">暂无符合筛选条件的论文。</p>';
     $('reviewMainPane').innerHTML = '<div class="review-empty">暂无可审查的抽取结果。</div>';
     $('reviewEvidencePane').innerHTML = '';
     renderReviewTopbar();
@@ -5205,118 +5494,485 @@ function renderReviewWorkbench() {
   }
   const entries = filteredReviewEntries();
   state.reviewItemIndex = Math.min(Math.max(state.reviewItemIndex, 0), Math.max(entries.length - 1, 0));
-  const entry = entries[state.reviewItemIndex];
+  const entry = currentReviewEntryForRun(card.run);
   if (state.reviewActionItemKey && state.reviewActionItemKey !== reviewItemKey(entry)) resetReviewActionMode();
-  renderReviewTopbar(entry, prompt);
-  renderReviewQueue(entries);
-  renderReviewMain(entry);
-  renderReviewEvidence(entry);
+  renderReviewTopbar(card);
+  renderReviewQueue();
+  renderReviewMain(card);
+  renderReviewEvidence(card);
 }
 
-function renderReviewTopbar(entry = null, prompt = null) {
-  const items = reviewQueueItems();
-  const done = items.filter(entry => (entry.item.review_status || 'pending') !== 'pending').length;
-  const total = items.length;
+function renderReviewTopbar(card = null) {
+  const cards = reviewPaperCards();
+  const scopedEntries = reviewScopedRuns().flatMap(run => reviewEntriesForRun(run));
+  const done = scopedEntries.filter(entry => (entry.item.review_status || 'pending') !== 'pending').length;
+  const total = scopedEntries.length;
   const pct = total ? Math.round(done / total * 100) : 0;
-  if (entry) {
-    const title = entry.paper?.metadata?.title || entry.run.paper_id;
-    $('reviewTemplateName').textContent = fmt(title, 72);
+  if (card) {
+    const prompt = activePromptForTemplate(card.template);
+    $('reviewTemplateName').textContent = '协同审查与素材精炼';
     $('reviewTemplateMeta').textContent = [
-      `研究对象：${entry.template?.name || entry.run.template_id}`,
-      `维度：${entry.item.dimension_label || entry.item.dimension_name}`,
-      `模板 v${entry.template?.version || '-'}`,
-      `Prompt ${prompt?.name || prompt?.id || entry.template?.active_prompt_id || '-'}`,
-      entry.run.model || '未知模型',
+      `论文：${fmt(card.title, 48)}`,
+      `研究对象：${card.template?.name || card.run.template_id}`,
+      `模板 v${card.template?.version || '-'}`,
+      `Prompt ${prompt?.name || prompt?.id || card.template?.active_prompt_id || '-'}`,
+      card.run.model || '未知模型',
     ].join(' · ');
   } else {
     const run = reviewRun();
     const template = reviewTemplate(run);
-    $('reviewTemplateName').textContent = template?.name || run?.template_id || '人机协同审查';
-    $('reviewTemplateMeta').textContent = run ? `当前筛选条件下没有待审查条目 · 模板 v${template?.version || '-'}` : '暂无抽取结果';
+    $('reviewTemplateName').textContent = '协同审查与素材精炼';
+    $('reviewTemplateMeta').textContent = run ? `当前筛选条件下没有论文对象卡 · 模板 v${template?.version || '-'}` : '暂无抽取结果';
   }
   $('reviewProgressText').textContent = `${done} / ${total}`;
   $('reviewProgressBar').style.width = `${pct}%`;
-  const entries = filteredReviewEntries();
-  $('reviewPrevBtn').disabled = !entries.length || state.reviewItemIndex <= 0;
-  $('reviewNextBtn').disabled = !entries.length || state.reviewItemIndex >= entries.length - 1;
+  const currentIndex = cards.findIndex(item => item.run.id === state.reviewRunId);
+  $('reviewPrevBtn').disabled = !cards.length || currentIndex <= 0;
+  $('reviewNextBtn').disabled = !cards.length || currentIndex >= cards.length - 1;
 }
 
-function renderReviewQueue(entries = filteredReviewEntries()) {
-  $('reviewQueueCount').textContent = `${entries.length} 条`;
-  $('reviewQueueList').innerHTML = entries.map((entry, index) => {
-    const item = entry.item;
-    const active = index === state.reviewItemIndex;
-    return `<button type="button" class="review-queue-card ${active ? 'active' : ''}" onclick="selectReviewItem(${index})">
+function renderReviewQueue(cards = reviewPaperCards()) {
+  $('reviewQueueCount').textContent = `${cards.length} 篇`;
+  $('reviewQueueList').innerHTML = cards.map((card, index) => {
+    const active = card.run.id === state.reviewRunId;
+    return `<button type="button" class="review-queue-card review-paper-card ${active ? 'active' : ''}" onclick="selectReviewPaper('${escapeHtml(card.run.id)}')">
       <span class="review-queue-top">
-        <b>${escapeHtml(item.dimension_label || item.dimension_name)}</b>
-        <em class="${entry.risk}">${riskLabel(entry.risk)}</em>
+        <b>${index + 1}. ${escapeHtml(fmt(card.title, 54))}</b>
+        <em class="${card.highRiskCount ? 'high' : 'low'}">${card.status}</em>
       </span>
-      <span class="review-queue-title">${escapeHtml(fmt(item.edited_title || item.title || '未命名结果', 72))}</span>
-      <span class="review-queue-paper">${escapeHtml(fmt(entry.paper?.metadata?.title || entry.run.paper_id, 84))}</span>
+      <span class="review-queue-paper">${escapeHtml(card.template?.name || card.run.template_id || '未命名研究对象')}</span>
       <span class="review-queue-tags">
-        <i class="${escapeHtml(item.review_status || 'pending')}">${escapeHtml(reviewStatusLabel(item.review_status || 'pending'))}</i>
-        <i>confidence ${confidenceText(item.confidence)}</i>
-        ${(item.tags || []).slice(0, 2).map(tag => `<i>${escapeHtml(tag)}</i>`).join('')}
+        <i class="${card.status === '已确认' ? 'confirm' : (card.status === '需修订' ? 'mark_evidence_insufficient' : 'pending')}">状态：${escapeHtml(card.status)}</i>
+        <i class="${card.highRiskCount ? 'mark_evidence_insufficient' : 'confirm'}">高风险：${card.highRiskCount}</i>
+        <i class="${card.materialStatus === '已入库' ? 'confirm' : 'pending'}">素材卡：${escapeHtml(card.materialStatus)}</i>
       </span>
     </button>`;
-  }).join('') || '<div class="review-empty small">没有符合筛选条件的待审查内容。</div>';
+  }).join('') || '<div class="review-empty small">没有符合筛选条件的论文。</div>';
 }
 
-function renderReviewMain(entry) {
-  if (!entry) {
-    $('reviewMainPane').innerHTML = '<div class="review-empty">请选择左侧队列中的一条抽取结果。</div>';
+function renderReviewMain(cardOrEntry) {
+  const card = cardOrEntry?.item ? reviewPaperCards().find(item => item.run.id === cardOrEntry.run.id) : cardOrEntry;
+  if (!card) {
+    $('reviewMainPane').innerHTML = '<div class="review-empty">请选择左侧论文列表中的一篇论文。</div>';
     return;
   }
-  const item = entry.item;
-  const savingAttr = state.reviewSaving ? 'disabled aria-busy="true"' : '';
-  const question = reviewDimensionQuestion(entry);
-  const qualityHint = reviewQualityHint(entry);
-  const modelInferred = itemModelInferred(item);
-  const evidenceCount = (item.evidence || []).length;
+  const view = REVIEW_OBJECT_VIEWS.some(item => item.id === state.reviewObjectView) ? state.reviewObjectView : 'overview';
   $('reviewMainPane').innerHTML = `
-    <section class="review-focus-card review-question-card">
-      <div class="review-card-header-line">
-        <span class="review-dimension-chip">维度：${escapeHtml(item.dimension_label || item.dimension_name)}</span>
-        <span class="review-index-chip">第 ${entry.index + 1} 条</span>
-      </div>
-      <h3>抽取问题</h3>
-      <p class="review-question-text">${escapeHtml(question)}</p>
-      <details class="review-dimension-detail">
-        <summary>查看维度定义</summary>
-        <p>${escapeHtml(reviewDimensionDefinition(entry))}</p>
-      </details>
-    </section>
-
-    <section class="review-focus-card review-result-card">
-      <div class="review-card-header-line">
-        <h3>模型抽取结果</h3>
-        <span class="badge ${escapeHtml(item.review_status || 'pending')}">${escapeHtml(reviewStatusLabel(item.review_status || 'pending'))}</span>
-      </div>
-      <div class="review-answer lead highlighted">${escapeHtml(item.edited_content || item.content || '无内容')}</div>
-      <div class="review-result-meta">
-        <span>置信度：<b>${confidenceLevelText(item.confidence)}</b></span>
-        <span>证据：<b>${evidenceCount} 条</b></span>
-        <span>模型推断：<b>${modelInferred ? '是' : '否'}</b></span>
-        <span>状态：<b>${escapeHtml(reviewStatusLabel(item.review_status || 'pending'))}</b></span>
-      </div>
-      <div class="review-quality-hint ${escapeHtml(qualityHint.tone)}">
-        <b>系统提示</b>
-        <span>${escapeHtml(qualityHint.text)}</span>
-      </div>
-    </section>
-
-    <section class="review-action-zone">
-      <nav class="review-primary-actions" aria-label="审查操作">
-        <button type="button" class="primary good ${item.review_status === 'confirm' ? 'active' : ''}" onclick="saveCurrentReview('confirm')" ${savingAttr}>${state.reviewSaving ? '保存中...' : '确认正确'}</button>
-        <button type="button" class="${state.reviewActionMode === 'revise' ? 'active' : ''}" onclick="openReviewMode('revise')" ${savingAttr}>修改</button>
-        <button type="button" class="danger ${state.reviewActionMode === 'reject' || item.review_status === 'reject' ? 'active' : ''}" onclick="openReviewMode('reject')" ${savingAttr}>驳回</button>
-        <button type="button" class="warn ${state.reviewActionMode === 'evidence' || item.review_status === 'mark_evidence_insufficient' ? 'active' : ''}" onclick="openReviewMode('evidence')" ${savingAttr}>证据不足</button>
-        <button type="button" class="${state.reviewActionMode === 'not_reported' || item.review_status === 'mark_not_reported' ? 'active' : ''}" onclick="openReviewMode('not_reported')" ${savingAttr}>应为未报告</button>
-        <button type="button" class="ghost" onclick="skipReviewItem()" ${savingAttr}>跳过</button>
+    <section class="review-object-shell">
+      <header class="review-object-header">
+        <div>
+          <span class="review-dimension-chip">论文级研究对象卡片</span>
+          <h3>${escapeHtml(card.title)}</h3>
+          <p>系统将多个维度的碎片化抽取结果整合为可核验、可修订、可输出的研究素材。</p>
+        </div>
+        <div class="review-object-status">
+          <span>状态：<b>${escapeHtml(card.status)}</b></span>
+          <span>高风险：<b>${card.highRiskCount}</b></span>
+          <span>素材卡：<b>${escapeHtml(card.materialStatus)}</b></span>
+        </div>
+      </header>
+      <nav class="review-object-tabs" aria-label="论文级对象卡视图">
+        ${REVIEW_OBJECT_VIEWS.map(item => `
+          <button type="button" class="${view === item.id ? 'active' : ''}" onclick="switchReviewObjectView('${item.id}')">${escapeHtml(item.label)}</button>
+        `).join('')}
       </nav>
-      ${renderReviewSecondaryPanel(entry)}
+      <div class="review-object-body">
+        ${renderReviewObjectView(card, view)}
+      </div>
     </section>
   `;
+}
+
+function renderReviewObjectView(card, view) {
+  if (view === 'dimensions') return renderReviewDimensionsView(card);
+  if (view === 'materials') return renderReviewMaterialsView(card);
+  if (view === 'audit') return renderReviewAuditView(card);
+  return renderReviewOverviewView(card);
+}
+
+function reviewObjectMetrics(card) {
+  const entries = card.entries || [];
+  const evidenceCount = entries.reduce((total, entry) => total + (entry.item.evidence || []).length, 0);
+  const confirmed = entries.filter(entry => reviewStatusGroup(entry.item.review_status || 'pending') === 'accepted').length;
+  const pending = entries.filter(entry => (entry.item.review_status || 'pending') === 'pending').length;
+  return {
+    dimensions: reviewDimensionGroups(card.run).length,
+    fragments: entries.length,
+    evidenceCount,
+    confirmed,
+    pending,
+  };
+}
+
+function reviewObjectSummary(card) {
+  const groups = reviewDimensionGroups(card.run);
+  const lines = groups.slice(0, 5).map(group => {
+    const best = group.entries.find(entry => entry.risk !== 'high') || group.entries[0];
+    return `${group.label}：${reviewEntrySummary(best, 160)}`;
+  });
+  return lines.length
+    ? lines.join('\n')
+    : '当前论文尚无可整合的维度结果。';
+}
+
+function renderReviewOverviewView(card) {
+  const metrics = reviewObjectMetrics(card);
+  const groups = reviewDimensionGroups(card.run);
+  const highRisk = card.entries.filter(entry => entry.risk === 'high').slice(0, 4);
+  return `
+    <section class="review-mini-metrics review-object-metrics">
+      <div><span>覆盖维度</span><b>${metrics.dimensions}</b></div>
+      <div><span>抽取碎片</span><b>${metrics.fragments}</b></div>
+      <div><span>证据片段</span><b>${metrics.evidenceCount}</b></div>
+      <div><span>已确认</span><b>${metrics.confirmed}</b></div>
+    </section>
+    <section class="review-focus-card">
+      <div class="review-card-header-line">
+        <h3>论文对象总览</h3>
+        <span class="review-index-chip">自动整合草稿</span>
+      </div>
+      <div class="review-answer lead">${escapeHtml(reviewObjectSummary(card))}</div>
+    </section>
+    <section class="review-object-grid two">
+      <article class="review-section">
+        <h4>机制链条</h4>
+        <ol class="review-object-list">
+          ${groups.slice(0, 5).map(group => `<li><b>${escapeHtml(group.label)}</b><span>${escapeHtml(reviewEntrySummary(group.entries[0], 120))}</span></li>`).join('') || '<li><span>暂无可构建链条的维度结果。</span></li>'}
+        </ol>
+      </article>
+      <article class="review-section">
+        <h4>贡献判断</h4>
+        <p class="review-object-note">${escapeHtml(buildReviewMaterialText(card, 'contribution'))}</p>
+      </article>
+    </section>
+    <section class="review-section">
+      <h4>风险与边界</h4>
+      <div class="review-fragment-list">
+        ${highRisk.map(entry => renderReviewFragmentMini(entry)).join('') || '<p class="muted">当前没有高风险碎片，仍建议抽样核验证据。</p>'}
+      </div>
+    </section>
+  `;
+}
+
+function renderReviewDimensionsView(card) {
+  const groups = reviewDimensionGroups(card.run, state.reviewFilters);
+  const fallbackGroups = reviewDimensionGroups(card.run);
+  const available = groups.length ? groups : fallbackGroups;
+  const active = available.find(group => group.key === state.reviewDimensionName) || available[0];
+  if (active) state.reviewDimensionName = active.key;
+  return `
+    <div class="review-dimension-workspace">
+      <nav class="review-dimension-tabs" aria-label="维度研读">
+        ${available.map(group => {
+          const status = reviewDimensionCardStatus(group);
+          return `
+          <button type="button" class="review-dimension-card ${active?.key === group.key ? 'active' : ''}" onclick="selectReviewDimension('${escapeHtml(group.key)}')" title="${escapeHtml(group.label)}">
+            <b>${escapeHtml(fmt(group.label, 18))}</b>
+            <span><i class="${escapeHtml(status.tone)}"></i>${group.entries.length} 个碎片 · ${escapeHtml(status.label)}</span>
+          </button>
+        `;}).join('') || '<span class="muted">暂无维度</span>'}
+      </nav>
+      ${active ? `
+        ${renderReviewDimensionOverview(active)}
+        <section class="review-dimension-detail-grid">
+          <article class="review-section review-dimension-fragments">
+            <h4>碎片信息列表</h4>
+            <div class="review-fragment-list">
+              ${active.entries.map(entry => renderReviewDimensionFragmentCard(entry, active)).join('')}
+            </div>
+          </article>
+          <article class="review-section review-dimension-synthesis">
+            ${renderReviewDimensionSynthesis(card, active)}
+          </article>
+        </section>
+      ` : '<div class="review-empty small">没有符合筛选条件的维度结果。</div>'}
+    </div>
+  `;
+}
+
+function reviewDimensionCardStatus(group) {
+  const entries = group?.entries || [];
+  if (entries.some(entry => entry.risk === 'high')) return {label: '高风险', tone: 'risk'};
+  if (entries.some(entry => (entry.item.review_status || 'pending') === 'pending')) return {label: '需判断', tone: 'warn'};
+  return {label: '稳定', tone: 'ok'};
+}
+
+function reviewDimensionRefinementStatus(group) {
+  const entries = group?.entries || [];
+  if (entries.some(entry => entry.risk === 'high')) return '需核验';
+  if (entries.some(entry => (entry.item.review_status || 'pending') === 'pending')) return '待精炼';
+  return '已稳定';
+}
+
+function reviewDimensionEvidenceCompleteness(group) {
+  const entries = group?.entries || [];
+  if (!entries.length) return '低';
+  const withEvidence = entries.filter(entry => (entry.item.evidence || []).length > 0).length;
+  const ratio = withEvidence / entries.length;
+  if (ratio >= 0.85) return '高';
+  if (ratio >= 0.4) return '中';
+  return '低';
+}
+
+function reviewDimensionIncludedCount(group) {
+  return (group?.entries || []).filter(entry => {
+    const status = entry.item.review_status || 'pending';
+    return reviewStatusGroup(status) === 'accepted' || (!['reject', 'mark_wrong_dimension', 'mark_wrong_object'].includes(status) && entry.risk !== 'high');
+  }).length;
+}
+
+function reviewDimensionBoundaryCount(group) {
+  return (group?.entries || []).filter(entry =>
+    entry.risk === 'high'
+    || ['mark_wrong_dimension', 'mark_wrong_object', 'mark_not_reported'].includes(entry.item.review_status || '')
+    || (entry.item.tags || []).some(tag => /boundary|边界|wrong_object|wrong_dimension/i.test(tag))
+  ).length;
+}
+
+function reviewDimensionQuestionForGroup(group) {
+  const entry = group?.entries?.[0];
+  return entry ? reviewDimensionQuestion(entry) : group?.label || '当前维度暂无问题说明。';
+}
+
+function reviewDimensionDefinitionForGroup(group) {
+  const entry = group?.entries?.[0];
+  return entry ? reviewDimensionDefinition(entry) : '当前模板未提供更详细的维度定义。';
+}
+
+function renderReviewDimensionOverview(group) {
+  return `
+    <section class="review-dimension-overview">
+      <div class="review-card-header-line">
+        <div>
+          <span class="review-dimension-chip">维度：${escapeHtml(group.label)}</span>
+          <p><b>维度问题：</b>${escapeHtml(reviewDimensionQuestionForGroup(group))}</p>
+        </div>
+        <details class="review-dimension-detail">
+          <summary>查看维度说明</summary>
+          <p>${escapeHtml(reviewDimensionDefinitionForGroup(group))}</p>
+        </details>
+      </div>
+      <div class="review-dimension-metrics">
+        <div><span>当前状态</span><b>${escapeHtml(reviewDimensionRefinementStatus(group))}</b></div>
+        <div><span>碎片数</span><b>${group.entries.length}</b></div>
+        <div><span>已纳入</span><b>${reviewDimensionIncludedCount(group)}</b></div>
+        <div><span>边界碎片</span><b>${reviewDimensionBoundaryCount(group)}</b></div>
+        <div><span>证据完整度</span><b>${escapeHtml(reviewDimensionEvidenceCompleteness(group))}</b></div>
+      </div>
+    </section>
+  `;
+}
+
+function reviewFragmentConceptName(entry) {
+  return entry.item.edited_title || entry.item.title || entry.item.normalized_value?.concept || entry.item.normalized_value?.name || entry.item.dimension_label || entry.item.dimension_name || '未命名概念';
+}
+
+function reviewFragmentEvidenceSource(entry) {
+  const ev = (entry.item.evidence || [])[0];
+  if (!ev) return '无绑定证据';
+  return `${ev.section_title || 'Unknown'} / p.${ev.page_start || '?'}`;
+}
+
+function reviewFragmentSystemLabel(entry, group) {
+  if (entry.risk === 'high') return '边界候选';
+  if ((entry.item.tags || []).some(tag => /sub|子概念/i.test(tag))) return '子概念';
+  if ((entry.item.tags || []).some(tag => /boundary|边界/i.test(tag))) return '边界概念';
+  if (group?.entries?.[0]?.item?.id === entry.item.id) return '上位概念';
+  return '补充概念';
+}
+
+function reviewFragmentSuggestion(entry, group) {
+  const label = group?.label || entry.item.dimension_label || entry.item.dimension_name || '当前维度';
+  if (entry.risk === 'high') return `先核验证据，再决定是否作为${label}的边界概念`;
+  if ((entry.item.evidence || []).length) return `作为${label}维度的候选核心素材`;
+  return `补充证据后再纳入${label}维度综合答案`;
+}
+
+function renderReviewDimensionFragmentCard(entry, group) {
+  const tags = [
+    reviewFragmentSystemLabel(entry, group),
+    ...(entry.item.tags || []).slice(0, 2),
+  ].filter(Boolean);
+  return `
+    <article class="review-dimension-fragment-card">
+      <header>
+        <h5>${escapeHtml(reviewFragmentConceptName(entry))}</h5>
+        <span class="badge ${escapeHtml(entry.risk)}">${escapeHtml(riskLabel(entry.risk))}</span>
+      </header>
+      <p>${escapeHtml(reviewEntrySummary(entry, 220))}</p>
+      <div class="review-fragment-facts">
+        <span><b>证据：</b>${escapeHtml(reviewFragmentEvidenceSource(entry))}</span>
+        <span><b>系统判断：</b>${escapeHtml(reviewFragmentSystemLabel(entry, group))}</span>
+        <span><b>建议：</b>${escapeHtml(reviewFragmentSuggestion(entry, group))}</span>
+      </div>
+      <div class="review-queue-tags">
+        ${tags.map(tag => `<i>${escapeHtml(tag)}</i>`).join('')}
+      </div>
+      <div class="review-fragment-actions">
+        <button type="button" onclick="toast('已标记为核心概念草稿')">设为核心概念</button>
+        <button type="button" onclick="toast('已标记为子概念草稿')">设为子概念</button>
+        <button type="button" onclick="toast('已标记为边界概念草稿')">设为边界概念</button>
+        <button type="button" onclick="toast('移动维度功能将进入底层碎片审计处理')">移动到其他维度</button>
+        <button type="button" onclick="selectReviewAuditItem('${escapeHtml(entry.run.id)}', '${escapeHtml(entry.item.id)}')">查看证据</button>
+      </div>
+    </article>
+  `;
+}
+
+function reviewDimensionSynthesisSentences(group) {
+  const entries = group?.entries || [];
+  if (!entries.length) return [];
+  const label = group.label || '当前维度';
+  const first = entries[0];
+  const explicitEntries = entries.filter(entry => (entry.item.evidence || []).length > 0);
+  return [
+    {
+      text: `${label}并不是单一碎片可以完整回答的维度，需要结合 ${entries.length} 个抽取碎片进行综合判断。`,
+      sources: entries,
+      nature: '模型归纳',
+    },
+    {
+      text: reviewEntrySummary(first, 180),
+      sources: [first],
+      nature: (first.item.evidence || []).length ? '作者明确陈述' : '模型抽取，待补证据',
+    },
+    ...(explicitEntries[1] ? [{
+      text: reviewEntrySummary(explicitEntries[1], 180),
+      sources: [explicitEntries[1]],
+      nature: explicitEntries[1].risk === 'high' ? '作者陈述 + 系统风险提示' : '作者明确陈述 + 系统归类',
+    }] : []),
+  ];
+}
+
+function renderReviewDimensionSynthesis(card, group) {
+  const sentences = reviewDimensionSynthesisSentences(group);
+  const draft = sentences.map(item => item.text).join('\n\n') || buildReviewMaterialText(card, 'quote', group.entries);
+  return `
+    <div class="review-card-header-line">
+      <h4>综合答案区</h4>
+      <span class="review-index-chip">${escapeHtml(reviewDimensionEvidenceCompleteness(group))}证据</span>
+    </div>
+    <section class="review-synthesis-block">
+      <div class="review-card-header-line">
+        <h5>A. 综合答案正文</h5>
+        <span>系统生成草稿</span>
+      </div>
+      <div class="review-answer lead highlighted">${escapeHtml(draft)}</div>
+      <div class="review-fragment-actions">
+        <button type="button" onclick="toast('已进入综合答案编辑草稿')">编辑</button>
+        <button type="button" onclick="toast('已基于当前碎片重新生成综合草稿')">基于当前碎片重新生成</button>
+        <button type="button" onclick="toast('已压缩为一句话草稿')">压缩为一句话</button>
+        <button type="button" onclick="toast('已改写为综述表达草稿')">改写为综述表达</button>
+        <button type="button" onclick="toast('已改写为对比矩阵字段草稿')">改写为对比矩阵字段</button>
+      </div>
+    </section>
+    <section class="review-synthesis-block">
+      <h5>B. 证据与溯源</h5>
+      <div class="review-evidence-map">
+        ${sentences.map((sentence, index) => `
+          <article>
+            <b>句子 ${index + 1}</b>
+            <p>“${escapeHtml(sentence.text)}”</p>
+            <span>来源：${sentence.sources.map(source => `碎片 ${group.entries.findIndex(entry => entry.item.id === source.item.id) + 1}`).join('、')}</span>
+            <span>性质：${escapeHtml(sentence.nature)}</span>
+          </article>
+        `).join('') || '<p class="muted">暂无可映射的证据来源。</p>'}
+      </div>
+    </section>
+  `;
+}
+
+function renderReviewMaterialsView(card) {
+  const materialTypes = [
+    ['综述素材', buildReviewMaterialText(card, 'review')],
+    ['比较字段', buildReviewMaterialText(card, 'compare')],
+    ['引用点', buildReviewMaterialText(card, 'quote')],
+    ['方案启发', buildReviewMaterialText(card, 'design')],
+  ];
+  return `
+    <section class="review-material-grid">
+      ${materialTypes.map(([title, text]) => `
+        <article class="review-focus-card review-material-card">
+          <div class="review-card-header-line">
+            <h3>${escapeHtml(title)}</h3>
+            <span class="review-index-chip">可复用</span>
+          </div>
+          <p>${escapeHtml(text)}</p>
+          <div class="review-inline-actions">
+            <button type="button" onclick="toast('已生成“${escapeHtml(title)}”草稿，可在素材管理中继续沉淀。')">生成草稿</button>
+            <button type="button" onclick="switchReviewObjectView('audit')">核验证据</button>
+          </div>
+        </article>
+      `).join('')}
+    </section>
+  `;
+}
+
+function renderReviewAuditView(card) {
+  const entries = reviewEntriesForRun(card.run, state.reviewFilters);
+  const selected = currentReviewEntryForRun(card.run);
+  return `
+    <section class="review-section">
+      <div class="review-card-header-line">
+        <h4>底层碎片审计</h4>
+        <span class="review-index-chip">${entries.length} 条</span>
+      </div>
+      <div class="review-audit-table">
+        <table>
+          <thead><tr><th>维度</th><th>抽取内容摘要</th><th>证据</th><th>风险</th><th>状态</th></tr></thead>
+          <tbody>
+            ${entries.map(entry => `
+              <tr
+                class="review-audit-row ${selected?.item?.id === entry.item.id ? 'active' : ''}"
+                role="button"
+                tabindex="0"
+                title="点击选择该碎片并在右侧核验证据"
+                onclick="selectReviewAuditItem('${escapeHtml(entry.run.id)}', '${escapeHtml(entry.item.id)}')"
+                onkeydown="if(event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectReviewAuditItem('${escapeHtml(entry.run.id)}', '${escapeHtml(entry.item.id)}'); }"
+              >
+                <td>${escapeHtml(entry.item.dimension_label || entry.item.dimension_name || '-')}</td>
+                <td>${escapeHtml(reviewEntrySummary(entry, 120))}</td>
+                <td>${(entry.item.evidence || []).length}</td>
+                <td><span class="badge ${escapeHtml(entry.risk)}">${escapeHtml(riskLabel(entry.risk))}</span></td>
+                <td>${escapeHtml(reviewStatusLabel(entry.item.review_status || 'pending'))}</td>
+              </tr>
+            `).join('') || '<tr><td colspan="5">没有符合筛选条件的碎片。</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function renderReviewFragmentMini(entry, withActions = false) {
+  const item = entry.item;
+  return `
+    <article class="review-fragment-card">
+      <div class="review-card-header-line">
+        <b>${escapeHtml(item.dimension_label || item.dimension_name || '未命名维度')}</b>
+        <span class="badge ${escapeHtml(entry.risk)}">${escapeHtml(riskLabel(entry.risk))}</span>
+      </div>
+      <p>${escapeHtml(reviewEntrySummary(entry, 180))}</p>
+      <div class="review-result-meta">
+        <span>证据：<b>${(item.evidence || []).length}</b></span>
+        <span>状态：<b>${escapeHtml(reviewStatusLabel(item.review_status || 'pending'))}</b></span>
+        <span>置信度：<b>${confidenceText(item.confidence)}</b></span>
+      </div>
+      ${withActions ? `<div class="review-inline-actions"><button type="button" onclick="selectReviewAuditItem('${escapeHtml(entry.run.id)}', '${escapeHtml(item.id)}')">查看证据</button><button type="button" onclick="selectReviewAuditItem('${escapeHtml(entry.run.id)}', '${escapeHtml(item.id)}', 'revise')">修订理解</button></div>` : ''}
+    </article>
+  `;
+}
+
+function buildReviewMaterialText(card, type, entries = card.entries || []) {
+  const safeEntries = entries.length ? entries : (card.entries || []);
+  const top = safeEntries.slice(0, 4);
+  const summary = top.map(entry => `${entry.item.dimension_label || entry.item.dimension_name}：${reviewEntrySummary(entry, 90)}`).join('；');
+  if (!summary) return '暂无可生成素材的抽取结果。';
+  if (type === 'compare') return `可作为横向比较字段：${summary}`;
+  if (type === 'quote') return `可优先引用或核验的论断：${summary}`;
+  if (type === 'design') return `可转化为方案设计启发：围绕 ${summary} 提炼对象边界、机制步骤和适用条件。`;
+  if (type === 'contribution') return `该论文的可复用贡献需要围绕 ${summary} 继续核验证据强度与对象边界。`;
+  return `综述素材草稿：${card.title} 可被归纳为 ${summary}`;
 }
 
 function reviewTagButton(value, label) {
@@ -5412,50 +6068,127 @@ function renderReviewSecondaryPanel(entry) {
         <h4>确认将该维度标记为 not_reported？</h4>
         <div class="review-panel-tags">${tags.map(([value, label]) => reviewTagButton(value, label)).join('')}</div>
         <textarea id="reviewModeNote" class="review-textarea review-note-editor" rows="2" placeholder="补充说明，可选">${escapeHtml(state.reviewDraftNote)}</textarea>
-        ${renderReviewPanelActions('确认并下一条', 'mark_not_reported')}
+        ${renderReviewPanelActions('确认标记', 'mark_not_reported')}
       </section>
     `;
   }
   return '';
 }
 
-function renderReviewEvidence(entry) {
-  if (!entry) {
+function renderReviewEvidence(cardOrEntry) {
+  const card = cardOrEntry?.item ? reviewPaperCards().find(item => item.run.id === cardOrEntry.run.id) : cardOrEntry;
+  const entry = cardOrEntry?.item ? cardOrEntry : currentReviewEntryForRun(card?.run);
+  if (!card) {
     $('reviewEvidencePane').innerHTML = '';
     return;
   }
-  const item = entry.item;
-  const pool = findFeedbackPool(entry);
-  const metrics = pool?.feedback_pool?.metrics || {};
-  const candidates = pool?.feedback_pool?.upgrade_candidates || [];
-  $('reviewEvidencePane').innerHTML = `
+  if (state.reviewObjectView === 'dimensions') {
+    $('reviewEvidencePane').innerHTML = renderReviewDimensionAssistant(card);
+    return;
+  }
+  if (state.reviewObjectView === 'materials') {
+    $('reviewEvidencePane').innerHTML = renderReviewMaterialAssistant(card);
+    return;
+  }
+  if (state.reviewObjectView === 'audit') {
+    $('reviewEvidencePane').innerHTML = renderReviewAuditEvidencePane(card, entry);
+    return;
+  }
+  $('reviewEvidencePane').innerHTML = renderReviewPaperAssistant(card);
+}
+
+function renderReviewPaperAssistant(card) {
+  const groups = reviewDimensionGroups(card.run);
+  const riskyEntries = (card.entries || []).filter(entry => entry.risk === 'high').slice(0, 3);
+  const recommended = groups.slice(0, 3);
+  const mechanismChain = groups.slice(0, 4).map(group => group.label).join('\n→ ') || '历史轨迹\n→ 经验机制\n→ 策略改进';
+  return `
     <section class="review-side-section">
-      <header><h3>证据是否支撑模型结果？</h3><span>${(item.evidence || []).length} 条证据</span></header>
-      ${(item.evidence || []).map((ev, index) => renderEvidenceCard(ev, entry, index)).join('') || '<p class="muted">无证据绑定。</p>'}
+      <header><h3>论文级研读助手</h3><span>${escapeHtml(card.status)}</span></header>
+      <div class="review-insight-list">
+        <article><b>整体理解校验</b><p>系统判断：本文的经验机制可由 ${groups.slice(0, 2).map(group => `“${group.label}”`).join(' 和 ') || '多个抽取维度'} 共同刻画。</p><p>可信度：${card.highRiskCount ? '中' : '中高'}。原因：核心信息已有抽取结果，但跨维度关系仍属于系统归纳。</p></article>
+        <article><b>机制链路提示</b><p class="review-chain-text">${escapeHtml(mechanismChain)}</p></article>
+        <article><b>关键风险提示</b><ol>${(riskyEntries.length ? riskyEntries : card.entries.slice(0, 3)).map((entry, index) => `<li>${index + 1}. ${escapeHtml(reviewEntrySummary(entry, 110))}</li>`).join('') || '<li>1. 暂无明显风险，建议抽样核验证据。</li>'}</ol></article>
+        <article><b>推荐研读维度</b><div class="review-reflection-actions">${recommended.map(group => `<button type="button" onclick="selectReviewDimension('${escapeHtml(group.key)}')">研读${escapeHtml(fmt(group.label, 12))}</button>`).join('') || '<button type="button" onclick="switchReviewObjectView(\'dimensions\')">进入维度研读</button>'}</div></article>
+        <article><b>可沉淀素材建议</b><div class="review-reflection-actions"><button type="button" onclick="switchReviewObjectView('materials')">生成论文对象摘要</button><button type="button" onclick="switchReviewObjectView('materials')">生成典型案例说明</button><button type="button" onclick="switchReviewObjectView('materials')">加入综述素材篮</button></div></article>
+      </div>
     </section>
-    <details class="review-side-details">
-      <summary>查看后台反馈沉淀</summary>
-      <section class="review-side-section subtle">
-        <header><h3>本维度反馈统计</h3><button type="button" onclick="refreshReviewFeedback().catch(err => toast(err.message))">刷新</button></header>
-        <div class="review-side-stats">
-          <div><span>确认率</span><b>${Math.round((metrics.confirm_rate || 0) * 100)}%</b></div>
-          <div><span>修改率</span><b>${Math.round((metrics.revise_rate || 0) * 100)}%</b></div>
-          <div><span>驳回率</span><b>${Math.round((metrics.reject_rate || 0) * 100)}%</b></div>
-          <div><span>证据问题</span><b>${Math.round((metrics.evidence_issue_rate || 0) * 100)}%</b></div>
-        </div>
-        <div class="feedback-tag-row">
-          ${Object.entries(pool?.feedback_pool?.common_error_tags || {}).slice(0, 5).map(([tag, count]) => `<span>${escapeHtml(tag)} <b>${count}</b></span>`).join('') || '<span>暂无高频错误</span>'}
-        </div>
-      </section>
-      <section class="review-side-section subtle">
-        <header><h3>模板升级候选</h3></header>
-        ${candidates.slice(0, 2).map(item => `<div class="review-upgrade-card"><b>${escapeHtml(item.target_level)} · ${escapeHtml(item.suggested_target)}</b><p>${escapeHtml(item.recommended_change)}</p></div>`).join('') || '<p class="muted">当前维度暂无明显升级候选。</p>'}
-      </section>
-      <section class="review-side-section subtle">
-        <header><h3>当前记录预览</h3></header>
-        <pre class="review-record-preview">${escapeHtml(JSON.stringify(buildReviewPreview(entry), null, 2))}</pre>
-      </section>
-    </details>
+  `;
+}
+
+function currentReviewDimensionGroup(card) {
+  const groups = reviewDimensionGroups(card.run, state.reviewFilters);
+  const fallbackGroups = reviewDimensionGroups(card.run);
+  const available = groups.length ? groups : fallbackGroups;
+  return available.find(group => group.key === state.reviewDimensionName) || available[0] || null;
+}
+
+function renderReviewDimensionAssistant(card) {
+  const group = currentReviewDimensionGroup(card);
+  if (!group) return '<section class="review-side-section"><header><h3>维度精炼助手</h3></header><p class="muted">暂无可精炼维度。</p></section>';
+  const fragments = group.entries.slice(0, 3);
+  return `
+    <section class="review-side-section">
+      <header><h3>维度精炼助手</h3><span>${escapeHtml(group.label)}</span></header>
+      <div class="review-insight-list">
+        <article><b>当前维度问题</b><p>${escapeHtml(reviewDimensionQuestionForGroup(group))}</p></article>
+        <article><b>判断标准</b><ol><li>1. 经验在论文中被理解为什么；</li><li>2. 是否有显式定义或操作性定义；</li><li>3. 是否存在上位概念、子概念、边界概念；</li><li>4. 不应把单纯的实验效果直接当作定义。</li></ol></article>
+        <article><b>碎片角色建议</b>${fragments.map(entry => `<p><strong>${escapeHtml(reviewFragmentConceptName(entry))}</strong><br>建议角色：${escapeHtml(reviewFragmentSystemLabel(entry, group))}<br>原因：${escapeHtml(reviewFragmentSuggestion(entry, group))}</p>`).join('') || '<p>暂无碎片。</p>'}</article>
+        <article><b>边界与错位提示</b><p>${escapeHtml(reviewDimensionBoundaryCount(group) ? `${reviewDimensionBoundaryCount(group)} 条碎片可能属于边界或错位信息，建议先查看证据再纳入综合答案。` : '当前维度没有明显边界碎片。')}</p></article>
+        <article><b>综合答案生成控制</b><p>建议综合为“核心概念 + 子概念 + 边界概念”的分层答案。</p><div class="review-reflection-actions"><button type="button" onclick="toast('已基于当前碎片重新生成综合答案')">基于当前碎片重新生成综合答案</button><button type="button" onclick="toast('已生成一句话定义')">生成一句话定义</button><button type="button" onclick="toast('已生成对比矩阵字段')">生成对比矩阵字段</button><button type="button" onclick="toast('已生成综述表达')">生成综述表达</button></div></article>
+        <article><b>证据支撑提醒</b><p>当前证据完整度：${escapeHtml(reviewDimensionEvidenceCompleteness(group))}。综合答案中的跨碎片关系属于系统归纳，确认前建议查看证据映射。</p></article>
+        <article><b>可输出素材</b><p>${escapeHtml(buildReviewMaterialText(card, 'quote', group.entries))}</p></article>
+      </div>
+    </section>
+  `;
+}
+
+function renderReviewMaterialAssistant(card) {
+  const metrics = reviewObjectMetrics(card);
+  const confirmedText = `${metrics.confirmed} / ${metrics.fragments}`;
+  return `
+    <section class="review-side-section">
+      <header><h3>素材生成助手</h3><span>${escapeHtml(card.materialStatus)}</span></header>
+      <div class="review-insight-list">
+        <article><b>当前可用素材概览</b><p>已确认维度：${confirmedText}<br>可生成素材：综述句 3 条、比较字段 6 项、引用点 2 条、方案启发 2 条、研究空白 1 条。</p></article>
+        <article><b>素材用途推荐</b><ol><li>1. 适合作为典型案例。</li><li>2. 适合放入综述中的机制或表示方式小节。</li><li>3. 可用于对比矩阵中的经验形态和使用方式字段。</li><li>4. 可作为方案设计启发来源。</li></ol></article>
+        <article><b>写作表达建议</b><p>当前综述句建议拆成两句：第一句说明核心概念，第二句说明边界或补充机制，最后指出二者如何共同构成经验机制。</p></article>
+        <article><b>比较字段规范化</b><p class="review-chain-text">definition_mode：操作性定义<br>core_concept：${escapeHtml(card.entries[0]?.item.dimension_label || '待确认')}<br>sub_concepts：${escapeHtml(card.entries.slice(1, 3).map(entry => reviewFragmentConceptName(entry)).join(', ') || '待确认')}<br>boundary_concept：${escapeHtml(card.entries.find(entry => entry.risk === 'high') ? reviewFragmentConceptName(card.entries.find(entry => entry.risk === 'high')) : '待确认')}<br>experience_form：explicit + implicit candidates</p></article>
+        <article><b>引用与证据提醒</b><p>适合支撑：经验机制可以由多个显式或隐式组成部分共同构成。<br>不建议支撑：论文系统评估了所有经验更新机制。原因：当前抽取结果仍需核验更新机制证据。</p></article>
+        <article><b>导出与加入素材包</b><div class="review-reflection-actions"><button type="button" onclick="toast('已生成综述段落草稿')">生成综述段落</button><button type="button" onclick="toast('已生成比较字段 JSON 草稿')">生成比较字段 JSON</button><button type="button" onclick="toast('已生成引用点草稿')">生成引用点</button><button type="button" onclick="toast('已生成方案启发草稿')">生成方案启发</button><button type="button" onclick="toast('已加入素材包草稿')">导出素材包</button></div></article>
+      </div>
+    </section>
+  `;
+}
+
+function renderReviewAuditEvidencePane(card, entry) {
+  const item = entry?.item;
+  return `
+    <section class="review-side-section">
+      <header><h3>证据核验</h3><span>${entry ? (item.evidence || []).length : 0} 条证据</span></header>
+      ${entry ? `<p class="review-evidence-hint neutral">当前碎片：${escapeHtml(reviewFragmentConceptName(entry))}</p>` : '<p class="muted">请选择一条底层碎片。</p>'}
+      ${entry ? (item.evidence || []).map((ev, index) => renderEvidenceCard(ev, entry, index)).join('') : ''}
+      ${entry && !(item.evidence || []).length ? '<p class="muted">当前碎片无证据绑定。</p>' : ''}
+    </section>
+    ${entry ? renderReviewAuditSideActions(entry) : ''}
+  `;
+}
+
+function renderReviewAuditSideActions(entry) {
+  const item = entry.item;
+  const savingAttr = state.reviewSaving ? 'disabled aria-busy="true"' : '';
+  return `
+    <section class="review-side-section review-audit-actions">
+      <header><h3>审查操作</h3><span>${escapeHtml(reviewStatusLabel(item.review_status || 'pending'))}</span></header>
+      <nav class="review-primary-actions" aria-label="审查操作">
+        <button type="button" class="primary good ${item.review_status === 'confirm' ? 'active' : ''}" onclick="saveCurrentReview('confirm')" ${savingAttr}>${state.reviewSaving ? '保存中...' : '确认正确'}</button>
+        <button type="button" class="${state.reviewActionMode === 'revise' ? 'active' : ''}" onclick="openReviewMode('revise')" ${savingAttr}>修改</button>
+        <button type="button" class="danger ${state.reviewActionMode === 'reject' || item.review_status === 'reject' ? 'active' : ''}" onclick="openReviewMode('reject')" ${savingAttr}>驳回</button>
+        <button type="button" class="warn ${state.reviewActionMode === 'evidence' || item.review_status === 'mark_evidence_insufficient' ? 'active' : ''}" onclick="openReviewMode('evidence')" ${savingAttr}>证据不足</button>
+        <button type="button" class="${state.reviewActionMode === 'not_reported' || item.review_status === 'mark_not_reported' ? 'active' : ''}" onclick="openReviewMode('not_reported')" ${savingAttr}>应为未报告</button>
+      </nav>
+      ${renderReviewSecondaryPanel(entry)}
+    </section>
   `;
 }
 
@@ -5681,6 +6414,52 @@ window.selectReviewItem = function(index) {
   renderReviewWorkbench();
 };
 
+window.selectReviewPaper = function(runId) {
+  state.reviewRunId = runId;
+  const entryIndex = filteredReviewEntries().findIndex(entry => entry.run.id === runId);
+  if (entryIndex >= 0) state.reviewItemIndex = entryIndex;
+  resetReviewActionMode();
+  renderReviewWorkbench();
+};
+
+window.switchReviewObjectView = function(view) {
+  state.reviewObjectView = REVIEW_OBJECT_VIEWS.some(item => item.id === view) ? view : 'overview';
+  if (state.reviewObjectView !== 'dimensions') state.reviewDimensionName = state.reviewDimensionName || null;
+  renderReviewWorkbench();
+};
+
+window.selectReviewDimension = function(dimensionName) {
+  state.reviewDimensionName = dimensionName;
+  state.reviewObjectView = 'dimensions';
+  renderReviewWorkbench();
+};
+
+window.selectReviewAuditItem = function(runId, itemId, mode = '') {
+  state.reviewRunId = runId;
+  state.reviewObjectView = 'audit';
+  let entries = filteredReviewEntries();
+  let index = entries.findIndex(entry => entry.run.id === runId && entry.item.id === itemId);
+  if (index < 0) {
+    state.reviewFilters = {dimension: 'all', status: 'all', risk: 'all', query: ''};
+    state.reviewDraftFilters = {...state.reviewFilters};
+    entries = filteredReviewEntries();
+    index = entries.findIndex(entry => entry.run.id === runId && entry.item.id === itemId);
+  }
+  if (index >= 0) state.reviewItemIndex = index;
+  resetReviewActionMode();
+  if (mode) {
+    const entry = currentReviewEntryForRun(reviewRun());
+    if (entry) {
+      state.reviewActionMode = mode;
+      state.reviewActionTags = [];
+      state.reviewActionItemKey = reviewItemKey(entry);
+      state.reviewDraftContent = entry.item.edited_content || entry.item.content || '';
+      state.reviewDraftNote = entry.item.user_note || '';
+    }
+  }
+  renderReviewWorkbench();
+};
+
 window.toggleReviewScopePanel = function() {
   state.reviewScopePanelOpen = !state.reviewScopePanelOpen;
   renderReviewPanel();
@@ -5765,6 +6544,19 @@ function setReviewItemIndex(index) {
   const entries = filteredReviewEntries();
   if (!entries.length) return;
   state.reviewItemIndex = Math.min(Math.max(index, 0), entries.length - 1);
+  state.reviewRunId = entries[state.reviewItemIndex]?.run.id || state.reviewRunId;
+  resetReviewActionMode();
+  renderReviewWorkbench();
+}
+
+function setReviewPaperIndex(index) {
+  const cards = reviewPaperCards();
+  if (!cards.length) return;
+  const nextIndex = Math.min(Math.max(index, 0), cards.length - 1);
+  const card = cards[nextIndex];
+  state.reviewRunId = card.run.id;
+  const entryIndex = filteredReviewEntries().findIndex(entry => entry.run.id === card.run.id);
+  if (entryIndex >= 0) state.reviewItemIndex = entryIndex;
   resetReviewActionMode();
   renderReviewWorkbench();
 }
@@ -5781,12 +6573,12 @@ window.openReviewMode = function(mode, tags = []) {
   state.reviewActionItemKey = reviewItemKey(entry);
   state.reviewDraftContent = entry.item.edited_content || entry.item.content || '';
   state.reviewDraftNote = entry.item.user_note || '';
-  renderReviewMain(entry);
+  renderReviewWorkbench();
 };
 
 window.closeReviewMode = function() {
   resetReviewActionMode();
-  renderReviewMain(currentReviewEntry());
+  renderReviewWorkbench();
 };
 
 window.toggleReviewModeTag = function(tag) {
@@ -5796,7 +6588,7 @@ window.toggleReviewModeTag = function(tag) {
   if (selected.has(tag)) selected.delete(tag);
   else selected.add(tag);
   state.reviewActionTags = [...selected];
-  renderReviewMain(currentReviewEntry());
+  renderReviewWorkbench();
 };
 
 window.skipReviewItem = function() {
@@ -5868,7 +6660,7 @@ window.saveCurrentReview = async function(status) {
     suggested_target: inferReviewTarget(status, tags),
   };
   state.reviewSaving = true;
-  renderReviewMain(entry);
+  renderReviewWorkbench();
   toast('正在保存审查结果...');
   try {
     const updatedRun = await api(`/api/extractions/${entry.run.id}/items/${entry.item.id}/review`, {
@@ -5891,7 +6683,7 @@ window.saveCurrentReview = async function(status) {
     toast(message);
   } catch (err) {
     state.reviewSaving = false;
-    renderReviewMain(currentReviewEntry());
+    renderReviewWorkbench();
     toast(`保存失败：${err.message}`);
   }
 };
@@ -6871,6 +7663,83 @@ function materialDeepDiveClusterCacheKey(dim, entries) {
   return `${dim?.value || ''}::${ids}`;
 }
 
+function materialSemanticClusterStorageKey(key) {
+  return `litmate:semantic-category-system:v2:${key}`;
+}
+
+function loadMaterialSemanticClusterCache(key) {
+  try {
+    const raw = localStorage.getItem(materialSemanticClusterStorageKey(key));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.clusters)) return null;
+    return parsed;
+  } catch (err) {
+    return null;
+  }
+}
+
+function saveMaterialSemanticClusterCache(key, value) {
+  try {
+    localStorage.setItem(materialSemanticClusterStorageKey(key), JSON.stringify({
+      ...value,
+      clusters: (value?.clusters || []).map(cluster => ({
+        ...cluster,
+        representative_contents: materialSemanticRepresentativeContents(cluster),
+        representative_content: materialSemanticRepresentativeContents(cluster).join('\n'),
+        include_criteria: cleanSemanticIncludeCriteria(cluster.include_criteria),
+      })),
+      loading: false,
+      progress: 100,
+      cached_at: new Date().toISOString(),
+    }));
+  } catch (err) {
+    // Ignore storage quota/private-mode failures; in-memory cache still works.
+  }
+}
+
+function cleanSemanticIncludeCriteria(value) {
+  return String(value || '')
+    .replace(/[；;]?\s*关键词可参考[:：][^。；;\n]*(。)?/g, '$1')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([。；;])/g, '$1')
+    .trim();
+}
+
+function materialSemanticRepresentativeContents(cluster) {
+  const raw = Array.isArray(cluster?.representative_contents)
+    ? cluster.representative_contents
+    : String(cluster?.representative_content || '').split(/\n+/);
+  return raw.map(item => String(item || '').trim()).filter(Boolean).slice(0, 5);
+}
+
+function materialSemanticClusterPaperIndices(cluster) {
+  const values = [
+    ...(cluster?.paper_indices || []),
+    ...(cluster?.typical_paper_indices || []),
+    ...materialSemanticRepresentativeContents(cluster).flatMap(item =>
+      [...String(item).matchAll(/\bP\s*(\d+)\b/gi)].map(match => Number(match[1]))
+    ),
+  ];
+  return [...new Set(values.map(Number).filter(Number.isFinite))].sort((a, b) => a - b);
+}
+
+function materialRepresentativeContentsFromEntries(entries, allEntries, limit = 5) {
+  const seen = new Set();
+  const samples = [];
+  entries.forEach(entry => {
+    if (samples.length >= limit) return;
+    const text = String(entry.content || materialItemContent(entry.item) || '').replace(/\s+/g, ' ').trim();
+    if (!text) return;
+    const key = text.slice(0, 180).toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    const paperIndex = materialDeepDiveEntryPaperIndex(entry, allEntries);
+    samples.push(`${paperIndex ? `P${paperIndex}` : (entry.paper?.metadata?.title || entry.paper?.id || '论文')}: ${fmt(text, 420)}`);
+  });
+  return samples;
+}
+
 function materialDeepDiveEntryPaperIndex(entry, entries) {
   const seen = [];
   entries.forEach(item => {
@@ -6895,22 +7764,27 @@ function materialSemanticClusterEntriesPayload(entries) {
 }
 
 function materialLocalSemanticClusters(ctx) {
-  return ctx.clusters.map((cluster, index) => ({
-    id: `local_${index + 1}`,
-    name: cluster.name,
-    description: cluster.description,
-    definition: cluster.description,
-    include_criteria: `包含与“${cluster.name}”语义一致的定义、机制或经验表述。`,
-    exclude_criteria: '排除只作为背景或 related work 出现、没有作为本文对象/机制报告的内容。',
-    keywords: materialClusterKeywords(cluster.entries).slice(0, 3),
-    typical_paper_indices: cluster.entries.map(entry => materialDeepDiveEntryPaperIndex(entry, ctx.entries)).filter(Boolean).slice(0, 3),
-    boundary_paper_indices: cluster.entries.map(entry => materialDeepDiveEntryPaperIndex(entry, ctx.entries)).filter(Boolean).slice(3, 5),
-    paper_ids: cluster.entries.map(entry => entry.paper?.id || entry.item?.paper_id).filter(Boolean),
-    paper_indices: cluster.entries.map(entry => materialDeepDiveEntryPaperIndex(entry, ctx.entries)).filter(Boolean).sort((a, b) => a - b),
-    material_ids: cluster.entries.map(entry => entry.item?.id).filter(Boolean),
-    entry_count: cluster.entries.length,
-    confidence: 0.6,
-  }));
+  return ctx.clusters.map((cluster, index) => {
+    const representativeContents = materialRepresentativeContentsFromEntries(cluster.entries, ctx.entries);
+    return {
+      id: `local_${index + 1}`,
+      name: cluster.name,
+      description: cluster.description,
+      definition: cluster.description,
+      representative_content: representativeContents.join('\n'),
+      representative_contents: representativeContents,
+      include_criteria: `包含与“${cluster.name}”语义一致的定义、机制或经验表述。`,
+      exclude_criteria: '排除只作为背景或 related work 出现、没有作为本文对象/机制报告的内容。',
+      keywords: materialClusterKeywords(cluster.entries).slice(0, 3),
+      typical_paper_indices: cluster.entries.map(entry => materialDeepDiveEntryPaperIndex(entry, ctx.entries)).filter(Boolean).slice(0, 3),
+      boundary_paper_indices: cluster.entries.map(entry => materialDeepDiveEntryPaperIndex(entry, ctx.entries)).filter(Boolean).slice(3, 5),
+      paper_ids: cluster.entries.map(entry => entry.paper?.id || entry.item?.paper_id).filter(Boolean),
+      paper_indices: cluster.entries.map(entry => materialDeepDiveEntryPaperIndex(entry, ctx.entries)).filter(Boolean).sort((a, b) => a - b),
+      material_ids: cluster.entries.map(entry => entry.item?.id).filter(Boolean),
+      entry_count: cluster.entries.length,
+      confidence: 0.6,
+    };
+  });
 }
 
 function materialSemanticClustersForContext(ctx) {
@@ -6918,6 +7792,22 @@ function materialSemanticClustersForContext(ctx) {
   const cached = state.materialSemanticClusters[key];
   const clusters = cached?.clusters || materialLocalSemanticClusters(ctx);
   return materialApplySemanticClusterAdjustments(key, clusters);
+}
+
+function saveMaterialSemanticClusterSnapshot(ctx, extra = {}) {
+  const key = ctx.clusterCacheKey || materialDeepDiveClusterCacheKey(ctx.dim, ctx.entries);
+  const current = state.materialSemanticClusters[key] || {};
+  saveMaterialSemanticClusterCache(key, {
+    ...current,
+    ...extra,
+    clusters: materialSemanticClustersForContext(ctx).map(cluster => ({
+      ...cluster,
+      selected: false,
+      representative_contents: materialSemanticRepresentativeContents(cluster),
+      representative_content: materialSemanticRepresentativeContents(cluster).join('\n'),
+      include_criteria: cleanSemanticIncludeCriteria(cluster.include_criteria),
+    })),
+  });
 }
 
 function materialClusterKeywords(entries) {
@@ -6948,12 +7838,18 @@ function materialApplySemanticClusterAdjustments(key, clusters) {
     if (picked.length < 2) return null;
     picked.forEach(cluster => consumed.add(cluster.id));
     const groupName = renames[group.id] || group.name || picked.map(cluster => cluster.name).join(' / ');
+    const groupRepresentativeContents = materialSemanticRepresentativeContents(group);
+    const representativeContents = groupRepresentativeContents.length
+      ? groupRepresentativeContents
+      : [...new Set(picked.flatMap(cluster => materialSemanticRepresentativeContents(cluster)))].slice(0, 5);
     return {
       id: group.id,
       name: groupName,
       description: group.description || `人工合并 ${picked.length} 个语义相近类别，用于统一综述口径。`,
       definition: group.definition || picked.map(cluster => cluster.definition || cluster.description).filter(Boolean).join('\n'),
-      include_criteria: group.include_criteria || picked.map(cluster => cluster.include_criteria).filter(Boolean).join('\n'),
+      representative_content: representativeContents.join('\n'),
+      representative_contents: representativeContents,
+      include_criteria: cleanSemanticIncludeCriteria(group.include_criteria || picked.map(cluster => cluster.include_criteria).filter(Boolean).join('\n')),
       exclude_criteria: group.exclude_criteria || picked.map(cluster => cluster.exclude_criteria).filter(Boolean).join('\n'),
       typical_paper_indices: [...new Set(picked.flatMap(cluster => cluster.typical_paper_indices || []))].slice(0, 6),
       boundary_paper_indices: [...new Set(picked.flatMap(cluster => cluster.boundary_paper_indices || []))].slice(0, 6),
@@ -6974,6 +7870,18 @@ function materialApplySemanticClusterAdjustments(key, clusters) {
 async function refreshMaterialSemanticClusters(ctx, options = {}) {
   const key = materialDeepDiveClusterCacheKey(ctx.dim, ctx.entries);
   if (!options.force && state.materialSemanticClusters[key]) return state.materialSemanticClusters[key];
+  if (!options.force) {
+    const stored = loadMaterialSemanticClusterCache(key);
+    if (stored) {
+      state.materialSemanticClusters[key] = {
+        ...stored,
+        loading: false,
+        progress: 100,
+        message: stored.message || `已加载上次分类体系：${stored.clusters?.length || 0} 类`,
+      };
+      return state.materialSemanticClusters[key];
+    }
+  }
   if (options.keepLoading && state.materialSemanticClusters[key]?.loading) {
     state.materialSemanticClusters[key] = {
       ...state.materialSemanticClusters[key],
@@ -7012,6 +7920,7 @@ async function refreshMaterialSemanticClusters(ctx, options = {}) {
       message: `分类体系已生成：${result.clusters?.length || 0} 类`,
       updated_at: new Date().toISOString(),
     };
+    saveMaterialSemanticClusterCache(key, state.materialSemanticClusters[key]);
   } catch (err) {
     const localClusters = materialLocalSemanticClusters(ctx);
     state.materialSemanticClusters[key] = {
@@ -7022,6 +7931,7 @@ async function refreshMaterialSemanticClusters(ctx, options = {}) {
       clusters: localClusters,
       updated_at: new Date().toISOString(),
     };
+    saveMaterialSemanticClusterCache(key, state.materialSemanticClusters[key]);
     toast(`分类体系生成不可用，已使用本地兜底：${err.message}`);
   }
   return state.materialSemanticClusters[key];
@@ -7515,16 +8425,36 @@ function materialSemanticClusterEntryMap(ctx) {
 function materialEntriesForSemanticCluster(ctx, cluster) {
   const materialIds = new Set(cluster.material_ids || []);
   const paperIds = new Set(cluster.paper_ids || []);
-  const matched = ctx.entries.filter(entry => (entry.item?.id && materialIds.has(entry.item.id)) || paperIds.has(entry.paper?.id));
-  return matched.length ? matched : ctx.entries.filter(entry => paperIds.has(entry.paper?.id));
+  const paperIndices = new Set(materialSemanticClusterPaperIndices(cluster));
+  const matched = ctx.entries.filter(entry => {
+    const paperIndex = materialDeepDiveEntryPaperIndex(entry, ctx.entries);
+    const paperId = entry.paper?.id || entry.item?.paper_id;
+    return (entry.item?.id && materialIds.has(entry.item.id))
+      || paperIds.has(paperId)
+      || (paperIndex && paperIndices.has(paperIndex));
+  });
+  return matched.length ? matched : ctx.entries.filter(entry => paperIds.has(entry.paper?.id || entry.item?.paper_id));
 }
 
 function materialSemanticClusterReviewText(ctx, cluster) {
-  const papers = (cluster.paper_indices || []).length
-    ? `论文 ${cluster.paper_indices.join('、')}`
-    : `${cluster.entry_count || 0} 篇论文`;
+  const paperIndices = materialSemanticClusterPaperIndices(cluster);
+  const entries = materialEntriesForSemanticCluster(ctx, cluster);
+  const paperCount = new Set(entries.map(entry => entry.paper?.id || entry.item?.paper_id).filter(Boolean)).size || entries.length;
+  const papers = paperIndices.length
+    ? `论文 ${paperIndices.join('、')}`
+    : `${paperCount || cluster.entry_count || 0} 篇论文`;
   const keywords = (cluster.keywords || []).length ? `关键词包括 ${cluster.keywords.join('、')}` : '关键词尚不稳定';
   return `【${cluster.name}】${cluster.description} ${keywords}。可在综述中将其作为一类${ctx.type === '定义类维度' ? '经验定义' : '维度表述'}来讨论，涉及${papers}。`;
+}
+
+function materialSemanticClusterDisplayName(name, index = 0) {
+  const original = String(name || '').trim();
+  const withoutEnglish = original
+    .replace(/[A-Za-z][A-Za-z0-9_./&+\-]*(?:\s+[A-Za-z][A-Za-z0-9_./&+\-]*)*/g, '')
+    .replace(/[()[\]{}<>（）:：|/\\,，;；·•_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return /[\u4e00-\u9fff]/.test(withoutEnglish) ? withoutEnglish : (withoutEnglish || `类别 ${index + 1}`);
 }
 
 function renderMaterialSemanticClusterCards(ctx) {
@@ -7558,29 +8488,47 @@ function renderMaterialSemanticClusterCards(ctx) {
       ` : ''}
       ${cached?.error ? `<p class="muted">后端聚类暂不可用，已展示本地兜底结果：${escapeHtml(cached.error)}</p>` : ''}
       <div class="semantic-cluster-grid">
-        ${clusters.map(cluster => `
+        ${clusters.map((cluster, index) => {
+          const displayName = materialSemanticClusterDisplayName(cluster.name, index);
+          const clusterEntries = materialEntriesForSemanticCluster(ctx, cluster);
+          const paperCount = new Set(clusterEntries.map(entry => entry.paper?.id || entry.item?.paper_id).filter(Boolean)).size || clusterEntries.length;
+          const paperIndices = [...new Set(clusterEntries.map(entry => materialDeepDiveEntryPaperIndex(entry, ctx.entries)).filter(Boolean))];
+          const definitionText = cluster.definition || cluster.description || '暂无定义';
+          const includeText = cleanSemanticIncludeCriteria(cluster.include_criteria) || '暂无纳入标准';
+          const representativeContents = materialSemanticRepresentativeContents(cluster);
+          return `
           <article class="semantic-cluster-card ${cluster.selected ? 'selected' : ''}" onclick="toggleMaterialSemanticClusterSelection(${escapeHtml(JSON.stringify(cluster.id))})">
             <header>
-              <b class="semantic-cluster-title">${escapeHtml(cluster.name)}</b>
-              <div onclick="event.stopPropagation()">
-                <button type="button" onclick="setMaterialSemanticClusterStatus(${escapeHtml(JSON.stringify(cluster.id))}, 'kept')">保留</button>
-                <button type="button" onclick="openMaterialSemanticClusterEdit(${escapeHtml(JSON.stringify(cluster.id))})">编辑</button>
-                <button type="button" onclick="setMaterialSemanticClusterStatus(${escapeHtml(JSON.stringify(cluster.id))}, 'deleted')">删除</button>
-                <button type="button" onclick="openMaterialSemanticClusterDetail(${escapeHtml(JSON.stringify(cluster.id))})">查看详情</button>
-                <button type="button" onclick="openMaterialSemanticClusterMaterial(${escapeHtml(JSON.stringify(cluster.id))})">生成素材</button>
+              <div class="semantic-cluster-card-title-line">
+                <b class="semantic-cluster-title" title="${escapeHtml(cluster.name || displayName)}">${escapeHtml(displayName)}</b>
+                <span class="semantic-cluster-paper-count">${escapeHtml(paperCount)}篇论文${cluster.status === 'kept' ? ' · 已保留' : ''}${cluster.merged_from?.length ? ` · 合并 ${cluster.merged_from.length} 类` : ''}</span>
               </div>
             </header>
-            <small>${escapeHtml(cluster.entry_count || cluster.paper_ids?.length || 0)} 篇论文${cluster.status === 'kept' ? ' · 已保留' : ''}${cluster.merged_from?.length ? ` · 合并 ${cluster.merged_from.length} 类` : ''}</small>
-            <p>${escapeHtml(cluster.description)}</p>
-            ${cluster.definition ? `<p class="semantic-cluster-definition">${escapeHtml(cluster.definition)}</p>` : ''}
+            <div class="semantic-cluster-card-actions" onclick="event.stopPropagation()">
+              <button type="button" onclick="setMaterialSemanticClusterStatus(${escapeHtml(JSON.stringify(cluster.id))}, 'kept')">保留</button>
+              <button type="button" onclick="openMaterialSemanticClusterEdit(${escapeHtml(JSON.stringify(cluster.id))})">编辑</button>
+              <button type="button" onclick="setMaterialSemanticClusterStatus(${escapeHtml(JSON.stringify(cluster.id))}, 'deleted')">删除</button>
+              <button type="button" onclick="openMaterialSemanticClusterDetail(${escapeHtml(JSON.stringify(cluster.id))})">查看详情</button>
+              <button type="button" onclick="openMaterialSemanticClusterMaterial(${escapeHtml(JSON.stringify(cluster.id))})">生成素材</button>
+            </div>
+            <div class="semantic-cluster-facts">
+              <p><b>定义</b><span>${escapeHtml(definitionText)}</span></p>
+              <p><b>纳入标准</b><span>${escapeHtml(includeText)}</span></p>
+            </div>
+            <div class="semantic-cluster-representatives">
+              <b>代表性内容</b>
+              <ul>
+                ${representativeContents.slice(0, 3).map(item => `<li title="${escapeHtml(item)}">${escapeHtml(item)}</li>`).join('') || '<li>待生成代表性内容</li>'}
+              </ul>
+            </div>
             <div class="semantic-cluster-keywords">
-              ${(cluster.keywords || []).slice(0, 3).map(keyword => `<span>${escapeHtml(keyword)}</span>`).join('') || '<span>待提炼</span>'}
+              ${(cluster.keywords || []).slice(0, 3).map(keyword => `<span title="${escapeHtml(keyword)}">${escapeHtml(keyword)}</span>`).join('') || '<span>待提炼</span>'}
             </div>
             <div class="semantic-cluster-paper-ids">
-              ${(cluster.paper_indices || []).slice(0, 12).map(index => `<b>P${escapeHtml(index)}</b>`).join('') || '<b>-</b>'}
+              ${paperIndices.slice(0, 12).map(index => `<b>P${escapeHtml(index)}</b>`).join('') || '<b>-</b>'}
             </div>
           </article>
-        `).join('') || '<p class="muted">当前维度暂无可聚类结果。</p>'}
+        `}).join('') || '<p class="muted">当前维度暂无可聚类结果。</p>'}
       </div>
     </section>
   `;
@@ -7672,24 +8620,30 @@ window.setMaterialSemanticClusterStatus = function(clusterId, status) {
   if (status === 'deleted') {
     state.materialSemanticClusterMergeSelection = (state.materialSemanticClusterMergeSelection || []).filter(id => id !== clusterId);
   }
+  saveMaterialSemanticClusterSnapshot(result.ctx);
   renderMaterialDeepDivePage(result.ctx.dim, result.items);
 };
 
 function materialSemanticCategoriesPayload(ctx) {
   return materialSemanticClustersForContext(ctx)
     .filter(cluster => cluster.status !== 'deleted' && cluster.id !== 'unassigned')
-    .map(cluster => ({
-      id: cluster.id,
-      name: cluster.name,
-      definition: cluster.definition || cluster.description || '',
-      include_criteria: cluster.include_criteria || '',
-      exclude_criteria: cluster.exclude_criteria || '',
-      typical_paper_indices: cluster.typical_paper_indices || [],
-      boundary_paper_indices: cluster.boundary_paper_indices || [],
-      keywords: cluster.keywords || [],
-      paper_ids: cluster.paper_ids || [],
-      material_ids: cluster.material_ids || [],
-    }));
+    .map(cluster => {
+      const representativeContents = materialSemanticRepresentativeContents(cluster);
+      return {
+        id: cluster.id,
+        name: cluster.name,
+        definition: cluster.definition || cluster.description || '',
+        representative_content: representativeContents.join('\n'),
+        representative_contents: representativeContents,
+        include_criteria: cleanSemanticIncludeCriteria(cluster.include_criteria),
+        exclude_criteria: cluster.exclude_criteria || '',
+        typical_paper_indices: cluster.typical_paper_indices || [],
+        boundary_paper_indices: cluster.boundary_paper_indices || [],
+        keywords: cluster.keywords || [],
+        paper_ids: cluster.paper_ids || [],
+        material_ids: cluster.material_ids || [],
+      };
+    });
 }
 
 window.reassignMaterialSemanticClusters = async function() {
@@ -7727,6 +8681,14 @@ window.reassignMaterialSemanticClusters = async function() {
       message: `论文重新分配完成：${result.clusters?.length || 0} 类`,
       updated_at: new Date().toISOString(),
     };
+    delete state.materialSemanticClusterMergeGroups[key];
+    delete state.materialSemanticClusterRenames[key];
+    saveMaterialSemanticClusterSnapshot(ctx, {
+      loading: false,
+      progress: 100,
+      message: state.materialSemanticClusters[key].message,
+      updated_at: state.materialSemanticClusters[key].updated_at,
+    });
     state.materialSemanticClusterMergeSelection = [];
     renderMaterialDeepDivePage(dim, items);
     toast('论文重新分配完成');
@@ -7746,13 +8708,15 @@ window.openMaterialSemanticClusterEdit = function(clusterId) {
   const found = currentMaterialSemanticCluster(clusterId);
   if (!found) return toast('未找到类别');
   const {cluster} = found;
+  const representativeContents = materialSemanticRepresentativeContents(cluster);
   $('materialCellTitle').textContent = '编辑类别';
   $('materialCellMeta').textContent = cluster.name;
   $('materialCellBody').innerHTML = `
     <section class="semantic-category-editor">
       <label><span>类别名称</span><input id="semanticCategoryName" value="${escapeHtml(cluster.name || '')}" /></label>
       <label><span>类别定义</span><textarea id="semanticCategoryDefinition" rows="4">${escapeHtml(cluster.definition || cluster.description || '')}</textarea></label>
-      <label><span>纳入标准</span><textarea id="semanticCategoryInclude" rows="4">${escapeHtml(cluster.include_criteria || '')}</textarea></label>
+      <label><span>代表性内容</span><textarea id="semanticCategoryRepresentative" rows="6" placeholder="每行一条，建议保留 3-5 条具体论文维度内容">${escapeHtml(representativeContents.join('\n'))}</textarea></label>
+      <label><span>纳入标准</span><textarea id="semanticCategoryInclude" rows="4">${escapeHtml(cleanSemanticIncludeCriteria(cluster.include_criteria))}</textarea></label>
       <label><span>排除标准</span><textarea id="semanticCategoryExclude" rows="4">${escapeHtml(cluster.exclude_criteria || '')}</textarea></label>
       <label><span>典型论文编号</span><input id="semanticCategoryTypical" value="${escapeHtml((cluster.typical_paper_indices || cluster.paper_indices || []).join(', '))}" /></label>
       <label><span>边界论文编号</span><input id="semanticCategoryBoundary" value="${escapeHtml((cluster.boundary_paper_indices || []).join(', '))}" /></label>
@@ -7773,7 +8737,9 @@ function parseNumberList(value) {
 window.saveMaterialSemanticClusterEdit = function(clusterId) {
   const name = $('semanticCategoryName')?.value?.trim() || '未命名类别';
   const definition = $('semanticCategoryDefinition')?.value?.trim() || '';
-  const include = $('semanticCategoryInclude')?.value?.trim() || '';
+  const representativeContents = String($('semanticCategoryRepresentative')?.value || '').split(/\n+/).map(item => item.trim()).filter(Boolean).slice(0, 5);
+  const representativeContent = representativeContents.join('\n');
+  const include = cleanSemanticIncludeCriteria($('semanticCategoryInclude')?.value?.trim() || '');
   const exclude = $('semanticCategoryExclude')?.value?.trim() || '';
   const typical = parseNumberList($('semanticCategoryTypical')?.value || '');
   const boundary = parseNumberList($('semanticCategoryBoundary')?.value || '');
@@ -7782,6 +8748,8 @@ window.saveMaterialSemanticClusterEdit = function(clusterId) {
     name,
     description: definition,
     definition,
+    representative_content: representativeContent,
+    representative_contents: representativeContents,
     include_criteria: include,
     exclude_criteria: exclude,
     typical_paper_indices: typical,
@@ -7790,6 +8758,7 @@ window.saveMaterialSemanticClusterEdit = function(clusterId) {
     status: 'kept',
   });
   if (!result) return;
+  saveMaterialSemanticClusterSnapshot(result.ctx);
   $('materialCellModal').hidden = true;
   syncModalLock();
   renderMaterialDeepDivePage(result.ctx.dim, result.items);
@@ -7838,6 +8807,7 @@ window.mergeSelectedMaterialSemanticClusters = function() {
   state.materialSemanticClusterMergeGroups[key].push(group);
   state.materialSemanticClusterMergeSelection = [];
   state.materialSemanticClusterMergeSelectionKey = '';
+  saveMaterialSemanticClusterSnapshot(ctx);
   renderMaterialDeepDivePage(dim, items);
   toast('已在当前视图中合并所选类别');
 };
@@ -7847,15 +8817,20 @@ window.openMaterialSemanticClusterDetail = function(clusterId) {
   if (!found) return toast('未找到类别详情');
   const {ctx, cluster} = found;
   const entries = materialEntriesForSemanticCluster(ctx, cluster);
+  const representativeContents = materialSemanticRepresentativeContents(cluster);
   state.materialOverviewDetailSelection = null;
   $('materialCellTitle').textContent = cluster.name;
   $('materialCellMeta').textContent = `${ctx.dimLabel} · ${entries.length} 篇论文 · 置信度 ${Math.round(Number(cluster.confidence || 0) * 100)}%`;
   $('materialCellBody').innerHTML = `
     <section class="semantic-cluster-detail">
       <p>${escapeHtml(cluster.description)}</p>
+      <div class="semantic-cluster-representatives">
+        <b>代表性内容</b>
+        <ul>${representativeContents.map(item => `<li>${escapeHtml(item)}</li>`).join('') || '<li>暂无代表性内容。</li>'}</ul>
+      </div>
       <div class="semantic-cluster-keywords">${(cluster.keywords || []).map(keyword => `<span>${escapeHtml(keyword)}</span>`).join('')}</div>
     </section>
-    ${materialDeepDiveOverviewDetailHtml(entries, ctx.dim.value)}
+    ${materialDeepDiveOverviewDetailHtml(entries, ctx.dim.value, ctx.entries)}
   `;
   $('materialCellAddBtn').hidden = true;
   $('materialCellAddBtn').textContent = '加入综述素材';
@@ -7868,7 +8843,8 @@ window.openMaterialSemanticClusterMaterial = function(clusterId) {
   if (!found) return toast('未找到类别素材');
   const {ctx, cluster} = found;
   const entries = materialEntriesForSemanticCluster(ctx, cluster);
-  const examples = entries.slice(0, 3).map((entry, index) => {
+  const representativeContents = materialSemanticRepresentativeContents(cluster);
+  const examples = representativeContents.length ? representativeContents.join('\n') : entries.slice(0, 3).map((entry, index) => {
     const paperIndex = materialDeepDiveEntryPaperIndex(entry, ctx.entries) || index + 1;
     return `P${paperIndex}: ${fmt(entry.content || materialItemContent(entry.item) || '', 180)}`;
   }).join('\n');
@@ -8446,11 +9422,12 @@ function materialDeepDiveOverviewInlineDetailHtml(selection) {
   `;
 }
 
-function materialDeepDiveOverviewDetailHtml(entries, dimensionName) {
+function materialDeepDiveOverviewDetailHtml(entries, dimensionName, allEntries = entries) {
   const selection = state.materialOverviewDetailSelection;
   const list = entries.map((entry, index) => {
     const paper = entry.paper;
     const item = entry.item;
+    const paperIndex = materialDeepDiveEntryPaperIndex(entry, allEntries) || index + 1;
     const content = entry.notReported
       ? '该论文未报告该维度，或当前结果被识别为 not_reported。'
       : (entry.content || materialItemContent(item) || '暂无内容');
@@ -8458,7 +9435,7 @@ function materialDeepDiveOverviewDetailHtml(entries, dimensionName) {
     return `
       <article class="material-detail-item deep-dive-detail-entry ${selected ? 'selected' : ''}">
         <header>
-          <b>${index + 1}. ${escapeHtml(fmt(paper?.metadata?.title || paper?.id || '未知论文', 96))}</b>
+          <b>${index + 1}. <span class="semantic-cluster-paper-ref">P${escapeHtml(paperIndex)}</span> ${escapeHtml(fmt(paper?.metadata?.title || paper?.id || '未知论文', 96))}</b>
           <span class="badge ${escapeHtml(item?.review_status || 'pending')}">${entry.notReported ? 'not_reported' : escapeHtml(reviewStatusLabel(item?.review_status || 'pending'))}</span>
         </header>
         <section>
@@ -8584,7 +9561,7 @@ function renderMaterialInsights(items) {
     },
     evidenceIssues ? {
       title: '证据质量需要核验',
-      text: `${evidenceIssues} 条素材存在无证据或证据不足风险，生成综述前建议先回到人机审查确认。`,
+      text: `${evidenceIssues} 条素材存在无证据或证据不足风险，生成综述前建议先回到协同审查与素材精炼确认。`,
     } : {
       title: '证据过滤较严格',
       text: '当前结果主要来自有证据素材，适合生成引用表和 Related Work 草稿。',
@@ -9221,6 +10198,7 @@ async function bindEvents() {
   $('paperImportToggleBtn').onclick = window.togglePaperImportPane;
   $('paperImportResizeHandle').onpointerdown = startPaperImportResize;
   $('paperLibraryControlsToggle').onclick = window.togglePaperLibraryControls;
+  $('paperListModeBtn').onclick = window.togglePaperListMode;
   $('createPaperSetBtn').onclick = () => togglePaperSetCreate(true);
   $('confirmCreatePaperSetBtn').onclick = () => createPaperSet().catch(err => toast(err.message));
   $('cancelCreatePaperSetBtn').onclick = () => togglePaperSetCreate(false);
@@ -9276,7 +10254,6 @@ async function bindEvents() {
   });
   $('importMode').onchange = updateImportMode;
   updateImportMode();
-  $('addArxivInput').onclick = () => addArxivInput();
   $('paperModalClose').onclick = closePaperDetail;
   document.querySelectorAll('[data-close-modal]').forEach(el => {
     el.onclick = () => {
@@ -9359,8 +10336,16 @@ async function bindEvents() {
     $(id).onchange = updateReviewDraftFiltersFromInputs;
   });
   $('reviewSearchInput').addEventListener('input', updateReviewDraftFiltersFromInputs);
-  $('reviewPrevBtn').onclick = () => setReviewItemIndex(state.reviewItemIndex - 1);
-  $('reviewNextBtn').onclick = () => setReviewItemIndex(state.reviewItemIndex + 1);
+  $('reviewPrevBtn').onclick = () => {
+    const cards = reviewPaperCards();
+    const index = cards.findIndex(card => card.run.id === state.reviewRunId);
+    setReviewPaperIndex(index - 1);
+  };
+  $('reviewNextBtn').onclick = () => {
+    const cards = reviewPaperCards();
+    const index = cards.findIndex(card => card.run.id === state.reviewRunId);
+    setReviewPaperIndex(index + 1);
+  };
   $('exportReviewRecordsBtn').onclick = () => exportReviewRecords().catch(err => toast(err.message));
   $('uploadBtn').onclick = async () => {
     const file = $('paperFile').files[0];
@@ -9369,7 +10354,7 @@ async function bindEvents() {
     await runPaperImport('正在上传并解析...', file.name, 'upload', () => api('/api/papers/upload', {method:'POST', body: form}));
   };
   $('arxivBtn').onclick = async () => {
-    const values = getArxivValues(); if (!values.length) return toast('请输入 arXiv ID');
+    const values = getArxivValues(); if (!values.length) return toast('请输入 arXiv ID 或 URL');
     if (values.length > 1) {
       await runArxivBatchImport(values);
       return;
