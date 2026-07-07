@@ -6038,6 +6038,38 @@ body.review-sidebar-resizing {
   background: #fff7ed;
   color: #c2410c;
 }
+.review-status-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+.review-status-badge.pending {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.review-status-badge.accepted {
+  background: #d1fae5;
+  color: #047857;
+}
+.review-status-badge.revise {
+  background: #ecfdf5;
+  color: #065f46;
+}
+.review-status-badge.warning {
+  background: #fffbeb;
+  color: #b45309;
+}
+.review-status-badge.rejected {
+  background: #fee2e2;
+  color: #b91c1c;
+}
 .review-main-pane {
   grid-column: 3;
   display: grid;
@@ -6602,6 +6634,13 @@ body.review-sidebar-resizing {
   color: #0f172a;
   font-size: 14px;
   line-height: 1.3;
+}
+.review-fragment-statuses {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
 }
 .review-dimension-fragment-card p {
   margin: 0;
@@ -7317,6 +7356,33 @@ body.modal-open { overflow: hidden; }
   margin: 0;
   border-radius: 0;
 }
+.dimension-regenerate-modal {
+  width: min(980px, calc(100vw - 40px));
+}
+.dimension-regenerate-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  gap: 12px;
+  min-height: 0;
+  padding: 14px;
+}
+.dimension-regenerate-body label {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 850;
+}
+.dimension-regenerate-body textarea {
+  width: 100%;
+  min-height: 0;
+  resize: vertical;
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+}
 .modal-header {
   display: flex;
   justify-content: space-between;
@@ -7586,6 +7652,9 @@ body.modal-open { overflow: hidden; }
   }
   .review-dimension-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .dimension-regenerate-body {
+    grid-template-columns: 1fr;
   }
   .materials-topbar {
     grid-template-columns: 1fr;

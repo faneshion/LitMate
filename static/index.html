@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Literature Research Assistant V2</title>
-  <link rel="stylesheet" href="/styles.css?v=collab-review-audit-row-20260707" />
+  <link rel="stylesheet" href="/styles.css?v=collab-review-regenerate-20260707" />
 </head>
 <body>
   <header class="topbar">
@@ -1061,6 +1061,32 @@
     </div>
   </div>
 
+  <div id="dimensionRegenerateModal" class="modal" hidden>
+    <div class="modal-backdrop" data-close-modal="dimensionRegenerateModal"></div>
+    <div class="prompt-modal dimension-regenerate-modal">
+      <header class="modal-header">
+        <div>
+          <h2>重新生成维度综合答案</h2>
+          <p class="meta">Prompt 会基于当前维度、碎片角色和证据自动组装，提交前可手动修改。</p>
+        </div>
+        <div class="modal-actions">
+          <button id="dimensionRegenerateClose" type="button">关闭</button>
+          <button id="dimensionRegenerateRun" type="button" class="primary">调用大模型生成</button>
+        </div>
+      </header>
+      <div class="dimension-regenerate-body">
+        <label>
+          <span>Prompt 内容</span>
+          <textarea id="dimensionRegeneratePrompt" rows="18"></textarea>
+        </label>
+        <label>
+          <span>生成结果</span>
+          <textarea id="dimensionRegenerateResult" rows="10" readonly placeholder="大模型返回后会显示在这里，并自动写入当前维度综合答案草稿。"></textarea>
+        </label>
+      </div>
+    </div>
+  </div>
+
   <div id="extractionResultModal" class="modal" hidden>
     <div class="modal-backdrop" data-close-modal="extractionResultModal"></div>
     <div class="paper-modal extraction-result-modal">
@@ -1080,6 +1106,6 @@
   </div>
 
   <div id="toast" class="toast"></div>
-  <script src="/app.js?v=collab-review-audit-row-20260707"></script>
+  <script src="/app.js?v=collab-review-regenerate-20260707"></script>
 </body>
 </html>

@@ -74,6 +74,8 @@ const state = {
   reviewSidebarResizing: false,
   reviewObjectView: 'overview',
   reviewDimensionName: null,
+  reviewDimensionDrafts: {},
+  reviewRegenerateContext: null,
   materialsSidebarWidth: 320,
   materialsSidebarCollapsed: false,
   materialsSidebarResizing: false,
@@ -446,6 +448,62 @@ function openSimulationRawModal() {
 function closeSimulationRawModal() {
   $('simulationRawModal').hidden = true;
   syncModalLock();
+}
+
+function closeDimensionRegenerateModal() {
+  $('dimensionRegenerateModal').hidden = true;
+  state.reviewRegenerateContext = null;
+  syncModalLock();
+}
+
+function activeReviewLlmProfile() {
+  const profiles = state.config?.llm_profiles || [];
+  const activeId = state.config?.active_llm_profile_id || profiles.find(item => item.active)?.id || profiles[0]?.id;
+  return profiles.find(item => item.id === activeId) || state.config?.llm || null;
+}
+
+function openDimensionRegenerateModal() {
+  const card = currentReviewPaperCard();
+  const group = card ? currentReviewDimensionGroup(card) : null;
+  const visibleGroup = group ? reviewDimensionVisibleGroup(group) : null;
+  if (!card || !visibleGroup) return toast('请先选择一个维度');
+  const draftKey = reviewDimensionDraftKey(card.run, visibleGroup);
+  state.reviewRegenerateContext = {runId: card.run.id, dimensionKey: visibleGroup.key, draftKey};
+  $('dimensionRegeneratePrompt').value = buildDimensionRegeneratePrompt(card, visibleGroup);
+  $('dimensionRegenerateResult').value = state.reviewDimensionDrafts[draftKey] || '';
+  $('dimensionRegenerateModal').hidden = false;
+  document.body.classList.add('modal-open');
+}
+
+async function runDimensionRegenerate() {
+  const context = state.reviewRegenerateContext;
+  if (!context) return toast('请先打开重新生成弹窗');
+  const profile = activeReviewLlmProfile();
+  if (!profile) return toast('请先在系统配置中设置大模型');
+  const prompt = $('dimensionRegeneratePrompt').value.trim();
+  if (!prompt) return toast('Prompt 不能为空');
+  const button = $('dimensionRegenerateRun');
+  button.disabled = true;
+  button.textContent = '生成中...';
+  $('dimensionRegenerateResult').value = '正在调用大模型...';
+  try {
+    const result = await api('/api/config/llm-test', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({profile, prompt, max_tokens: 1600}),
+    });
+    const content = result.content || '';
+    state.reviewDimensionDrafts[context.draftKey] = content;
+    $('dimensionRegenerateResult').value = content;
+    renderReviewWorkbench();
+    toast('维度综合答案已重新生成');
+  } catch (err) {
+    $('dimensionRegenerateResult').value = `生成失败：${err.message}`;
+    toast(`生成失败：${err.message}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = '调用大模型生成';
+  }
 }
 
 function syncModalLock() {
@@ -5158,6 +5216,19 @@ function reviewStatusGroup(status) {
   return 'pending';
 }
 
+function reviewStatusBadgeClass(status) {
+  const value = status || 'pending';
+  if (['confirm', 'confirmed'].includes(value)) return 'accepted';
+  if (['revise', 'needs_revision'].includes(value)) return 'revise';
+  if (['reject', 'rejected', 'mark_wrong_dimension', 'mark_wrong_object'].includes(value)) return 'rejected';
+  if (['mark_evidence_insufficient', 'mark_over_inferred', 'mark_not_reported'].includes(value)) return 'warning';
+  return 'pending';
+}
+
+function reviewItemRejected(item) {
+  return ['reject', 'rejected'].includes(item?.review_status || '');
+}
+
 function reviewItemKey(entry) {
   return entry ? `${entry.run.id}:${entry.item.id}` : '';
 }
@@ -5660,6 +5731,7 @@ function renderReviewDimensionsView(card) {
   const available = groups.length ? groups : fallbackGroups;
   const active = available.find(group => group.key === state.reviewDimensionName) || available[0];
   if (active) state.reviewDimensionName = active.key;
+  const visibleActive = active ? reviewDimensionVisibleGroup(active) : null;
   return `
     <div class="review-dimension-workspace">
       <nav class="review-dimension-tabs" aria-label="维度研读">
@@ -5672,17 +5744,17 @@ function renderReviewDimensionsView(card) {
           </button>
         `;}).join('') || '<span class="muted">暂无维度</span>'}
       </nav>
-      ${active ? `
-        ${renderReviewDimensionOverview(active)}
+      ${visibleActive ? `
+        ${renderReviewDimensionOverview(visibleActive)}
         <section class="review-dimension-detail-grid">
           <article class="review-section review-dimension-fragments">
             <h4>碎片信息列表</h4>
             <div class="review-fragment-list">
-              ${active.entries.map(entry => renderReviewDimensionFragmentCard(entry, active)).join('')}
+              ${visibleActive.entries.map(entry => renderReviewDimensionFragmentCard(entry, visibleActive)).join('') || '<p class="muted">该维度下没有可展示碎片，已驳回碎片不会在此处显示。</p>'}
             </div>
           </article>
           <article class="review-section review-dimension-synthesis">
-            ${renderReviewDimensionSynthesis(card, active)}
+            ${renderReviewDimensionSynthesis(card, visibleActive)}
           </article>
         </section>
       ` : '<div class="review-empty small">没有符合筛选条件的维度结果。</div>'}
@@ -5695,6 +5767,13 @@ function reviewDimensionCardStatus(group) {
   if (entries.some(entry => entry.risk === 'high')) return {label: '高风险', tone: 'risk'};
   if (entries.some(entry => (entry.item.review_status || 'pending') === 'pending')) return {label: '需判断', tone: 'warn'};
   return {label: '稳定', tone: 'ok'};
+}
+
+function reviewDimensionVisibleGroup(group) {
+  return {
+    ...group,
+    entries: (group?.entries || []).filter(entry => !reviewItemRejected(entry.item)),
+  };
 }
 
 function reviewDimensionRefinementStatus(group) {
@@ -5793,11 +5872,15 @@ function renderReviewDimensionFragmentCard(entry, group) {
     reviewFragmentSystemLabel(entry, group),
     ...(entry.item.tags || []).slice(0, 2),
   ].filter(Boolean);
+  const status = entry.item.review_status || 'pending';
   return `
     <article class="review-dimension-fragment-card">
       <header>
         <h5>${escapeHtml(reviewFragmentConceptName(entry))}</h5>
-        <span class="badge ${escapeHtml(entry.risk)}">${escapeHtml(riskLabel(entry.risk))}</span>
+        <span class="review-fragment-statuses">
+          <span class="badge ${escapeHtml(entry.risk)}">${escapeHtml(riskLabel(entry.risk))}</span>
+          <span class="review-status-badge ${escapeHtml(reviewStatusBadgeClass(status))}">${escapeHtml(reviewStatusLabel(status))}</span>
+        </span>
       </header>
       <p>${escapeHtml(reviewEntrySummary(entry, 220))}</p>
       <div class="review-fragment-facts">
@@ -5846,7 +5929,10 @@ function reviewDimensionSynthesisSentences(group) {
 
 function renderReviewDimensionSynthesis(card, group) {
   const sentences = reviewDimensionSynthesisSentences(group);
-  const draft = sentences.map(item => item.text).join('\n\n') || buildReviewMaterialText(card, 'quote', group.entries);
+  const draftKey = reviewDimensionDraftKey(card.run, group);
+  const draft = state.reviewDimensionDrafts[draftKey]
+    || sentences.map(item => item.text).join('\n\n')
+    || buildReviewMaterialText(card, 'quote', group.entries);
   return `
     <div class="review-card-header-line">
       <h4>综合答案区</h4>
@@ -5860,7 +5946,7 @@ function renderReviewDimensionSynthesis(card, group) {
       <div class="review-answer lead highlighted">${escapeHtml(draft)}</div>
       <div class="review-fragment-actions">
         <button type="button" onclick="toast('已进入综合答案编辑草稿')">编辑</button>
-        <button type="button" onclick="toast('已基于当前碎片重新生成综合草稿')">基于当前碎片重新生成</button>
+        <button type="button" onclick="openDimensionRegenerateModal()">重新生成</button>
         <button type="button" onclick="toast('已压缩为一句话草稿')">压缩为一句话</button>
         <button type="button" onclick="toast('已改写为综述表达草稿')">改写为综述表达</button>
         <button type="button" onclick="toast('已改写为对比矩阵字段草稿')">改写为对比矩阵字段</button>
@@ -5880,6 +5966,61 @@ function renderReviewDimensionSynthesis(card, group) {
       </div>
     </section>
   `;
+}
+
+function reviewDimensionDraftKey(run, group) {
+  return `${run?.id || 'run'}:${group?.key || 'dimension'}`;
+}
+
+function reviewEvidenceText(entry) {
+  return (entry.item.evidence || []).map(ev =>
+    [ev.section_title || 'Unknown', ev.page_start ? `p.${ev.page_start}` : '', ev.quote || ''].filter(Boolean).join(' / ')
+  ).join('\n') || '';
+}
+
+function roleValueForFragment(entry, group) {
+  const label = reviewFragmentSystemLabel(entry, group);
+  if (/核心|上位/.test(label)) return 'core_concept';
+  if (/子/.test(label)) return 'sub_concept';
+  if (/边界/.test(label) || entry.risk === 'high') return 'boundary_concept';
+  return 'supporting_concept';
+}
+
+function buildDimensionRegeneratePayload(card, group) {
+  const entries = (group?.entries || []).filter(entry => !reviewItemRejected(entry.item));
+  const fragments = entries.map(entry => {
+    const role = roleValueForFragment(entry, group);
+    const item = {
+      label: reviewFragmentConceptName(entry),
+      content: reviewEntrySummary(entry, 360),
+      role,
+      evidence: reviewEvidenceText(entry),
+    };
+    if (role === 'sub_concept') item.parent = entries[0] ? reviewFragmentConceptName(entries[0]) : '';
+    if (role === 'boundary_concept') item.suggested_dimension = entry.item.dimension_label || entry.item.dimension_name || '';
+    return item;
+  });
+  return {
+    dimension_name: group?.label || group?.key || '',
+    dimension_question: reviewDimensionQuestionForGroup(group),
+    fragments,
+    output_requirements: [
+      '说明论文是否给出单一定义',
+      '区分核心概念、子概念和边界概念',
+      '说明哪些内容属于模型归纳',
+      '生成可用于综述和对比矩阵的表达',
+    ],
+  };
+}
+
+function buildDimensionRegeneratePrompt(card, group) {
+  const payload = buildDimensionRegeneratePayload(card, group);
+  return [
+    '你是 LitMate 的维度精炼助手。请基于下列当前维度的碎片信息，重新生成该维度的综合答案。',
+    '要求：只使用 fragments 中的内容和证据；明确区分作者明确陈述与模型归纳；输出适合研究综述和对比矩阵复用的中文表达。',
+    '',
+    JSON.stringify(payload, null, 2),
+  ].join('\n');
 }
 
 function renderReviewMaterialsView(card) {
@@ -5934,7 +6075,7 @@ function renderReviewAuditView(card) {
                 <td>${escapeHtml(reviewEntrySummary(entry, 120))}</td>
                 <td>${(entry.item.evidence || []).length}</td>
                 <td><span class="badge ${escapeHtml(entry.risk)}">${escapeHtml(riskLabel(entry.risk))}</span></td>
-                <td>${escapeHtml(reviewStatusLabel(entry.item.review_status || 'pending'))}</td>
+                <td><span class="review-status-badge ${escapeHtml(reviewStatusBadgeClass(entry.item.review_status || 'pending'))}">${escapeHtml(reviewStatusLabel(entry.item.review_status || 'pending'))}</span></td>
               </tr>
             `).join('') || '<tr><td colspan="5">没有符合筛选条件的碎片。</td></tr>'}
           </tbody>
@@ -6124,7 +6265,8 @@ function currentReviewDimensionGroup(card) {
 }
 
 function renderReviewDimensionAssistant(card) {
-  const group = currentReviewDimensionGroup(card);
+  const rawGroup = currentReviewDimensionGroup(card);
+  const group = rawGroup ? reviewDimensionVisibleGroup(rawGroup) : null;
   if (!group) return '<section class="review-side-section"><header><h3>维度精炼助手</h3></header><p class="muted">暂无可精炼维度。</p></section>';
   const fragments = group.entries.slice(0, 3);
   return `
@@ -6135,7 +6277,7 @@ function renderReviewDimensionAssistant(card) {
         <article><b>判断标准</b><ol><li>1. 经验在论文中被理解为什么；</li><li>2. 是否有显式定义或操作性定义；</li><li>3. 是否存在上位概念、子概念、边界概念；</li><li>4. 不应把单纯的实验效果直接当作定义。</li></ol></article>
         <article><b>碎片角色建议</b>${fragments.map(entry => `<p><strong>${escapeHtml(reviewFragmentConceptName(entry))}</strong><br>建议角色：${escapeHtml(reviewFragmentSystemLabel(entry, group))}<br>原因：${escapeHtml(reviewFragmentSuggestion(entry, group))}</p>`).join('') || '<p>暂无碎片。</p>'}</article>
         <article><b>边界与错位提示</b><p>${escapeHtml(reviewDimensionBoundaryCount(group) ? `${reviewDimensionBoundaryCount(group)} 条碎片可能属于边界或错位信息，建议先查看证据再纳入综合答案。` : '当前维度没有明显边界碎片。')}</p></article>
-        <article><b>综合答案生成控制</b><p>建议综合为“核心概念 + 子概念 + 边界概念”的分层答案。</p><div class="review-reflection-actions"><button type="button" onclick="toast('已基于当前碎片重新生成综合答案')">基于当前碎片重新生成综合答案</button><button type="button" onclick="toast('已生成一句话定义')">生成一句话定义</button><button type="button" onclick="toast('已生成对比矩阵字段')">生成对比矩阵字段</button><button type="button" onclick="toast('已生成综述表达')">生成综述表达</button></div></article>
+        <article><b>综合答案生成控制</b><p>建议综合为“核心概念 + 子概念 + 边界概念”的分层答案。生成操作集中在中间栏目的综合答案正文区域。</p></article>
         <article><b>证据支撑提醒</b><p>当前证据完整度：${escapeHtml(reviewDimensionEvidenceCompleteness(group))}。综合答案中的跨碎片关系属于系统归纳，确认前建议查看证据映射。</p></article>
         <article><b>可输出素材</b><p>${escapeHtml(buildReviewMaterialText(card, 'quote', group.entries))}</p></article>
       </div>
@@ -10180,6 +10322,8 @@ async function bindEvents() {
   $('randomSimulationSampleBtn').onclick = insertRandomSimulationSample;
   $('simulationRawJsonBtn').onclick = openSimulationRawModal;
   $('simulationRawClose').onclick = closeSimulationRawModal;
+  $('dimensionRegenerateClose').onclick = closeDimensionRegenerateModal;
+  $('dimensionRegenerateRun').onclick = () => runDimensionRegenerate();
   $('extractionResultClose').onclick = closeExtractionResultModal;
   $('materialCellClose').onclick = window.closeMaterialCellModal;
   document.querySelectorAll('[data-paper-library-tab]').forEach(button => {
@@ -10260,6 +10404,7 @@ async function bindEvents() {
       if (el.dataset.closeModal === 'promptPreviewModal') closePromptPreviewModal();
       else if (el.dataset.closeModal === 'objectImportModal') closeObjectImportModal();
       else if (el.dataset.closeModal === 'simulationRawModal') closeSimulationRawModal();
+      else if (el.dataset.closeModal === 'dimensionRegenerateModal') closeDimensionRegenerateModal();
       else if (el.dataset.closeModal === 'extractionResultModal') closeExtractionResultModal();
       else if (el.dataset.closeModal === 'materialCellModal') closeMaterialCellModal();
       else if (el.dataset.closeModal === 'objectConfigModal') closeObjectConfigModal();
@@ -10275,6 +10420,7 @@ async function bindEvents() {
     } else if (!$('promptPickerMenu')?.hidden) closePromptPicker();
     else if (!$('objectImportModal').hidden) closeObjectImportModal();
     else if (!$('simulationRawModal').hidden) closeSimulationRawModal();
+    else if (!$('dimensionRegenerateModal').hidden) closeDimensionRegenerateModal();
     else if (!$('extractionResultModal').hidden) closeExtractionResultModal();
     else if (!$('materialCellModal').hidden) closeMaterialCellModal();
     else if (!$('promptPreviewModal').hidden) closePromptPreviewModal();
