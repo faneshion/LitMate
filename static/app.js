@@ -869,6 +869,7 @@ function defaultResearchObjectConfig(template = null) {
     fields: (d.fields || []).map(field => typeof field === 'string' ? {name: field, type: 'string', description: ''} : field),
     retrieval_keywords: d.retrieval_keywords || [],
     section_policy: normalizeSectionPolicy(d.section_policy, d),
+    max_output_tokens: Number(d.max_output_tokens ?? 2048),
     required: true,
     requires_evidence: d.required_evidence !== false,
     allow_inference: true,
@@ -1130,6 +1131,7 @@ function normalizeImportedDimension(dim, index) {
       fields: [],
       retrieval_keywords: [],
       section_policy: normalizeSectionPolicy({}, {dimension_id: configIdFromName(dim), name: dim}),
+      max_output_tokens: 2048,
       required: true,
       requires_evidence: true,
       allow_inference: true,
@@ -1153,6 +1155,7 @@ function normalizeImportedDimension(dim, index) {
       description: dim.description_text || parsed.description || dim.summary || '',
       question: dim.question || parsed.question || parsed.description || '',
     }),
+    max_output_tokens: Number(dim.max_output_tokens ?? dim.extraction_max_output_tokens ?? 2048),
     required: dim.required !== false,
     requires_evidence: dim.requires_evidence ?? dim.required_evidence ?? true,
     allow_inference: dim.allow_inference ?? true,
@@ -1670,7 +1673,7 @@ function renderObjectDimensionList() {
 function renderCurrentDimensionForm() {
   const dim = currentObjectDimension();
   const disabled = !dim;
-  ['dimId','dimName','dimDescription','dimQuestion','dimOutputType','dimKeywords'].forEach(id => $(id).disabled = disabled);
+  ['dimId','dimName','dimDescription','dimQuestion','dimOutputType','dimKeywords','dimMaxOutputTokens'].forEach(id => $(id).disabled = disabled);
   $('removeDimensionBtn').disabled = disabled;
   if (!dim) {
     setValue('dimId', '');
@@ -1679,6 +1682,7 @@ function renderCurrentDimensionForm() {
     setValue('dimQuestion', '');
     setValue('dimOutputType', 'list');
     setValue('dimKeywords', '');
+    setValue('dimMaxOutputTokens', 2048);
     renderSectionPolicyEditor(null);
     renderCurrentDimensionFeedback();
     return;
@@ -1689,6 +1693,7 @@ function renderCurrentDimensionForm() {
   setValue('dimQuestion', dim.question);
   setValue('dimOutputType', dim.output_type || 'list');
   setValue('dimKeywords', joinLines(dim.retrieval_keywords));
+  setValue('dimMaxOutputTokens', dim.max_output_tokens ?? 2048);
   setChecked('dimRequired', dim.required);
   setChecked('dimRequiredEvidence', dim.requires_evidence);
   setChecked('dimAllowInference', dim.allow_inference);
@@ -1705,6 +1710,7 @@ function saveCurrentDimensionForm() {
   dim.question = $('dimQuestion').value.trim();
   dim.output_type = $('dimOutputType').value;
   dim.retrieval_keywords = lines($('dimKeywords').value);
+  dim.max_output_tokens = Math.max(256, numberValue('dimMaxOutputTokens') || 2048);
   dim.section_policy = readSectionPolicyEditor(dim);
   dim.required = $('dimRequired').checked;
   dim.requires_evidence = $('dimRequiredEvidence').checked;
@@ -1885,6 +1891,7 @@ function addObjectDimension() {
     fields: [],
     retrieval_keywords: [],
     section_policy: normalizeSectionPolicy({}, {dimension_id: `dimension_${next}`, name: `维度 ${next}`}),
+    max_output_tokens: 2048,
     required: false,
     requires_evidence: true,
     allow_inference: true,
@@ -2808,6 +2815,7 @@ function objectConfigToTemplate(cfg, options = {}) {
       negative_examples: cfg.term_rules.concept_policy.exclude_rules || [],
       retrieval_keywords: d.retrieval_keywords || [],
       section_policy: normalizeSectionPolicy(d.section_policy, d),
+      max_output_tokens: Math.max(256, Number(d.max_output_tokens || 2048)),
     })),
   };
 }
