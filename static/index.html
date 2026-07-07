@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Literature Research Assistant V2</title>
-  <link rel="stylesheet" href="/styles.css?v=collab-review-regenerate-20260707" />
+  <link rel="stylesheet" href="/styles.css?v=collab-review-regenerate-confirm-20260707" />
 </head>
 <body>
   <header class="topbar">
@@ -1071,7 +1071,6 @@
         </div>
         <div class="modal-actions">
           <button id="dimensionRegenerateClose" type="button">关闭</button>
-          <button id="dimensionRegenerateRun" type="button" class="primary">调用大模型生成</button>
         </div>
       </header>
       <div class="dimension-regenerate-body">
@@ -1081,9 +1080,13 @@
         </label>
         <label>
           <span>生成结果</span>
-          <textarea id="dimensionRegenerateResult" rows="10" readonly placeholder="大模型返回后会显示在这里，并自动写入当前维度综合答案草稿。"></textarea>
+          <textarea id="dimensionRegenerateResult" rows="10" readonly placeholder="大模型返回后会显示在这里，点击“确认使用”后才会替换当前维度综合答案草稿。"></textarea>
         </label>
       </div>
+      <footer class="dimension-regenerate-footer">
+        <button id="dimensionRegenerateRun" type="button">生成</button>
+        <button id="dimensionRegenerateApply" type="button" class="primary" disabled>确认使用</button>
+      </footer>
     </div>
   </div>
 
@@ -1106,6 +1109,6 @@
   </div>
 
   <div id="toast" class="toast"></div>
-  <script src="/app.js?v=collab-review-regenerate-20260707"></script>
+  <script src="/app.js?v=collab-review-regenerate-confirm-20260707"></script>
 </body>
 </html>

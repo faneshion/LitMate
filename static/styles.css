@@ -7383,6 +7383,18 @@ body.modal-open { overflow: hidden; }
   font-size: 12px;
   line-height: 1.55;
 }
+.dimension-regenerate-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 14px 14px;
+}
+.dimension-regenerate-footer button {
+  min-height: 34px;
+  padding: 7px 13px;
+  border-radius: 8px;
+  font-weight: 800;
+}
 .modal-header {
   display: flex;
   justify-content: space-between;

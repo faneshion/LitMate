@@ -468,9 +468,10 @@ function openDimensionRegenerateModal() {
   const visibleGroup = group ? reviewDimensionVisibleGroup(group) : null;
   if (!card || !visibleGroup) return toast('请先选择一个维度');
   const draftKey = reviewDimensionDraftKey(card.run, visibleGroup);
-  state.reviewRegenerateContext = {runId: card.run.id, dimensionKey: visibleGroup.key, draftKey};
+  state.reviewRegenerateContext = {runId: card.run.id, dimensionKey: visibleGroup.key, draftKey, pendingContent: ''};
   $('dimensionRegeneratePrompt').value = buildDimensionRegeneratePrompt(card, visibleGroup);
   $('dimensionRegenerateResult').value = state.reviewDimensionDrafts[draftKey] || '';
+  $('dimensionRegenerateApply').disabled = true;
   $('dimensionRegenerateModal').hidden = false;
   document.body.classList.add('modal-open');
 }
@@ -493,17 +494,27 @@ async function runDimensionRegenerate() {
       body: JSON.stringify({profile, prompt, max_tokens: 1600}),
     });
     const content = result.content || '';
-    state.reviewDimensionDrafts[context.draftKey] = content;
+    state.reviewRegenerateContext.pendingContent = content;
     $('dimensionRegenerateResult').value = content;
-    renderReviewWorkbench();
-    toast('维度综合答案已重新生成');
+    $('dimensionRegenerateApply').disabled = !content.trim();
+    toast('已生成预览，确认后才会替换综合答案');
   } catch (err) {
     $('dimensionRegenerateResult').value = `生成失败：${err.message}`;
     toast(`生成失败：${err.message}`);
   } finally {
     button.disabled = false;
-    button.textContent = '调用大模型生成';
+    button.textContent = '生成';
   }
+}
+
+function applyDimensionRegenerateResult() {
+  const context = state.reviewRegenerateContext;
+  const content = context?.pendingContent || $('dimensionRegenerateResult')?.value || '';
+  if (!context || !content.trim()) return toast('请先生成可用结果');
+  state.reviewDimensionDrafts[context.draftKey] = content.trim();
+  closeDimensionRegenerateModal();
+  renderReviewWorkbench();
+  toast('已替换当前维度综合答案草稿');
 }
 
 function syncModalLock() {
@@ -10324,6 +10335,7 @@ async function bindEvents() {
   $('simulationRawClose').onclick = closeSimulationRawModal;
   $('dimensionRegenerateClose').onclick = closeDimensionRegenerateModal;
   $('dimensionRegenerateRun').onclick = () => runDimensionRegenerate();
+  $('dimensionRegenerateApply').onclick = applyDimensionRegenerateResult;
   $('extractionResultClose').onclick = closeExtractionResultModal;
   $('materialCellClose').onclick = window.closeMaterialCellModal;
   document.querySelectorAll('[data-paper-library-tab]').forEach(button => {
