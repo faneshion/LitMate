@@ -778,6 +778,28 @@ hr { border: none; border-top: 1px solid var(--line); margin: 18px 0; }
 .paper-row-task.completed .paper-row-progress-bar {
   background: #10b981;
 }
+.paper-row-task.completed-mixed {
+  border-color: #fcd34d;
+  background: #fffbeb;
+  color: #b45309;
+}
+.paper-row-task.completed-mixed .paper-row-progress {
+  background: rgba(245, 158, 11, 0.18);
+}
+.paper-row-task.completed-mixed .paper-row-progress-bar {
+  background: #f59e0b;
+}
+.paper-row-task.completed-error {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+.paper-row-task.completed-error .paper-row-progress {
+  background: rgba(239, 68, 68, 0.16);
+}
+.paper-row-task.completed-error .paper-row-progress-bar {
+  background: #ef4444;
+}
 .paper-row-task.failed {
   border-color: #fecaca;
   background: #fef2f2;
@@ -4834,6 +4856,15 @@ button:disabled:hover {
 }
 .extraction-paper-card.completed {
   border-color: #bbf7d0;
+  background: #ecfdf5;
+}
+.extraction-paper-card.completed-mixed {
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+.extraction-paper-card.completed-error {
+  border-color: #fecaca;
+  background: #fef2f2;
 }
 .extraction-paper-card.failed {
   border-color: #fecaca;
@@ -4864,6 +4895,12 @@ button:disabled:hover {
 }
 .extraction-paper-card.completed .extraction-progress-bar {
   background: var(--good);
+}
+.extraction-paper-card.completed-mixed .extraction-progress-bar {
+  background: #f59e0b;
+}
+.extraction-paper-card.completed-error .extraction-progress-bar {
+  background: var(--bad);
 }
 .extraction-paper-card.failed .extraction-progress-bar {
   background: var(--bad);

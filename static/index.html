@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Literature Research Assistant V2</title>
-  <link rel="stylesheet" href="/styles.css?v=paper-review-sidebar-collapse-20260604" />
+  <link rel="stylesheet" href="/styles.css?v=extraction-outcome-tone-20260616" />
 </head>
 <body>
   <header class="topbar">
@@ -419,6 +419,10 @@
                     <div>
                       <label>检索关键词，每行一个</label>
                       <textarea id="dimKeywords" rows="4"></textarea>
+                    </div>
+                    <div>
+                      <label>最大抽取长度 Tokens</label>
+                      <input id="dimMaxOutputTokens" type="number" min="256" step="256" />
                     </div>
                   </div>
                   <div class="section-policy-editor">
@@ -1079,6 +1083,6 @@
   </div>
 
   <div id="toast" class="toast"></div>
-  <script src="/app.js?v=review-context-ellipsis-evidence-20260604"></script>
+  <script src="/app.js?v=extraction-outcome-tone-20260616"></script>
 </body>
 </html>

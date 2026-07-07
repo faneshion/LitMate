@@ -129,6 +129,7 @@ class DimensionConfig(BaseModel):
     negative_examples: List[str] = Field(default_factory=list)
     retrieval_keywords: List[str] = Field(default_factory=list)
     section_policy: Dict[str, Any] = Field(default_factory=dict)
+    max_output_tokens: int = 2048
 
 
 class PromptProfile(BaseModel):

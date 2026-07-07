@@ -18,7 +18,7 @@ from .section_policy import (
 )
 
 STOPWORDS = set("the a an of in on to for and or with by from is are was were be this that these those it as into about we our their its using use used can may not".split())
-EXTRACTION_MAX_OUTPUT_TOKENS = 1024
+DEFAULT_EXTRACTION_MAX_OUTPUT_TOKENS = 2048
 MAX_SYSTEM_PROMPT_CHARS = 1000
 MAX_CONTEXT_CHARS = 3000
 MAX_CHUNK_CONTEXT_CHARS = 750
@@ -247,7 +247,8 @@ class ExperienceExtractor:
                 "content": build_dimension_prompt(paper, dimension, context),
             },
         ]
-        data = await self.llm.extract_json(messages, max_tokens=EXTRACTION_MAX_OUTPUT_TOKENS)
+        max_output_tokens = max(256, int(dimension.max_output_tokens or DEFAULT_EXTRACTION_MAX_OUTPUT_TOKENS))
+        data = await self.llm.extract_json(messages, max_tokens=max_output_tokens)
         raw_items = data.get("items", [])
         if not raw_items and data.get("not_found"):
             return [
