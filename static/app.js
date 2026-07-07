@@ -6026,12 +6026,111 @@ function buildDimensionRegeneratePayload(card, group) {
 
 function buildDimensionRegeneratePrompt(card, group) {
   const payload = buildDimensionRegeneratePayload(card, group);
-  return [
-    '你是 LitMate 的维度精炼助手。请基于下列当前维度的碎片信息，重新生成该维度的综合答案。',
-    '要求：只使用 fragments 中的内容和证据；明确区分作者明确陈述与模型归纳；输出适合研究综述和对比矩阵复用的中文表达。',
-    '',
-    JSON.stringify(payload, null, 2),
-  ].join('\n');
+  const inputJson = JSON.stringify(payload, null, 2);
+  return `你是一名科研文献研读助手，负责将某篇论文在某一抽取维度下的多个碎片化抽取结果，整合为一份可用于综述写作、跨论文比较、引用分析和研究方案设计的“维度综合答案”。
+
+你的任务不是简单拼接碎片，也不是重新发明论文中没有的内容，而是基于给定的结构化输入，对碎片进行归并、去重、区分主次、识别概念关系、说明边界，并生成可审查、可追溯、可复用的结构化输出。
+
+请严格遵守以下原则：
+
+1. 只能依据输入中的 fragments、evidence、fragment role、dimension_question 和 output_requirements 生成内容。
+2. 不要引入输入中没有出现的新事实、新实验结果、新术语或新判断。
+3. 如果某个判断是基于多个碎片综合归纳得到的，而不是作者明确陈述，请在输出中标记为 model_inferred。
+4. 如果某个碎片被标记为 boundary_concept、uncertain、low_confidence 或 suggested_dimension 不等于当前维度，不要将其直接写成当前维度的核心结论；只能作为边界说明、相关概念或风险提示。
+5. 如果碎片之间存在上下位关系、并列关系、支撑关系或维度错位，请在综合答案中明确说明。
+6. 如果论文没有给出单一、显式、抽象定义，不要强行写成“论文将 X 定义为……”，而应表述为“论文通过若干操作性概念描述 / 界定 / 实现了……”
+7. 综合答案应面向科研使用，避免空泛概括，尽量说明概念、来源、形式、功能、边界和证据状态。
+8. 输出必须是合法 JSON，不要输出 Markdown，不要输出解释性前言。
+9. 如果无法根据输入生成某一字段，请使用空字符串、空数组或 "not_reported"，不要编造。
+10. 所有可用于综述、比较、引用和方案设计的内容，都应尽量保留与原始碎片或证据的关联。
+
+请根据下面的输入生成维度综合结果。
+
+输入 JSON：
+
+${inputJson}
+
+请输出如下 JSON 结构：
+
+{
+  "dimension_name": "",
+  "dimension_question": "",
+  "synthesis_status": "draft",
+  "synthesis_text": "",
+  "synthesis_type": "",
+  "key_points": [
+    {
+      "point": "",
+      "supporting_fragments": [],
+      "evidence_basis": [],
+      "source_type": "author_explicit | model_inferred | mixed",
+      "confidence": "high | medium | low"
+    }
+  ],
+  "concept_structure": {
+    "core_concepts": [],
+    "sub_concepts": [],
+    "boundary_concepts": [],
+    "related_concepts": [],
+    "relations": [
+      {
+        "source": "",
+        "relation": "has_subtype | part_of | supports | contrasts_with | stored_as | used_for | derived_from | boundary_of | other",
+        "target": "",
+        "evidence_basis": [],
+        "source_type": "author_explicit | model_inferred | mixed"
+      }
+    ]
+  },
+  "comparison_fields": {
+    "definition_mode": "",
+    "core_concept": "",
+    "sub_concepts": [],
+    "boundary_concepts": [],
+    "forms_or_types": [],
+    "source": [],
+    "function": [],
+    "representation": [],
+    "usage": [],
+    "update_or_evolution": [],
+    "evidence_strength": "strong | medium | weak | unknown",
+    "not_reported_fields": []
+  },
+  "review_materials": [
+    {
+      "material_type": "review_sentence | background_summary | method_comparison | limitation_summary | research_gap | method_inspiration",
+      "content": "",
+      "suitable_section": "",
+      "supporting_fragments": [],
+      "evidence_basis": [],
+      "confidence": "high | medium | low"
+    }
+  ],
+  "citation_points": [
+    {
+      "claim": "",
+      "suitable_use": "",
+      "not_suitable_use": "",
+      "supporting_fragments": [],
+      "evidence_basis": [],
+      "confidence": "high | medium | low"
+    }
+  ],
+  "risk_notes": [
+    {
+      "risk_type": "boundary_concept | weak_evidence | over_inference | dimension_mismatch | missing_information | ambiguous_relation | other",
+      "note": "",
+      "related_fragments": [],
+      "suggested_action": ""
+    }
+  ],
+  "materialization_suggestions": {
+    "for_literature_review": [],
+    "for_comparison_matrix": [],
+    "for_research_gap": [],
+    "for_method_design": []
+  }
+}`;
 }
 
 function renderReviewMaterialsView(card) {
