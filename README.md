@@ -4,7 +4,7 @@
 
 1. **论文管理版块**：支持 PDF/TXT/MD 上传、arXiv 导入、DOI/Crossref 元数据导入、BibTeX 导入；解析正文、章节、图表标题、参考文献和元数据。
 2. **科研对象抽取版块**：支持通过对象建模工作台定义科研对象，并形成具体抽取 Prompt；调用 OpenAI-compatible 本地大模型逐维度抽取知识，并绑定原文证据。
-3. **人机协同审查版块**：支持查看、编辑、确认、驳回、标记需修改，并添加研究笔记和标签。
+3. **协同审查与素材精炼版块**：在论文抽取完成后，将多个维度的碎片化结果整合为论文级研究对象卡片，辅助研究者核验证据、修正理解、补充判断，并生成研究笔记与可复用素材。
 4. **素材管理与分析版块**：将抽取结果同步为素材，支持检索、跨论文对比矩阵、空白分析、证据图数据导出。
 
 ## 快速启动
@@ -16,6 +16,32 @@ pip install -r requirements.txt
 cp .env.example .env
 python run.py
 ```
+
+Windows 11 / PowerShell（当前仓库推荐使用 `.venv`，该环境为 Python 3.12）：
+
+```powershell
+python -m venv .venv
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+Copy-Item .env.example .env
+python run.py
+```
+
+如果 `.venv` 已经存在，也可以直接启动：
+
+```powershell
+.\.venv\Scripts\python.exe run.py
+```
+
+如果 PowerShell 阻止激活脚本，可在当前终端临时放开执行策略后再激活：
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
+```
+
+注意：当前仓库中的 `.venv312` 目录名虽然像 Python 3.12，但实际可能指向 Python 3.14，容易导致 `pydantic_core._pydantic_core` 等原生扩展版本不匹配。遇到这类错误时优先使用 `.venv`。
 
 打开：
 
@@ -68,7 +94,7 @@ data/
 - `GET /api/extractions`
 - `GET /api/extractions/{run_id}`
 
-### 人机审查
+### 协同审查与素材精炼
 
 - `PUT /api/extractions/{run_id}/items/{item_id}/review`
 - `POST /api/notes`
