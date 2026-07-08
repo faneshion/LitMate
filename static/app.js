@@ -511,10 +511,120 @@ function applyDimensionRegenerateResult() {
   const context = state.reviewRegenerateContext;
   const content = context?.pendingContent || $('dimensionRegenerateResult')?.value || '';
   if (!context || !content.trim()) return toast('请先生成可用结果');
-  state.reviewDimensionDrafts[context.draftKey] = content.trim();
+  const parsed = parseDimensionRegenerateJson(content);
+  if (!parsed) {
+    toast('生成结果不是合法 JSON，请修改结果或重新生成后再确认使用');
+    return;
+  }
+  state.reviewDimensionDrafts[context.draftKey] = formatDimensionSynthesisOutput(parsed);
   closeDimensionRegenerateModal();
   renderReviewWorkbench();
   toast('已替换当前维度综合答案草稿');
+}
+
+function parseDimensionRegenerateJson(content) {
+  const raw = String(content || '').trim();
+  if (!raw) return null;
+  const candidates = [
+    raw,
+    raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim(),
+  ];
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start >= 0 && end > start) candidates.push(raw.slice(start, end + 1));
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch (_) {}
+  }
+  return null;
+}
+
+function textValue(value) {
+  if (value === null || value === undefined) return '';
+  if (Array.isArray(value)) return value.filter(item => item !== null && item !== undefined && item !== '').join('、');
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+function formatNamedList(items, formatter) {
+  if (!Array.isArray(items) || !items.length) return '- not_reported';
+  return items.map((item, index) => `- ${formatter(item, index)}`).join('\n');
+}
+
+function formatConceptStructure(structure = {}) {
+  const relations = Array.isArray(structure.relations) ? structure.relations : [];
+  return [
+    `核心概念：${textValue(structure.core_concepts) || 'not_reported'}`,
+    `子概念：${textValue(structure.sub_concepts) || 'not_reported'}`,
+    `边界概念：${textValue(structure.boundary_concepts) || 'not_reported'}`,
+    `相关概念：${textValue(structure.related_concepts) || 'not_reported'}`,
+    '关系：',
+    formatNamedList(relations, rel => {
+      const source = textValue(rel.source) || 'unknown';
+      const target = textValue(rel.target) || 'unknown';
+      const relation = textValue(rel.relation) || 'other';
+      const type = textValue(rel.source_type) || 'unknown';
+      const evidence = textValue(rel.evidence_basis);
+      return `${source} --${relation}--> ${target}（${type}${evidence ? `；证据：${evidence}` : ''}）`;
+    }),
+  ].join('\n');
+}
+
+function formatComparisonFields(fields = {}) {
+  const rows = [
+    ['definition_mode', fields.definition_mode],
+    ['core_concept', fields.core_concept],
+    ['sub_concepts', fields.sub_concepts],
+    ['boundary_concepts', fields.boundary_concepts],
+    ['forms_or_types', fields.forms_or_types],
+    ['source', fields.source],
+    ['function', fields.function],
+    ['representation', fields.representation],
+    ['usage', fields.usage],
+    ['update_or_evolution', fields.update_or_evolution],
+    ['evidence_strength', fields.evidence_strength],
+    ['not_reported_fields', fields.not_reported_fields],
+  ];
+  return rows.map(([key, value]) => `${key}: ${textValue(value) || 'not_reported'}`).join('\n');
+}
+
+function formatReviewMaterials(items = []) {
+  return formatNamedList(items, item => [
+    `[${textValue(item.material_type) || 'material'}] ${textValue(item.content) || 'not_reported'}`,
+    item.suitable_section ? `适用位置：${textValue(item.suitable_section)}` : '',
+    item.supporting_fragments?.length ? `碎片：${textValue(item.supporting_fragments)}` : '',
+    item.evidence_basis?.length ? `证据：${textValue(item.evidence_basis)}` : '',
+    item.confidence ? `置信度：${textValue(item.confidence)}` : '',
+  ].filter(Boolean).join('；'));
+}
+
+function formatRiskNotes(items = []) {
+  return formatNamedList(items, item => [
+    `[${textValue(item.risk_type) || 'risk'}] ${textValue(item.note) || 'not_reported'}`,
+    item.related_fragments?.length ? `相关碎片：${textValue(item.related_fragments)}` : '',
+    item.suggested_action ? `建议：${textValue(item.suggested_action)}` : '',
+  ].filter(Boolean).join('；'));
+}
+
+function formatDimensionSynthesisOutput(data) {
+  return [
+    '1. synthesis_text：面向人阅读的维度综合答案',
+    textValue(data.synthesis_text) || 'not_reported',
+    '',
+    '2. concept_structure：概念关系结构',
+    formatConceptStructure(data.concept_structure || {}),
+    '',
+    '3. comparison_fields：进入跨论文矩阵的标准化字段',
+    formatComparisonFields(data.comparison_fields || {}),
+    '',
+    '4. review_materials：进入综述和研究素材库的素材',
+    formatReviewMaterials(data.review_materials || []),
+    '',
+    '5. risk_notes：提醒用户哪些地方需要谨慎',
+    formatRiskNotes(data.risk_notes || []),
+  ].join('\n');
 }
 
 function syncModalLock() {

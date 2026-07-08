@@ -6227,6 +6227,7 @@ body.review-sidebar-resizing {
   color: #111827;
   font-size: 15px;
   line-height: 1.75;
+  white-space: pre-wrap;
 }
 .review-answer.lead.highlighted {
   border-color: #93c5fd;
